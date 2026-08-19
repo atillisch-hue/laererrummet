@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Enhancements from "./Enhancements";
+import DashboardNav from "./DashboardNav";
 
 export const metadata: Metadata = {
   title: "Klasseværelset",
@@ -13,6 +14,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         {children}
         <Enhancements />
+        <DashboardNav />
       </body>
     </html>
   );
