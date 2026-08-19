@@ -1,0 +1,11 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { supabase } from "../../lib/supabase";
+
+export default function StudentGrammar(){
+ const[loading,setLoading]=useState(true),[assignment,setAssignment]=useState<any>(null),[error,setError]=useState("");
+ useEffect(()=>{(async()=>{const code=sessionStorage.getItem("klassevaerelset-student-code");const id=new URLSearchParams(window.location.search).get("assignment");if(!code||!id){setError("Åbn opgaven fra din elevside.");setLoading(false);return}const{data,error}=await supabase.rpc("student_grammar_assignments",{p_access_code:code});if(error||!data?.ok){setError("Kunne ikke hente grammatikopgaven.");setLoading(false);return}const found=(data.assignments||[]).find((x:any)=>String(x.id)===id);if(!found){setError("Denne opgave er ikke tildelt din klasse.");setLoading(false);return}setAssignment(found);setLoading(false)})()},[]);
+ if(loading)return <main style={{padding:50}}>Åbner grammatikopgaven…</main>;
+ return <main style={{minHeight:"100vh",background:"#f5f3ee",padding:"42px 24px 80px"}}><section style={{maxWidth:900,margin:"0 auto"}}><a href="/?student=1" style={{color:"#526b60",fontWeight:800,textDecoration:"none"}}>← Til mine opgaver</a>{error?<div style={{marginTop:30,background:"white",padding:28,borderRadius:14,border:"1px solid #ddd9d0"}}><h1>Hov</h1><p>{error}</p></div>:<><p style={{marginTop:38,fontSize:11,fontWeight:800,letterSpacing:1.7,color:"#718077"}}>GRAMMATIK · {assignment.area.toUpperCase()}</p><h1 style={{fontFamily:"Georgia,serif",fontSize:42,margin:"8px 0"}}>{assignment.title}</h1><p style={{fontSize:18,color:"#707670",lineHeight:1.55}}>Din lærer har tildelt dig denne grammatikopgave. Selve spørgsmålene kommer her som næste trin.</p><div style={{marginTop:30,background:"white",padding:28,borderRadius:14,border:"1px solid #ddd9d0"}}><span style={{display:"inline-block",padding:"6px 10px",borderRadius:999,background:"#edf1ec",color:"#526b60",fontWeight:800,fontSize:12}}>{assignment.level}</span><h2 style={{fontFamily:"Georgia,serif",fontSize:28,margin:"18px 0 8px"}}>{assignment.topic}</h2><p style={{color:"#777",lineHeight:1.6}}>Opgaven er landet korrekt på din elevside. Nu bygger vi øvelserne, automatisk rettelse og forklaringer ind her.</p></div></>}</section></main>
+}
