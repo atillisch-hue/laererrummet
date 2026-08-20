@@ -6,13 +6,12 @@ export async function POST(req: Request) {
     const authHeader = req.headers.get("authorization");
     if (!authHeader?.startsWith("Bearer ")) return NextResponse.json({ error: "Ikke logget ind." }, { status: 401 });
     const token = authHeader.slice(7);
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const service = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!service) return NextResponse.json({ error: "Serveren mangler SUPABASE_SERVICE_ROLE_KEY." }, { status: 500 });
+    if (!url || !service) return NextResponse.json({ error: "Serveren mangler Supabase-konfiguration." }, { status: 500 });
 
-    const viewer = createClient(url, anon);
-    const { data: me, error: meError } = await viewer.auth.getUser(token);
+    const admin = createClient(url, service, { auth: { autoRefreshToken: false, persistSession: false } });
+    const { data: me, error: meError } = await admin.auth.getUser(token);
     if (meError || !me.user) return NextResponse.json({ error: "Sessionen kunne ikke bekræftes." }, { status: 401 });
     const rawRoles = me.user.app_metadata?.roles;
     const roles = Array.isArray(rawRoles) ? rawRoles : (me.user.app_metadata?.role ? [me.user.app_metadata.role] : []);
@@ -23,10 +22,9 @@ export async function POST(req: Request) {
     const password = String(body.password || "");
     const requested = Array.isArray(body.roles) ? body.roles : [];
     const allowed = ["teacher", "parent", "admin"];
-    const newRoles = requested.filter((r: string) => allowed.includes(r));
+    const newRoles = [...new Set(requested.filter((r: string) => allowed.includes(r)))];
     if (!email || password.length < 8 || !newRoles.length) return NextResponse.json({ error: "Udfyld mail, mindst én rolle og en adgangskode på mindst 8 tegn." }, { status: 400 });
 
-    const admin = createClient(url, service, { auth: { autoRefreshToken: false, persistSession: false } });
     const { data, error } = await admin.auth.admin.createUser({
       email,
       password,
