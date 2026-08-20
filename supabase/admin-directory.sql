@@ -22,12 +22,19 @@ as $$
 begin
   if not public.is_admin() then raise exception 'Admin access required'; end if;
   return query
-  select u.id,u.email,
+  select
+    u.id,
+    u.email,
     case
-      when jsonb_typeof(coalesce(u.raw_user_meta_data->'roles','[]'::jsonb))='array' then coalesce(u.raw_user_meta_data->'roles','[]'::jsonb)
-      when u.raw_user_meta_data->>'role' is not null then jsonb_build_array(u.raw_user_meta_data->>'role')
+      -- Some existing accounts use the older singular `role` field.
+      -- Prefer an explicitly populated `roles` array, otherwise fall back to `role`.
+      when jsonb_typeof(u.raw_user_meta_data->'roles') = 'array'
+           and jsonb_array_length(u.raw_user_meta_data->'roles') > 0
+        then u.raw_user_meta_data->'roles'
+      when nullif(u.raw_user_meta_data->>'role','') is not null
+        then jsonb_build_array(u.raw_user_meta_data->>'role')
       else '[]'::jsonb
-    end
+    end as roles
   from auth.users u
   order by u.email;
 end;
