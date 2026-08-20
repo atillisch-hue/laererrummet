@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+function normalizeRoles(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === "string") return [value];
+  return [];
+}
+
 export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get("authorization");
@@ -13,8 +19,15 @@ export async function POST(req: Request) {
     const admin = createClient(url, service, { auth: { autoRefreshToken: false, persistSession: false } });
     const { data: me, error: meError } = await admin.auth.getUser(token);
     if (meError || !me.user) return NextResponse.json({ error: "Sessionen kunne ikke bekræftes." }, { status: 401 });
-    const rawRoles = me.user.app_metadata?.roles;
-    const roles = Array.isArray(rawRoles) ? rawRoles : (me.user.app_metadata?.role ? [me.user.app_metadata.role] : []);
+
+    // Roller kan ligge i både app_metadata og user_metadata på eksisterende konti.
+    // Brugerkataloget understøtter desuden både `roles` og den ældre `role`.
+    const roles = [...new Set([
+      ...normalizeRoles(me.user.app_metadata?.roles),
+      ...normalizeRoles(me.user.app_metadata?.role),
+      ...normalizeRoles(me.user.user_metadata?.roles),
+      ...normalizeRoles(me.user.user_metadata?.role),
+    ])];
     if (!roles.includes("admin")) return NextResponse.json({ error: "Kun administratorer kan oprette brugere." }, { status: 403 });
 
     const body = await req.json();
@@ -29,7 +42,8 @@ export async function POST(req: Request) {
       email,
       password,
       email_confirm: true,
-      app_metadata: { roles: newRoles, role: newRoles[0] }
+      app_metadata: { roles: newRoles, role: newRoles[0] },
+      user_metadata: { roles: newRoles, role: newRoles[0] }
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json({ ok: true, id: data.user.id, email: data.user.email });
