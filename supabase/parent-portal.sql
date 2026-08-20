@@ -1,5 +1,5 @@
 -- Klasseværelset: sikker kobling mellem forældre og elever
--- Kør denne fil én gang i Supabase SQL Editor.
+-- Kan køres igen i Supabase SQL Editor ved opdateringer.
 
 create table if not exists public.parent_students (
   parent_id uuid not null references auth.users(id) on delete cascade,
@@ -10,16 +10,12 @@ create table if not exists public.parent_students (
 
 alter table public.parent_students enable row level security;
 
--- Forældre må kun læse deres egne koblinger.
 drop policy if exists "parents_read_own_children" on public.parent_students;
 create policy "parents_read_own_children"
 on public.parent_students
 for select
 to authenticated
 using (parent_id = auth.uid());
-
--- Klienter må ikke selv oprette/slette familiekoblinger.
--- De administreres af skolen/admin via SQL eller senere adminfunktion.
 
 create or replace function public.parent_portal_data()
 returns jsonb
@@ -29,12 +25,19 @@ set search_path = public
 as $$
 declare
   result jsonb;
+  metadata jsonb;
+  has_parent_role boolean;
 begin
   if auth.uid() is null then
     raise exception 'Not authenticated';
   end if;
 
-  if coalesce(auth.jwt() -> 'user_metadata' ->> 'role','') <> 'parent' then
+  metadata := coalesce(auth.jwt() -> 'user_metadata', '{}'::jsonb);
+  has_parent_role :=
+    metadata ->> 'role' = 'parent'
+    or coalesce(metadata -> 'roles', '[]'::jsonb) ? 'parent';
+
+  if not has_parent_role then
     raise exception 'Parent access required';
   end if;
 
