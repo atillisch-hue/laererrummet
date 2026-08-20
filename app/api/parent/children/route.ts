@@ -10,52 +10,29 @@ function normalizeRoles(value: unknown): string[] {
 export async function GET(req: Request) {
   try {
     const authHeader = req.headers.get("authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Ikke logget ind." }, { status: 401 });
-    }
-
+    if (!authHeader?.startsWith("Bearer ")) return NextResponse.json({ error: "Ikke logget ind." }, { status: 401 });
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const service = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !service) {
-      return NextResponse.json({ error: "Serveren mangler Supabase-konfiguration." }, { status: 500 });
-    }
+    if (!url || !service) return NextResponse.json({ error: "Serveren mangler Supabase-konfiguration." }, { status: 500 });
 
-    const admin = createClient(url, service, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
+    const admin = createClient(url, service, { auth: { autoRefreshToken: false, persistSession: false } });
     const { data: authData, error: authError } = await admin.auth.getUser(authHeader.slice(7));
     const user = authData.user;
-    if (authError || !user) {
-      return NextResponse.json({ error: "Sessionen kunne ikke bekræftes." }, { status: 401 });
-    }
+    if (authError || !user) return NextResponse.json({ error: "Sessionen kunne ikke bekræftes." }, { status: 401 });
 
     const roles = [...new Set([
-      ...normalizeRoles(user.app_metadata?.roles),
-      ...normalizeRoles(user.app_metadata?.role),
-      ...normalizeRoles(user.user_metadata?.roles),
-      ...normalizeRoles(user.user_metadata?.role),
+      ...normalizeRoles(user.app_metadata?.roles), ...normalizeRoles(user.app_metadata?.role),
+      ...normalizeRoles(user.user_metadata?.roles), ...normalizeRoles(user.user_metadata?.role),
     ])];
-    if (!roles.includes("parent")) {
-      return NextResponse.json({ error: "Forældreadgang kræves." }, { status: 403 });
-    }
+    if (!roles.includes("parent")) return NextResponse.json({ error: "Forældreadgang kræves." }, { status: 403 });
 
-    const { data: links, error: linkError } = await admin
-      .from("parent_students")
-      .select("student_id")
-      .eq("parent_id", user.id);
+    const { data: links, error: linkError } = await admin.from("parent_students").select("student_id").eq("parent_id", user.id);
     if (linkError) return NextResponse.json({ error: linkError.message }, { status: 400 });
-
     const ids = (links || []).map((x: any) => Number(x.student_id)).filter(Number.isFinite);
     if (!ids.length) return NextResponse.json({ children: [] });
 
-    const { data: students, error: studentError } = await admin
-      .from("students")
-      .select("id,name,class_id")
-      .in("id", ids)
-      .order("name");
+    const { data: students, error: studentError } = await admin.from("students").select("id,name,class_id").in("id", ids).order("name");
     if (studentError) return NextResponse.json({ error: studentError.message }, { status: 400 });
-
     const classIds = [...new Set((students || []).map((s: any) => s.class_id).filter((x: any) => x !== null))];
     let classNames = new Map<number, string>();
     if (classIds.length) {
@@ -64,14 +41,20 @@ export async function GET(req: Request) {
       classNames = new Map((classes || []).map((c: any) => [Number(c.id), String(c.name)]));
     }
 
-    return NextResponse.json({
-      children: (students || []).map((s: any) => ({
-        id: Number(s.id),
-        name: String(s.name),
-        class_id: s.class_id === null ? null : Number(s.class_id),
-        class_name: s.class_id === null ? null : classNames.get(Number(s.class_id)) || null,
-      })),
-    });
+    let assignmentsByClass = new Map<number, any[]>();
+    if (classIds.length) {
+      const { data: assignments } = await admin.from("assignments").select("id,title,type,class_id").in("class_id", classIds).order("id", { ascending: false });
+      (assignments || []).forEach((a: any) => {
+        const key = Number(a.class_id); const list = assignmentsByClass.get(key) || [];
+        list.push({ id: Number(a.id), title: String(a.title), type: String(a.type || "Opgave") }); assignmentsByClass.set(key, list);
+      });
+    }
+
+    return NextResponse.json({ children: (students || []).map((s: any) => ({
+      id: Number(s.id), name: String(s.name), class_id: s.class_id === null ? null : Number(s.class_id),
+      class_name: s.class_id === null ? null : classNames.get(Number(s.class_id)) || null,
+      assignments: s.class_id === null ? [] : assignmentsByClass.get(Number(s.class_id)) || [],
+    })) });
   } catch {
     return NextResponse.json({ error: "Forældrekoblingen kunne ikke hentes." }, { status: 500 });
   }
