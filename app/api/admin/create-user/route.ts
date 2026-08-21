@@ -20,8 +20,6 @@ export async function POST(req: Request) {
     const { data: me, error: meError } = await admin.auth.getUser(token);
     if (meError || !me.user) return NextResponse.json({ error: "Sessionen kunne ikke bekræftes." }, { status: 401 });
 
-    // Roller kan ligge i både app_metadata og user_metadata på eksisterende konti.
-    // Brugerkataloget understøtter desuden både `roles` og den ældre `role`.
     const roles = [...new Set([
       ...normalizeRoles(me.user.app_metadata?.roles),
       ...normalizeRoles(me.user.app_metadata?.role),
@@ -34,7 +32,7 @@ export async function POST(req: Request) {
     const email = String(body.email || "").trim().toLowerCase();
     const password = String(body.password || "");
     const requested = Array.isArray(body.roles) ? body.roles : [];
-    const allowed = ["teacher", "parent", "admin"];
+    const allowed = ["teacher", "parent", "board", "admin"];
     const newRoles = [...new Set(requested.filter((r: string) => allowed.includes(r)))];
     if (!email || password.length < 8 || !newRoles.length) return NextResponse.json({ error: "Udfyld mail, mindst én rolle og en adgangskode på mindst 8 tegn." }, { status: 400 });
 
