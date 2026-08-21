@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Enhancements from "./Enhancements";
 import DashboardNav from "./DashboardNav";
+import AccessGuard from "./AccessGuard";
 
 export const metadata: Metadata = {
   title: "Klasseværelset",
@@ -12,7 +13,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="da">
       <body>
-        {children}
+        <AccessGuard>{children}</AccessGuard>
         <Enhancements />
         <DashboardNav />
       </body>
