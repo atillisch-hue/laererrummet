@@ -33,7 +33,7 @@ export async function PATCH(req: Request) {
     if (!id) return NextResponse.json({ error: "Bruger mangler." }, { status: 400 });
     const attrs: any = {};
     if (Array.isArray(body.roles)) {
-      const allowed = ["teacher", "parent", "admin"];
+      const allowed = ["teacher", "parent", "board", "admin"];
       const roles = [...new Set(body.roles.filter((r: string) => allowed.includes(r)))];
       if (!roles.length) return NextResponse.json({ error: "Brugeren skal have mindst én rolle." }, { status: 400 });
       if (id === access.me.id && !roles.includes("admin")) return NextResponse.json({ error: "Du kan ikke fjerne din egen admin-rolle." }, { status: 400 });
