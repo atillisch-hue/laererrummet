@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { hasRole } from "../../lib/roles";
 
-type Audience="teacher"|"parent"|"board"|"admin";
+type Audience="teacher"|"parent"|"board"|"admin"|"student";
 type Note={id:string;text:string;author_email:string;author_id:string;created_at:string;audiences:Audience[]};
 type Entry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null};
 type Klass={id:number;name:string};
@@ -15,11 +15,11 @@ const iso=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")
 const nav=(active=false)=>({padding:"10px 14px",borderRadius:9,textDecoration:"none",fontWeight:800 as const,border:active?"1px solid #dfa94f":"1px solid rgba(255,255,255,.22)",background:active?"#dfa94f":"transparent",color:active?"#243d33":"white"});
 const roleNav=()=>({padding:"6px 9px",borderRadius:7,textDecoration:"none",fontWeight:700 as const,fontSize:12,background:"#fff",color:"#365044",border:"1px solid #fff",alignSelf:"center"});
 const noteColors=["#fff2a8","#f8d7c4","#dcefcf","#dce8f7","#f1d9ee"];
-const audienceOptions:{id:Audience;label:string}[]=[{id:"teacher",label:"Lærere"},{id:"parent",label:"Forældre"},{id:"board",label:"Bestyrelse"},{id:"admin",label:"Admin"}];
+const audienceOptions:{id:Audience;label:string}[]=[{id:"teacher",label:"Lærere"},{id:"student",label:"Elever"},{id:"parent",label:"Forældre"},{id:"board",label:"Bestyrelse"},{id:"admin",label:"Admin"}];
 export default function Noticeboard(){
  const[ready,setReady]=useState(false),[email,setEmail]=useState(""),[userId,setUserId]=useState(""),[text,setText]=useState(""),[notes,setNotes]=useState<Note[]>([]),[dbReady,setDbReady]=useState(true),[busy,setBusy]=useState(false),[isAdmin,setIsAdmin]=useState(false),[isParent,setIsParent]=useState(false),[isBoard,setIsBoard]=useState(false),[allEntries,setAllEntries]=useState<Entry[]>([]),[assignments,setAssignments]=useState<Assignment[]>([]),[classes,setClasses]=useState<Klass[]>([]),[profiles,setProfiles]=useState<Profile[]>([]),[selectedDate,setSelectedDate]=useState(()=>iso(new Date())),[showComposer,setShowComposer]=useState(false),[audiences,setAudiences]=useState<Audience[]>(["teacher"]);
  const[planDrafts,setPlanDrafts]=useState<Record<number,string>>({}),[savingPlan,setSavingPlan]=useState<number|null>(null);
- const load=async()=>{const{data,error}=await supabase.from("noticeboard_posts").select("id,text,author_email,author_id,created_at,audiences").order("created_at",{ascending:false});if(error){setDbReady(false);return}setDbReady(true);setNotes((data||[])as Note[])};
+ const load=async()=>{const{data,error}=await supabase.from("noticeboard_posts").select("id,text,author_email,author_id,created_at,audiences").contains("audiences",["teacher"]).order("created_at",{ascending:false});if(error){setDbReady(false);return}setDbReady(true);setNotes((data||[])as Note[])};
  const loadAssignments=async()=>{const{data}=await supabase.from("substitute_assignments").select("id,schedule_entry_id,assignment_date,absent_teacher_id,substitute_teacher_id,substitute_plan");setAssignments((data||[])as Assignment[])};
  useEffect(()=>{(async()=>{const{data}=await supabase.auth.getSession();if(!data.session){location.href="/?teacher=1";return}const user=data.session.user,admin=hasRole(user,"admin");setEmail(user.email||"");setUserId(user.id);setIsAdmin(admin);setIsParent(hasRole(user,"parent"));setIsBoard(hasRole(user,"board")||admin);const[eRes,cRes,pRes,aRes]=await Promise.all([supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room"),supabase.from("classes").select("id,name"),supabase.from("user_profiles").select("user_id,initials"),supabase.from("substitute_assignments").select("id,schedule_entry_id,assignment_date,absent_teacher_id,substitute_teacher_id,substitute_plan")]);setAllEntries((eRes.data||[])as Entry[]);setClasses((cRes.data||[])as Klass[]);setProfiles((pRes.data||[])as Profile[]);setAssignments((aRes.data||[])as Assignment[]);await load();setReady(true)})()},[]);
  const toggleAudience=(a:Audience)=>setAudiences(v=>v.includes(a)?v.filter(x=>x!==a):[...v,a]);
