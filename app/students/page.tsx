@@ -9,6 +9,8 @@ type Student = { id:number; name:string; class_id:number };
 type ClassRow = { id:number; name:string };
 type TeacherClass = { teacher_id:string; class_id:number };
 type Absence = { id:number; student_id:number; absence_date:string; status:string; note:string|null };
+type SubstituteAssignment = { assignment_date:string; substitute_teacher_id:string; schedule_entry_id:number };
+type ScheduleEntry = { id:number; class_id:number };
 
 const TYPES = [
   { value:"sick", label:"Syg" },
@@ -26,16 +28,22 @@ export default function StudentsPage(){
  async function load(){
   const {data:s}=await supabase.auth.getSession(); const user=s.session?.user;
   if(!user){window.location.href="/?teacher=1";return}
-  const [{data:c},{data:st},{data:tc},{data:a}]=await Promise.all([
+  const params=new URLSearchParams(window.location.search); const requestedDate=params.get("date")||new Date().toISOString().slice(0,10); setDate(requestedDate);
+  const [{data:c},{data:st},{data:tc},{data:a},{data:sa},{data:se}]=await Promise.all([
    supabase.from("classes").select("id,name").order("id"),
    supabase.from("students").select("id,name,class_id").order("name"),
    supabase.from("teacher_classes").select("teacher_id,class_id").eq("teacher_id",user.id),
-   supabase.from("student_absence").select("id,student_id,absence_date,status,note").order("absence_date",{ascending:false}).limit(200)
+   supabase.from("student_absence").select("id,student_id,absence_date,status,note").order("absence_date",{ascending:false}).limit(200),
+   supabase.from("substitute_assignments").select("assignment_date,substitute_teacher_id,schedule_entry_id").eq("substitute_teacher_id",user.id),
+   supabase.from("schedule_entries").select("id,class_id")
   ]);
   const allClasses=(c||[]) as ClassRow[]; const assigned=new Set(((tc||[]) as TeacherClass[]).map(x=>x.class_id)); const admin=hasRole(user,"admin");
-  const cs=admin?allClasses:allClasses.filter(x=>assigned.has(x.id));
-  setClasses(cs); setStudents(((st||[]) as Student[]).filter(x=>admin||assigned.has(x.class_id))); setRows((a||[]) as Absence[]);
-  const requested=Number(new URLSearchParams(window.location.search).get("class")); setClassId(cs.some(x=>x.id===requested)?requested:(cs[0]?.id||"")); setReady(true);
+  const entries=(se||[]) as ScheduleEntry[]; const substituteEntryIds=new Set(((sa||[]) as SubstituteAssignment[]).filter(x=>x.assignment_date===requestedDate).map(x=>x.schedule_entry_id));
+  const substituteClasses=new Set(entries.filter(x=>substituteEntryIds.has(x.id)).map(x=>x.class_id));
+  const allowed=new Set([...assigned,...substituteClasses]);
+  const cs=admin?allClasses:allClasses.filter(x=>allowed.has(x.id));
+  setClasses(cs); setStudents(((st||[]) as Student[]).filter(x=>admin||allowed.has(x.class_id))); setRows((a||[]) as Absence[]);
+  const requested=Number(params.get("class")); setClassId(cs.some(x=>x.id===requested)?requested:(cs[0]?.id||"")); setReady(true);
  }
  useEffect(()=>{load()},[]);
  const shown=useMemo(()=>students.filter(s=>s.class_id===classId),[students,classId]);
@@ -53,15 +61,15 @@ export default function StudentsPage(){
 
  if(!ready)return <main style={{padding:50}}>Henter elever…</main>;
  return <main style={{minHeight:"100vh",background:"#f5f3ee",padding:"42px 24px 80px"}}><section style={{maxWidth:1000,margin:"0 auto"}}>
-  <Link href="/teacher-dashboard" style={{color:"#526b60",fontWeight:800,textDecoration:"none"}}>← Til lærerforsiden</Link>
+  <Link href="/noticeboard" style={{color:"#526b60",fontWeight:800,textDecoration:"none"}}>← Til opslagstavlen</Link>
   <p className="eyebrow" style={{marginTop:38}}>KLASSEOVERBLIK</p><h1 style={{marginBottom:8}}>{classes.find(c=>c.id===classId)?.name||"Mine klasser"}</h1>
-  <p style={{color:"#777",marginTop:0}}>Se klassens elever og registrér fravær. Oprettelse og administration af elever håndteres af skolens administrator.</p>
-  {classes.length===0?<div className="card" style={{padding:26,marginTop:28}}><strong>Du er endnu ikke tilknyttet en klasse.</strong><p style={{color:"#777"}}>En administrator kan tilknytte dig under Lærere & klasser.</p></div>:<>
+  <p style={{color:"#777",marginTop:0}}>Se klassens elever og registrér fravær. Som vikar får du adgang til klassen på den dag, du er sat på timen.</p>
+  {classes.length===0?<div className="card" style={{padding:26,marginTop:28}}><strong>Du har ingen klasser eller vikartimer denne dag.</strong><p style={{color:"#777"}}>Vælg eventuelt dagen fra Opslagstavlen først.</p></div>:<>
    <div className="card" style={{padding:26,marginTop:28}}>
     <label style={{fontWeight:800}}>Klasse<select value={classId} onChange={e=>{setClassId(Number(e.target.value));setSelected({});setNotes({})}} style={{display:"block",marginTop:8,padding:11,border:"1px solid #d8d5cd",borderRadius:8,minWidth:240}}>{classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
     <h2 style={{marginTop:28}}>Elever · {shown.length}</h2>
     {shown.map(s=><div key={s.id} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderTop:"1px solid #ebe7de"}}><Link href={`/student-profile?id=${s.id}`} style={{display:"flex",alignItems:"center",gap:12,textDecoration:"none",color:"inherit",flex:1}}><div style={{width:38,height:38,borderRadius:99,background:"#eee8da",display:"grid",placeItems:"center",fontFamily:"Georgia,serif"}}>{s.name[0]}</div><strong>{s.name}</strong><span style={{color:"#526b60",fontWeight:800}}>Åbn →</span></Link>{rowFor(s.id)&&<span style={{background:"#f2e7d7",padding:"7px 10px",borderRadius:999,fontWeight:700}}>{label(rowFor(s.id)!.status)}</span>}</div>)}
-    {!shown.length&&<p style={{color:"#777"}}>Der er ingen elever i klassen endnu. En administrator kan tilføje elever.</p>}
+    {!shown.length&&<p style={{color:"#777"}}>Der er ingen elever i klassen endnu.</p>}
    </div>
    <div className="card" style={{padding:26,marginTop:22}}><h2 style={{marginTop:0}}>Før fravær</h2><p style={{color:"#777"}}>Markér kun elever, der ikke er almindeligt til stede. Registreringerne deles med skolens administration og bruges i fraværsstatistikken.</p>
     {msg&&<div style={{padding:12,background:"#e7eee9",borderRadius:9,margin:"14px 0"}}>{msg}</div>}
