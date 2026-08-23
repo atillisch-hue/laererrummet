@@ -1,82 +1,22 @@
 "use client";
-
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../../lib/supabase";
-import { hasRole } from "../../lib/roles";
+import {useEffect,useMemo,useState} from "react";
+import {supabase} from "../../lib/supabase";
+import {hasRole} from "../../lib/roles";
 
-type Student = { id:number; name:string; class_id:number };
-type ClassRow = { id:number; name:string };
-type TeacherClass = { teacher_id:string; class_id:number };
-type Absence = { id:number; student_id:number; absence_date:string; status:string; note:string|null };
-type SubstituteAssignment = { assignment_date:string; substitute_teacher_id:string; schedule_entry_id:number };
-type ScheduleEntry = { id:number; class_id:number };
-
-const TYPES = [
-  { value:"sick", label:"Syg" },
-  { value:"unexcused", label:"Ulovligt fravær" },
-  { value:"excused", label:"Lovligt fravær" },
-  { value:"left_early", label:"Gået tidligt" },
-  { value:"late", label:"Forsent fremmøde" },
-];
-
+type Student={id:number;name:string;class_id:number};type ClassRow={id:number;name:string};type TeacherClass={teacher_id:string;class_id:number};type Absence={id:number;student_id:number;absence_date:string;status:string;note:string|null};type SubstituteAssignment={assignment_date:string;substitute_teacher_id:string;schedule_entry_id:number};type ScheduleEntry={id:number;class_id:number};
+const TYPES=[{value:"sick",label:"Syg"},{value:"unexcused",label:"Ulovligt fravær"},{value:"excused",label:"Lovligt fravær"},{value:"left_early",label:"Gået tidligt"},{value:"late",label:"Forsinket"}];
+const subjects=["Dansk","Matematik","Engelsk","Tysk","Historie","Samfundsfag","Naturfag"];
+const workspace=(active=false)=>({padding:"10px 14px",borderRadius:9,textDecoration:"none",fontWeight:800 as const,border:active?"1px solid #dfa94f":"1px solid rgba(255,255,255,.22)",background:active?"#dfa94f":"transparent",color:active?"#243d33":"white"});
 export default function StudentsPage(){
- const [ready,setReady]=useState(false),[classes,setClasses]=useState<ClassRow[]>([]),[classId,setClassId]=useState<number|"">("");
- const [students,setStudents]=useState<Student[]>([]),[rows,setRows]=useState<Absence[]>([]),[date,setDate]=useState(new Date().toISOString().slice(0,10));
- const [selected,setSelected]=useState<Record<number,boolean>>({}),[types,setTypes]=useState<Record<number,string>>({}),[notes,setNotes]=useState<Record<number,string>>({}),[msg,setMsg]=useState("");
-
- async function load(){
-  const {data:s}=await supabase.auth.getSession(); const user=s.session?.user;
-  if(!user){window.location.href="/?teacher=1";return}
-  const params=new URLSearchParams(window.location.search); const requestedDate=params.get("date")||new Date().toISOString().slice(0,10); setDate(requestedDate);
-  const [{data:c},{data:st},{data:tc},{data:a},{data:sa},{data:se}]=await Promise.all([
-   supabase.from("classes").select("id,name").order("id"),
-   supabase.from("students").select("id,name,class_id").order("name"),
-   supabase.from("teacher_classes").select("teacher_id,class_id").eq("teacher_id",user.id),
-   supabase.from("student_absence").select("id,student_id,absence_date,status,note").order("absence_date",{ascending:false}).limit(200),
-   supabase.from("substitute_assignments").select("assignment_date,substitute_teacher_id,schedule_entry_id").eq("substitute_teacher_id",user.id),
-   supabase.from("schedule_entries").select("id,class_id")
-  ]);
-  const allClasses=(c||[]) as ClassRow[]; const assigned=new Set(((tc||[]) as TeacherClass[]).map(x=>x.class_id)); const admin=hasRole(user,"admin");
-  const entries=(se||[]) as ScheduleEntry[]; const substituteEntryIds=new Set(((sa||[]) as SubstituteAssignment[]).filter(x=>x.assignment_date===requestedDate).map(x=>x.schedule_entry_id));
-  const substituteClasses=new Set(entries.filter(x=>substituteEntryIds.has(x.id)).map(x=>x.class_id));
-  const allowed=new Set([...assigned,...substituteClasses]);
-  const cs=admin?allClasses:allClasses.filter(x=>allowed.has(x.id));
-  setClasses(cs); setStudents(((st||[]) as Student[]).filter(x=>admin||allowed.has(x.class_id))); setRows((a||[]) as Absence[]);
-  const requested=Number(params.get("class")); setClassId(cs.some(x=>x.id===requested)?requested:(cs[0]?.id||"")); setReady(true);
- }
- useEffect(()=>{load()},[]);
- const shown=useMemo(()=>students.filter(s=>s.class_id===classId),[students,classId]);
- const todayRows=useMemo(()=>rows.filter(r=>r.absence_date===date),[rows,date]);
- const rowFor=(id:number)=>todayRows.find(r=>r.student_id===id);
- const label=(status:string)=>TYPES.find(x=>x.value===status)?.label||status;
-
- async function save(){
-  const chosen=shown.filter(s=>selected[s.id]); if(!chosen.length){setMsg("Markér mindst én elev med fravær.");return}
-  const payload=chosen.map(s=>({student_id:s.id,absence_date:date,status:types[s.id]||"sick",note:(notes[s.id]||"").trim()||null}));
-  const {error}=await supabase.from("student_absence").insert(payload);
-  setMsg(error?error.message:`${payload.length} fraværsregistrering${payload.length===1?"":"er"} gemt.`);
-  if(!error){setSelected({});setNotes({});await load()}
- }
-
- if(!ready)return <main style={{padding:50}}>Henter elever…</main>;
- return <main style={{minHeight:"100vh",background:"#f5f3ee",padding:"42px 24px 80px"}}><section style={{maxWidth:1000,margin:"0 auto"}}>
-  <Link href="/noticeboard" style={{color:"#526b60",fontWeight:800,textDecoration:"none"}}>← Til opslagstavlen</Link>
-  <p className="eyebrow" style={{marginTop:38}}>KLASSEOVERBLIK</p><h1 style={{marginBottom:8}}>{classes.find(c=>c.id===classId)?.name||"Mine klasser"}</h1>
-  <p style={{color:"#777",marginTop:0}}>Se klassens elever og registrér fravær. Som vikar får du adgang til klassen på den dag, du er sat på timen.</p>
-  {classes.length===0?<div className="card" style={{padding:26,marginTop:28}}><strong>Du har ingen klasser eller vikartimer denne dag.</strong><p style={{color:"#777"}}>Vælg eventuelt dagen fra Opslagstavlen først.</p></div>:<>
-   <div className="card" style={{padding:26,marginTop:28}}>
-    <label style={{fontWeight:800}}>Klasse<select value={classId} onChange={e=>{setClassId(Number(e.target.value));setSelected({});setNotes({})}} style={{display:"block",marginTop:8,padding:11,border:"1px solid #d8d5cd",borderRadius:8,minWidth:240}}>{classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-    <h2 style={{marginTop:28}}>Elever · {shown.length}</h2>
-    {shown.map(s=><div key={s.id} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderTop:"1px solid #ebe7de"}}><Link href={`/student-profile?id=${s.id}`} style={{display:"flex",alignItems:"center",gap:12,textDecoration:"none",color:"inherit",flex:1}}><div style={{width:38,height:38,borderRadius:99,background:"#eee8da",display:"grid",placeItems:"center",fontFamily:"Georgia,serif"}}>{s.name[0]}</div><strong>{s.name}</strong><span style={{color:"#526b60",fontWeight:800}}>Åbn →</span></Link>{rowFor(s.id)&&<span style={{background:"#f2e7d7",padding:"7px 10px",borderRadius:999,fontWeight:700}}>{label(rowFor(s.id)!.status)}</span>}</div>)}
-    {!shown.length&&<p style={{color:"#777"}}>Der er ingen elever i klassen endnu.</p>}
-   </div>
-   <div className="card" style={{padding:26,marginTop:22}}><h2 style={{marginTop:0}}>Før fravær</h2><p style={{color:"#777"}}>Markér kun elever, der ikke er almindeligt til stede. Registreringerne deles med skolens administration og bruges i fraværsstatistikken.</p>
-    {msg&&<div style={{padding:12,background:"#e7eee9",borderRadius:9,margin:"14px 0"}}>{msg}</div>}
-    <input type="date" value={date} onChange={e=>{setDate(e.target.value);setSelected({});setNotes({})}} style={{padding:10,marginBottom:12}}/>
-    {shown.map(s=>{const existing=rowFor(s.id);return <div key={s.id} style={{display:"grid",gridTemplateColumns:"minmax(180px,1.3fr) minmax(170px,1fr) minmax(210px,1.4fr)",gap:12,alignItems:"center",borderTop:"1px solid #eee",padding:"12px 0"}}><label style={{display:"flex",gap:10,alignItems:"center",fontWeight:600}}><input type="checkbox" disabled={!!existing} checked={!!selected[s.id]} onChange={e=>setSelected(v=>({...v,[s.id]:e.target.checked}))}/>{s.name}{existing&&<small style={{color:"#687068"}}> · {label(existing.status)}</small>}</label><select disabled={!!existing||!selected[s.id]} value={types[s.id]||"sick"} onChange={e=>setTypes(v=>({...v,[s.id]:e.target.value}))} style={{padding:8}}>{TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select><input disabled={!!existing||!selected[s.id]} value={notes[s.id]||""} onChange={e=>setNotes(v=>({...v,[s.id]:e.target.value}))} placeholder={existing?(existing.note||"Allerede registreret"):"Note (valgfri)"} style={{padding:8}}/></div>})}
-    {!!shown.length&&<button className="primary" onClick={save} style={{width:"auto",marginTop:18}}>✓ Gem fravær</button>}
-   </div>
-  </>}
- </section></main>
-}
+ const[ready,setReady]=useState(false),[classes,setClasses]=useState<ClassRow[]>([]),[classId,setClassId]=useState<number|"">("");const[students,setStudents]=useState<Student[]>([]),[rows,setRows]=useState<Absence[]>([]),[date,setDate]=useState(new Date().toISOString().slice(0,10));const[selected,setSelected]=useState<Record<number,boolean>>({}),[types,setTypes]=useState<Record<number,string>>({}),[notes,setNotes]=useState<Record<number,string>>({}),[msg,setMsg]=useState(""),[tab,setTab]=useState("today");
+ async function load(){const{data:s}=await supabase.auth.getSession();const user=s.session?.user;if(!user){location.href="/?teacher=1";return}const params=new URLSearchParams(location.search),requestedDate=params.get("date")||new Date().toISOString().slice(0,10);setDate(requestedDate);const[{data:c},{data:st},{data:tc},{data:a},{data:sa},{data:se}]=await Promise.all([supabase.from("classes").select("id,name").order("id"),supabase.from("students").select("id,name,class_id").order("name"),supabase.from("teacher_classes").select("teacher_id,class_id").eq("teacher_id",user.id),supabase.from("student_absence").select("id,student_id,absence_date,status,note").order("absence_date",{ascending:false}).limit(200),supabase.from("substitute_assignments").select("assignment_date,substitute_teacher_id,schedule_entry_id").eq("substitute_teacher_id",user.id),supabase.from("schedule_entries").select("id,class_id")]);const all=(c||[])as ClassRow[],assigned=new Set(((tc||[])as TeacherClass[]).map(x=>x.class_id)),entries=(se||[])as ScheduleEntry[],subIds=new Set(((sa||[])as SubstituteAssignment[]).filter(x=>x.assignment_date===requestedDate).map(x=>x.schedule_entry_id)),subClasses=new Set(entries.filter(x=>subIds.has(x.id)).map(x=>x.class_id)),allowed=new Set([...assigned,...subClasses]),admin=hasRole(user,"admin"),cs=admin?all:all.filter(x=>allowed.has(x.id));setClasses(cs);setStudents(((st||[])as Student[]).filter(x=>admin||allowed.has(x.class_id)));setRows((a||[])as Absence[]);const requested=Number(params.get("class"));setClassId(cs.some(x=>x.id===requested)?requested:(cs[0]?.id||""));setReady(true)}
+ useEffect(()=>{load()},[]);const shown=useMemo(()=>students.filter(s=>s.class_id===classId),[students,classId]),todayRows=useMemo(()=>rows.filter(r=>r.absence_date===date),[rows,date]);const rowFor=(id:number)=>todayRows.find(r=>r.student_id===id),label=(s:string)=>TYPES.find(x=>x.value===s)?.label||s,currentClass=classes.find(c=>c.id===classId);const dateLabel=new Date(date+"T12:00:00").toLocaleDateString("da-DK",{weekday:"long",day:"numeric",month:"long"});
+ async function save(){const chosen=shown.filter(s=>selected[s.id]);if(!chosen.length){setMsg("Markér mindst én elev med fravær.");return}const payload=chosen.map(s=>({student_id:s.id,absence_date:date,status:types[s.id]||"sick",note:(notes[s.id]||"").trim()||null}));const{error}=await supabase.from("student_absence").insert(payload);setMsg(error?error.message:`${payload.length} registrering${payload.length===1?"":"er"} gemt.`);if(!error){setSelected({});setNotes({});await load()}}
+ if(!ready)return <main style={{padding:50}}>Henter klasse…</main>;
+ return <main style={{minHeight:"100vh",background:"#f5f3ee",color:"#26342e"}}><header style={{background:"#243d33",color:"white",padding:"22px 32px"}}><div style={{maxWidth:1180,margin:"auto",display:"flex",justifyContent:"space-between",alignItems:"center",gap:18,flexWrap:"wrap"}}><div><strong style={{fontFamily:"Georgia,serif",fontSize:25}}>Klasseværelset</strong><small style={{display:"block",opacity:.75}}>{currentClass?.name||"Klasse"}</small></div><nav style={{display:"flex",gap:8,flexWrap:"wrap"}}><Link href="/noticeboard" style={workspace()}>Opslagstavlen</Link><Link href="/teacher-dashboard" style={workspace(true)}>Klasseværelset</Link><Link href="/teacher-room" style={workspace()}>Lærerværelset</Link><Link href="/preparation" style={workspace()}>Forberedelsen</Link></nav></div></header><section style={{maxWidth:1100,margin:"auto",padding:"30px 24px 70px"}}><Link href="/teacher-dashboard" style={{color:"#526b60",fontWeight:800,textDecoration:"none"}}>← Mine klasser</Link><div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"end",flexWrap:"wrap",marginTop:22}}><div><p style={{fontSize:11,fontWeight:900,letterSpacing:1.5,color:"#718077",margin:0}}>KLASSE</p><h1 style={{fontFamily:"Georgia,serif",fontSize:40,margin:"5px 0"}}>{currentClass?.name||"Mine klasser"}</h1><p style={{color:"#707670",margin:0}}>{dateLabel}</p></div>{classes.length>1&&<select value={classId} onChange={e=>{setClassId(Number(e.target.value));setSelected({});setNotes({})}} style={{padding:10,borderRadius:8,border:"1px solid #d8d5cd"}}>{classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>}</div>
+ <nav style={{display:"flex",gap:8,flexWrap:"wrap",margin:"25px 0",borderBottom:"1px solid #d9d5cd",paddingBottom:14}}><button onClick={()=>setTab("today")} style={{padding:"10px 15px",borderRadius:8,border:"1px solid #d0cec7",background:tab==="today"?"#365044":"#fff",color:tab==="today"?"#fff":"#365044",fontWeight:800}}>I dag</button><button onClick={()=>setTab("students")} style={{padding:"10px 15px",borderRadius:8,border:"1px solid #d0cec7",background:tab==="students"?"#365044":"#fff",color:tab==="students"?"#fff":"#365044",fontWeight:800}}>Elever</button>{subjects.map(s=><button key={s} onClick={()=>setTab(s)} style={{padding:"10px 15px",borderRadius:8,border:"1px solid #d0cec7",background:tab===s?"#365044":"#fff",color:tab===s?"#fff":"#365044",fontWeight:800}}>{s}</button>)}</nav>
+ {tab==="today"&&<><section style={{background:"#fff",border:"1px solid #ddd9d0",borderRadius:15,padding:24}}><div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}><div><p style={{fontSize:11,fontWeight:900,letterSpacing:1.3,color:"#718077",margin:0}}>FRAVÆR I DAG</p><h2 style={{fontFamily:"Georgia,serif",fontSize:29,margin:"5px 0"}}>Hvem er her?</h2><p style={{color:"#707670",margin:"0 0 15px"}}>Siden kan blive stående åben. Registrér fravær eller forsinkelse, når det sker.</p></div><input type="date" value={date} onChange={e=>{setDate(e.target.value);setSelected({});setNotes({})}} style={{height:40,padding:"0 10px"}}/></div>{msg&&<div style={{padding:11,background:"#e7eee9",borderRadius:8,marginBottom:10}}>{msg}</div>}{shown.map(s=>{const existing=rowFor(s.id);return <div key={s.id} style={{display:"grid",gridTemplateColumns:"minmax(160px,1.3fr) minmax(150px,.9fr) minmax(180px,1.2fr)",gap:10,alignItems:"center",borderTop:"1px solid #eee",padding:"11px 0"}}><label style={{display:"flex",gap:9,alignItems:"center",fontWeight:700}}><input type="checkbox" disabled={!!existing} checked={!!selected[s.id]} onChange={e=>setSelected(v=>({...v,[s.id]:e.target.checked}))}/>{s.name}{existing&&<span style={{fontSize:12,background:"#f2e7d7",padding:"5px 8px",borderRadius:999}}>{label(existing.status)}</span>}</label><select disabled={!!existing||!selected[s.id]} value={types[s.id]||"sick"} onChange={e=>setTypes(v=>({...v,[s.id]:e.target.value}))} style={{padding:8}}>{TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select><input disabled={!!existing||!selected[s.id]} value={notes[s.id]||""} onChange={e=>setNotes(v=>({...v,[s.id]:e.target.value}))} placeholder={existing?(existing.note||"Registreret"):"Note (valgfri)"} style={{padding:8}}/></div>})}{!!shown.length&&<button onClick={save} style={{marginTop:16,padding:"10px 15px",border:0,borderRadius:8,background:"#365044",color:"white",fontWeight:900}}>Gem ændringer</button>}</section></>}
+ {tab==="students"&&<section style={{background:"#fff",border:"1px solid #ddd9d0",borderRadius:15,padding:24}}><h2 style={{fontFamily:"Georgia,serif",fontSize:29,marginTop:0}}>Elever · {shown.length}</h2>{shown.map(s=><Link key={s.id} href={`/student-profile?id=${s.id}`} style={{display:"flex",justifyContent:"space-between",padding:"14px 0",borderTop:"1px solid #eee",textDecoration:"none",color:"inherit"}}><strong>{s.name}</strong><span style={{color:"#526b60",fontWeight:800}}>Åbn →</span></Link>)}</section>}
+ {subjects.includes(tab)&&<section style={{background:"#fff",border:"1px solid #ddd9d0",borderRadius:15,padding:28}}><p style={{fontSize:11,fontWeight:900,letterSpacing:1.3,color:"#718077",margin:0}}>FAGRUM · {currentClass?.name}</p><h2 style={{fontFamily:"Georgia,serif",fontSize:31,margin:"7px 0"}}>{tab}</h2><p style={{color:"#707670",lineHeight:1.6}}>Her samler vi klassens undervisning, opgaver, materialer og elevresultater i {tab.toLowerCase()}.</p>{tab==="Dansk"&&<div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:18}}><Link href="/create-assignment" style={{padding:"11px 14px",background:"#e7eee9",borderRadius:8,color:"#365044",fontWeight:800,textDecoration:"none"}}>Opgaver →</Link><Link href="/grammar" style={{padding:"11px 14px",background:"#e7eee9",borderRadius:8,color:"#365044",fontWeight:800,textDecoration:"none"}}>Grammatik →</Link><Link href="/teacher-overview" style={{padding:"11px 14px",background:"#e7eee9",borderRadius:8,color:"#365044",fontWeight:800,textDecoration:"none"}}>Elevbesvarelser →</Link></div>}</section>}
+ </section></main>}
