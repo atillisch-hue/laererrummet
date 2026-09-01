@@ -5,7 +5,7 @@ import {useEffect,useMemo,useState} from "react";
 import {useSearchParams} from "next/navigation";
 import {supabase} from "../../lib/supabase";
 import {hasRole} from "../../lib/roles";
-import {danishGenres,danishGenreCategories,danishGenreByName,type DanishGenre,type DanishGenreCategory} from "../../lib/danishGenres";
+import {danishGenres,danishGenreCategories,danishGenreByName,type DanishGenre,type DanishGenreCategory} from "../../lib/danishGenreCatalog";
 
 type ClassRow={id:number;name:string};
 type Student={id:number;name:string;class_id:number|null};
@@ -18,7 +18,7 @@ const input:React.CSSProperties={boxSizing:"border-box",display:"block",width:"1
 const small:React.CSSProperties={fontSize:12,color:"#707670"};
 
 const legacyGenre=(type:string):DanishGenre|undefined=>{
- if(type==="Artikel")return danishGenres.find(g=>g.id==="nyhedsartikel");
+ if(type==="Artikel")return danishGenres.find(g=>g.id==="artikel")||danishGenres.find(g=>g.id==="nyhedsartikel");
  if(type==="Fortælling")return danishGenres.find(g=>g.id==="novelle");
  return danishGenreByName(type);
 };
