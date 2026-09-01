@@ -19,8 +19,8 @@ export default function SubjectRoomTeachers({roomId}:{roomId:number}){
   if(!selected.length){setMessage("Faglokalet skal have mindst én faglærer.");return}
   setSaving(true);setMessage("");
   const{error}=await supabase.rpc("update_class_subject_teachers",{p_class_subject_id:roomId,p_teacher_ids:selected});
-  if(error)setMessage(error.message);else{setMessage("Faglærerteamet er gemt ✓");setOpen(false);await load()}
-  setSaving(false);
+  if(error){setMessage(error.message);setSaving(false);return}
+  window.location.reload();
  }
  const linked=teachers.filter(t=>t.selected);
  return <section style={card}>
