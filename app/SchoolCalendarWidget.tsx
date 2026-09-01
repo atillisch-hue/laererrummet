@@ -4,8 +4,9 @@ import {useEffect,useMemo,useState} from "react";
 import {usePathname} from "next/navigation";
 import {supabase} from "../lib/supabase";
 
+type EntryKind="lesson"|"assembly"|"break"|"duty"|"other";
 type ClosedDay={date:string;label:string};
-type ScheduleEntry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null};
+type ScheduleEntry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:EntryKind};
 type ScheduleTeacher={schedule_entry_id:number;teacher_id:string};
 type SubstituteAssignment={id:number;schedule_entry_id:number;assignment_date:string;absent_teacher_id:string;substitute_teacher_id:string;substitute_plan:string|null};
 type Task={id:number;title:string;due_date:string|null;completed:boolean;responsible_user_id:string|null};
@@ -15,11 +16,14 @@ type LessonSummary={id:number;schedule_entry_id:number;lesson_date:string;attend
 type CalendarMeeting={id:number;title:string;meeting_type:string;starts_at:string;ends_at:string|null;location:string|null};
 type AgendaItem=
  |{kind:"lesson";sort:number;entry:ScheduleEntry}
+ |{kind:"block";sort:number;entry:ScheduleEntry}
  |{kind:"meeting";sort:number;meeting:CalendarMeeting}
  |{kind:"task";sort:number;task:Task};
 
 const iso=(d:Date)=>{const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0");return `${y}-${m}-${day}`};
 function week(s:string){const d=new Date(s+"T12:00:00"),x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())),day=x.getUTCDay()||7;x.setUTCDate(x.getUTCDate()+4-day);const ys=new Date(Date.UTC(x.getUTCFullYear(),0,1));return Math.ceil((((x.getTime()-ys.getTime())/86400000)+1)/7)}
+const blockLabel=(kind:EntryKind)=>({assembly:"SAMLING",break:"PAUSE",duty:"GÅRDVAGT",other:"AKTIVITET",lesson:"LEKTION"}[kind]);
+const blockTone=(kind:EntryKind)=>kind==="assembly"?{background:"#fff5df",border:"#ead5a5",color:"#725e36"}:kind==="break"?{background:"#f2f1ed",border:"#dfddd6",color:"#716e67"}:kind==="duty"?{background:"#e9f0e9",border:"#cfddcf",color:"#516a55"}:{background:"#f3f1eb",border:"#ddd8cc",color:"#665f52"};
 
 export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDates=[],meetings=[]}:{selectedDate?:string;onSelectDate?:(date:string)=>void;markedDates?:string[];meetings?:CalendarMeeting[]}){
  const pathname=usePathname();
@@ -57,7 +61,7 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
    if(!uid||!active)return;
    setUserId(uid);
    const[eRes,stRes,subRes,tRes,cRes,pRes]=await Promise.all([
-    supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room"),
+    supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room,entry_kind"),
     supabase.from("schedule_teachers").select("schedule_entry_id,teacher_id").eq("teacher_id",uid),
     supabase.from("substitute_assignments").select("id,schedule_entry_id,assignment_date,absent_teacher_id,substitute_teacher_id,substitute_plan"),
     supabase.from("meeting_actions").select("id,title,due_date,completed,responsible_user_id").eq("responsible_user_id",uid).eq("completed",false),
@@ -103,7 +107,9 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
  const regularIds=new Set(scheduleTeachers.map(x=>x.schedule_entry_id));
  const daySubs=substitutions.filter(x=>x.assignment_date===activeDate&&(x.absent_teacher_id===userId||x.substitute_teacher_id===userId));
  const relevantIds=new Set<number>([...Array.from(regularIds),...daySubs.filter(x=>x.substitute_teacher_id===userId).map(x=>x.schedule_entry_id)]);
- const dayLessons=activeClosure?[]:schedule.filter(x=>x.weekday===weekday&&relevantIds.has(x.id)).sort((a,b)=>a.start_time.localeCompare(b.start_time));
+ const daySchedule=activeClosure?[]:schedule.filter(x=>x.weekday===weekday&&relevantIds.has(x.id)).sort((a,b)=>a.start_time.localeCompare(b.start_time));
+ const dayLessons=daySchedule.filter(x=>x.entry_kind==="lesson");
+ const dayBlocks=daySchedule.filter(x=>x.entry_kind!=="lesson");
  const dayTasks=tasks.filter(x=>x.due_date===activeDate);
  const dayMeetings=meetings.filter(x=>x.starts_at.slice(0,10)===activeDate);
  const staffName=(id:string)=>staff.find(x=>x.user_id===id)?.display_name||"kollega";
@@ -122,13 +128,12 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
   if(lesson?.attendance_checked_at)return{label:"FREMMØDE FØRT ✓",tone:"done" as const,time:new Date(lesson.attendance_checked_at).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"})};
   if(activeDate<today)return{label:"FREMMØDE MANGLER",tone:"missing" as const,time:null};
   if(activeDate>today)return{label:"FREMMØDE IKKE FØRT ENDNU",tone:"future" as const,time:null};
-  const now=new Date();
-  const[hour,minute]=entry.start_time.split(":").map(Number);
-  const start=new Date();start.setHours(hour,minute,0,0);
+  const now=new Date();const[hour,minute]=entry.start_time.split(":").map(Number);const start=new Date();start.setHours(hour,minute,0,0);
   return now>=start?{label:"FREMMØDE MANGLER",tone:"missing" as const,time:null}:{label:"FREMMØDE IKKE FØRT ENDNU",tone:"future" as const,time:null};
  };
  const agendaItems:AgendaItem[]=[
   ...dayLessons.map(entry=>({kind:"lesson" as const,sort:new Date(`${activeDate}T${entry.start_time}`).getTime(),entry})),
+  ...dayBlocks.map(entry=>({kind:"block" as const,sort:new Date(`${activeDate}T${entry.start_time}`).getTime(),entry})),
   ...dayMeetings.map(meeting=>({kind:"meeting" as const,sort:new Date(meeting.starts_at).getTime(),meeting})),
   ...dayTasks.map(task=>({kind:"task" as const,sort:new Date(`${activeDate}T23:59:59`).getTime(),task}))
  ].sort((a,b)=>a.sort-b.sort);
@@ -143,12 +148,16 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
    <p style={{fontSize:10,fontWeight:900,letterSpacing:1.5,color:"#718077",margin:0}}>MIN DAG</p>
    <h3 style={{fontFamily:"Georgia,serif",fontSize:22,margin:"6px 0 12px"}}>{new Date(activeDate+"T12:00:00").toLocaleDateString("da-DK",{weekday:"long",day:"numeric",month:"long"})}</h3>
    {activeClosure&&<div style={{background:"#f6edd7",border:"1px solid #dfca96",borderRadius:10,padding:"11px 12px",marginBottom:12,color:"#655538"}}><strong>{activeClosure}</strong><small style={{display:"block",marginTop:3}}>Skolekalenderen skjuler det almindelige undervisningsskema denne dag.</small></div>}
-   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}><span style={chip}>Undervisning {dayLessons.length}</span>{dayLessons.length>0&&<span style={preparedChip}>Forberedt {preparedCount}/{dayLessons.length}</span>}<span style={chip}>Møder {dayMeetings.length}</span><span style={chip}>Deadlines {dayTasks.length}</span>{daySubs.length>0&&<span style={chip}>Vikarændringer {daySubs.length}</span>}</div>
-   {agendaItems.length===0?<p style={{color:"#737b75",fontSize:13,margin:"10px 0 0"}}>{activeClosure?"Ingen planlagte arbejdsobjekter denne dag.":"Ingen undervisning, møder eller deadlines i dit arbejdsflow denne dag."}</p>:<div style={{display:"grid",gap:8}}>
+   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}><span style={chip}>Undervisning {dayLessons.length}</span>{dayLessons.length>0&&<span style={preparedChip}>Forberedt {preparedCount}/{dayLessons.length}</span>}{dayBlocks.length>0&&<span style={chip}>Arbejdsblokke {dayBlocks.length}</span>}<span style={chip}>Møder {dayMeetings.length}</span><span style={chip}>Deadlines {dayTasks.length}</span>{daySubs.length>0&&<span style={chip}>Vikarændringer {daySubs.length}</span>}</div>
+   {agendaItems.length===0?<p style={{color:"#737b75",fontSize:13,margin:"10px 0 0"}}>{activeClosure?"Ingen planlagte arbejdsobjekter denne dag.":"Ingen undervisning, arbejdsblokke, møder eller deadlines i dit arbejdsflow denne dag."}</p>:<div style={{display:"grid",gap:8}}>
     {agendaItems.map(item=>{
      if(item.kind==="lesson"){
       const entry=item.entry,change=daySubs.find(x=>x.schedule_entry_id===entry.id),absent=change?.absent_teacher_id===userId,substitute=change?.substitute_teacher_id===userId,attendance=attendanceState(entry),prepared=isPrepared(entry);
       return <Link key={`lesson-${entry.id}`} href={`/calendar/lesson/${entry.id}?date=${activeDate}`} style={{textDecoration:"none",color:"inherit",border:"1px solid #e2ded5",borderRadius:10,padding:"11px 12px",background:absent?"#f5eadc":substitute?"#e7eee9":"#faf9f6",display:"block"}}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><strong style={{fontSize:13}}>{entry.start_time.slice(0,5)}–{entry.end_time.slice(0,5)} · {entry.subject}</strong><div style={{display:"flex",gap:5,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>{prepared&&<small style={preparedTag}>FORBEREDT ✓</small>}<small style={kindTag}>LEKTION</small>{(absent||substitute)&&<small style={{fontWeight:900,color:"#6c5d43"}}>{absent?"FRAVÆR":"VIKAR"}</small>}</div></div><small style={{display:"block",color:"#717771",marginTop:3}}>{className(entry.class_id)}{entry.room?` · ${entry.room}`:""}</small><div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap",marginTop:7}}><span style={attendance.tone==="done"?attendanceDone:attendance.tone==="missing"?attendanceMissing:attendanceFuture}>{attendance.label}</span>{attendance.time&&<small style={{color:"#5c6f63",fontWeight:800}}>kl. {attendance.time}</small>}</div>{substitute&&change?.substitute_plan&&<small style={{display:"block",marginTop:6,color:"#52675a"}}>Vikarplan: {change.substitute_plan}</small>}{absent&&change&&<small style={{display:"block",marginTop:6,color:"#765f42"}}>Vikar: {staffName(change.substitute_teacher_id)}</small>}</Link>;
+     }
+     if(item.kind==="block"){
+      const entry=item.entry,tone=blockTone(entry.entry_kind);
+      return <article key={`block-${entry.id}`} style={{border:`1px solid ${tone.border}`,borderRadius:10,padding:"11px 12px",background:tone.background,color:tone.color}}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><strong style={{fontSize:13}}>{entry.start_time.slice(0,5)}–{entry.end_time.slice(0,5)} · {entry.subject}</strong><small style={{...kindTag,background:"rgba(255,255,255,.55)",color:tone.color}}>{blockLabel(entry.entry_kind)}</small></div><small style={{display:"block",marginTop:3,opacity:.82}}>{className(entry.class_id)}{entry.room?` · ${entry.room}`:""}</small></article>;
      }
      if(item.kind==="meeting"){
       const meeting=item.meeting,start=new Date(meeting.starts_at).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"}),end=meeting.ends_at?new Date(meeting.ends_at).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"}):null;
