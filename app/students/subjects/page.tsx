@@ -75,7 +75,7 @@ export default function ClassSubjectRooms(){
 
    <section style={{...card,marginTop:22,background:"#eef2ed"}}><p style={{fontSize:11,fontWeight:900,letterSpacing:1.4,color:"#718077",margin:0}}>INDRET KLASSEN</p><h2 style={{fontFamily:"Georgia,serif",fontSize:25,margin:"6px 0"}}>Tilføj faglokale</h2><p style={{color:"#6e766f",margin:"0 0 16px"}}>Brug et fag skolen allerede har, eller opret et nyt fag. Den lærer der opretter rummet bliver automatisk faglærer på det.</p>
     {available.length>0&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>{available.map(subject=><button key={subject.id} disabled={saving} onClick={()=>createExisting(subject)} style={secondary}>+ {subject.name}</button>)}</div>}
-    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><input value={name} onChange={e=>setName(e.target.value)} placeholder="Nyt fag, fx Engelsk" style={{flex:"1 1 240px",padding:"11px 12px",border:"1px solid #cbc7bd",borderRadius:8,fontSize:15}}/><button disabled={saving||!name.trim()} onClick={createNew} style={{...primary,opacity:saving||!name.trim()?.5:1}}>{saving?"Opretter…":"Opret faglokale"}</button></div>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><input value={name} onChange={e=>setName(e.target.value)} placeholder="Nyt fag, fx Engelsk" style={{flex:"1 1 240px",padding:"11px 12px",border:"1px solid #cbc7bd",borderRadius:8,fontSize:15}}/><button disabled={saving||!name.trim()} onClick={createNew} style={{...primary,opacity:saving||!name.trim()?0.5:1}}>{saving?"Opretter…":"Opret faglokale"}</button></div>
    </section>
   </section>
  </main>;
