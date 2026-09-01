@@ -5,15 +5,8 @@ import {useEffect,useState} from "react";
 import {useParams} from "next/navigation";
 import {supabase} from "../../../lib/supabase";
 import {getStudentSessionToken} from "../../../lib/studentSession";
+import {danishGenreByName,type DanishGenre} from "../../../lib/danishGenres";
 
-const templates={
- "Debatindlæg":["Overskrift","Indledning: Hvad debatterer du?","Din tydelige holdning","Argument 1 + eksempel","Argument 2 + eksempel","Modargument og svar","Afrunding: Hvad bør der ske?"],
- "Artikel":["Rubrik","Manchet","Indledning: Hvem, hvad, hvor?","Brødtekst med mellemoverskrifter","Citater eller kilder","Afrunding"],
- "Essay":["En åbning, der vækker nysgerrighed","En konkret oplevelse eller situation","Undren og refleksion","Flere perspektiver","En åben eller eftertænksom afslutning"],
- "Fortælling":["Anslag","Personer og miljø","Konflikt","Vendepunkt","Afslutning"]
-} as const;
-
-type AssignmentType=keyof typeof templates;
 type Assignment={id:number;title:string;type:string;instructions?:string};
 type StudentData={ok?:boolean;student?:{id:number;name:string};assignments?:Assignment[];drafts?:{assignment_id:number;content:string[]}[]};
 
@@ -25,6 +18,7 @@ export default function StudentAssignmentPage(){
  const[ready,setReady]=useState(false);
  const[studentName,setStudentName]=useState("");
  const[assignment,setAssignment]=useState<Assignment|null>(null);
+ const[genre,setGenre]=useState<DanishGenre|null>(null);
  const[content,setContent]=useState<string[]>([]);
  const[sessionToken,setSessionToken]=useState("");
  const[message,setMessage]=useState("");
@@ -43,10 +37,10 @@ export default function StudentAssignmentPage(){
    if(error||!payload?.ok){window.location.replace("/?student=1");return}
    const found=(payload.assignments||[]).find(a=>a.id===assignmentId)||null;
    if(!found){setMessage("Du har ikke adgang til denne opgave.");setReady(true);return}
-   if(!Object.prototype.hasOwnProperty.call(templates,found.type)){setMessage("Denne opgavetype kan ikke åbnes i skriveværkstedet endnu.");setReady(true);return}
+   const foundGenre=danishGenreByName(found.type);
+   if(!foundGenre){setMessage("Denne opgavetype kan ikke åbnes i skriveværkstedet endnu.");setReady(true);return}
    const draft=(payload.drafts||[]).find(d=>d.assignment_id===assignmentId)?.content||[];
-   const steps=templates[found.type as AssignmentType];
-   setStudentName(payload.student?.name||"");setAssignment(found);setContent(steps.map((_,i)=>draft[i]||""));setReady(true);
+   setStudentName(payload.student?.name||"");setAssignment(found);setGenre(foundGenre);setContent(foundGenre.structure.map((_,i)=>draft[i]||""));setReady(true);
   })();
   return()=>{active=false};
  },[assignmentId]);
@@ -60,21 +54,21 @@ export default function StudentAssignmentPage(){
  }
 
  if(!ready)return <main className="studentShell"><section className="studentContent"><div style={card}>Åbner opgaven…</div></section></main>;
- if(!assignment)return <main className="studentShell"><section className="studentContent"><div style={card}><h1>Opgaven kunne ikke åbnes</h1><p>{message}</p><Link href="/?student=1">← Mit Klasseværelse</Link></div></section></main>;
+ if(!assignment||!genre)return <main className="studentShell"><section className="studentContent"><div style={card}><h1>Opgaven kunne ikke åbnes</h1><p>{message}</p><Link href="/?student=1">← Mit Klasseværelse</Link></div></section></main>;
 
- const type=assignment.type as AssignmentType;
- const steps=templates[type];
- const saveStatus=message|| (saving?"Gemmer…":"Din kladde gemmes automatisk.");
+ const saveStatus=message||(saving?"Gemmer…":"Din kladde gemmes automatisk.");
  return <main className="studentShell">
   <header className="studentTop"><div className="brand"><span>✦</span><div><strong>Klasseværelset</strong><small>{studentName}</small></div></div><Link href="/?student=1" style={{color:"inherit",fontWeight:800,textDecoration:"none"}}>Mit Klasseværelse</Link></header>
   <section className="studentContent">
    <Link href="/?student=1" className="back">← Mit Klasseværelse</Link>
-   <p className="eyebrow">{type.toUpperCase()}</p>
+   <p className="eyebrow">{genre.category.toUpperCase()} · {genre.name.toUpperCase()}</p>
    <h1>{assignment.title}</h1>
-   {assignment.instructions&&<div style={{...card,margin:"14px 0 20px",lineHeight:1.6}}>{assignment.instructions}</div>}
+   {assignment.instructions&&<div style={{...card,margin:"14px 0 14px",lineHeight:1.6}}>{assignment.instructions}</div>}
+   <section style={{...card,background:"#eef2ed",marginBottom:18}}><strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:20}}>Før du skriver</strong><p style={{margin:"7px 0 5px"}}><b>Formål:</b> {genre.purpose}</p><p style={{margin:"5px 0 0"}}><b>Modtager:</b> {genre.audience}</p></section>
    <div style={{display:"grid",gap:14}}>
-    {steps.map((label,i)=><label key={label} style={{...card,display:"block",fontWeight:900}}><span style={{display:"block",marginBottom:8}}>{i+1}. {label}</span><textarea value={content[i]||""} onChange={e=>update(i,e.target.value)} rows={i===0?2:5} style={{width:"100%",boxSizing:"border-box",padding:12,border:"1px solid #d8d5cd",borderRadius:9,font:"inherit",lineHeight:1.5,resize:"vertical"}}/></label>)}
+    {genre.structure.map((label,i)=><label key={`${genre.id}-${i}`} style={{...card,display:"block",fontWeight:900}}><span style={{display:"block",marginBottom:8}}>{i+1}. {label}</span><textarea value={content[i]||""} onChange={e=>update(i,e.target.value)} rows={i===0?2:5} style={{width:"100%",boxSizing:"border-box",padding:12,border:"1px solid #d8d5cd",borderRadius:9,font:"inherit",lineHeight:1.5,resize:"vertical"}}/></label>)}
    </div>
+   <section style={{...card,marginTop:16}}><strong style={{fontFamily:"Georgia,serif",fontSize:19}}>Tjek din tekst</strong><div style={{display:"grid",gap:7,marginTop:10}}>{genre.checklist.map(x=><label key={x} style={{display:"flex",gap:9,alignItems:"start"}}><input type="checkbox"/><span>{x}</span></label>)}</div></section>
    <p style={{marginTop:16,color:message?"#8b342e":"#687168",fontWeight:700}}>{saveStatus}</p>
   </section>
  </main>;
