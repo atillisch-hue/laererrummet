@@ -33,7 +33,10 @@ export default function PublishToSubjectRoom(){
  async function publish(){
   if(!roomId||(!title.trim()&&!body.trim()&&!url.trim()))return;
   setSaving(true);setMessage("");
-  const{error}=await supabase.from("subject_room_items").insert({class_subject_id:roomId,item_type:type,title:title.trim()||null,body:body.trim()||null,url:url.trim()||null,position:Date.now(),visible_to_students:visible});
+  const{data:last,error:lastError}=await supabase.from("subject_room_items").select("position").eq("class_subject_id",roomId).order("position",{ascending:false}).limit(1).maybeSingle();
+  if(lastError){setMessage(`Kunne ikke finde placering: ${lastError.message}`);setSaving(false);return}
+  const nextPosition=(typeof last?.position==="number"?last.position:-1)+1;
+  const{error}=await supabase.from("subject_room_items").insert({class_subject_id:roomId,item_type:type,title:title.trim()||null,body:body.trim()||null,url:url.trim()||null,position:nextPosition,visible_to_students:visible});
   if(error)setMessage(`Kunne ikke sende: ${error.message}`);else{setMessage("Sendt til faglokalet ✓");setTitle("");setBody("");setUrl("")}
   setSaving(false);
  }
