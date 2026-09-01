@@ -5,8 +5,7 @@ import {useParams} from "next/navigation";
 import {useEffect,useMemo,useState} from "react";
 import {supabase} from "../../../lib/supabase";
 
-type Student={id:number;name:string};
-type Absence={id:number;student_id:number;absence_date:string;status:string;note:string|null;source:string;reported_by:string|null};
+type AttendanceRow={student_id:number;student_name:string;status:string;note:string|null;source:string|null};
 type Edit={status:string;note:string};
 
 const TYPES=[
@@ -21,28 +20,23 @@ const label=(value:string)=>TYPES.find(x=>x.value===value)?.label||value;
 const selectStyle:React.CSSProperties={width:"100%",padding:"9px 10px",border:"1px solid #d8d5cd",borderRadius:8,background:"white",font:"inherit",color:"#26342e"};
 const inputStyle:React.CSSProperties={...selectStyle,minWidth:0};
 
-export default function LessonAttendance({classId,date,canEdit}:{classId:number;date:string;canEdit:boolean}){
+export default function LessonAttendance({classId,date,canTakeAttendance}:{classId:number;date:string;canTakeAttendance:boolean}){
  const params=useParams<{scheduleId:string}>();
  const scheduleId=Number(params.scheduleId);
  const[ready,setReady]=useState(false);
- const[students,setStudents]=useState<Student[]>([]);
- const[rows,setRows]=useState<Absence[]>([]);
+ const[rows,setRows]=useState<AttendanceRow[]>([]);
  const[edits,setEdits]=useState<Record<number,Edit>>({});
  const[checkedAt,setCheckedAt]=useState<string|null>(null);
  const[saving,setSaving]=useState(false);
  const[message,setMessage]=useState("");
 
  async function load(){
-  const[sRes,aRes,lRes]=await Promise.all([
-   supabase.from("students").select("id,name").eq("class_id",classId).order("name"),
-   supabase.from("student_absence").select("id,student_id,absence_date,status,note,source,reported_by").eq("absence_date",date),
+  const[aRes,lRes]=await Promise.all([
+   supabase.rpc("get_lesson_attendance",{p_schedule_entry_id:scheduleId,p_lesson_date:date}),
    supabase.from("lesson_instances").select("attendance_checked_at").eq("schedule_entry_id",scheduleId).eq("lesson_date",date).maybeSingle()
   ]);
-  if(sRes.error||aRes.error||lRes.error){setMessage(sRes.error?.message||aRes.error?.message||lRes.error?.message||"Fravær kunne ikke hentes.");setReady(true);return}
-  const list=(sRes.data||[]) as Student[];
-  const ids=new Set(list.map(x=>x.id));
-  setStudents(list);
-  setRows(((aRes.data||[]) as Absence[]).filter(x=>ids.has(x.student_id)));
+  if(aRes.error||lRes.error){setMessage(aRes.error?.message||lRes.error?.message||"Fremmøde kunne ikke hentes.");setReady(true);return}
+  setRows((aRes.data||[]) as AttendanceRow[]);
   setCheckedAt(lRes.data?.attendance_checked_at||null);
   setEdits({});
   setReady(true);
@@ -50,12 +44,13 @@ export default function LessonAttendance({classId,date,canEdit}:{classId:number;
 
  useEffect(()=>{load()},[classId,date,scheduleId]);
 
+ const rowFor=(studentId:number)=>rows.find(x=>x.student_id===studentId);
  const current=(studentId:number):Edit=>{
   if(edits[studentId])return edits[studentId];
-  const row=rows.find(x=>x.student_id===studentId);
-  return row?{status:row.status,note:row.note||""}:{status:"present",note:""};
+  const row=rowFor(studentId);
+  return{status:row?.status||"present",note:row?.note||""};
  };
- const parentLocked=(studentId:number)=>rows.find(x=>x.student_id===studentId)?.source==="parent";
+ const parentLocked=(studentId:number)=>rowFor(studentId)?.source==="parent";
  const setStatus=(studentId:number,status:string)=>{
   const before=current(studentId);
   const note=status==="late"&&!before.note?`Ankom kl. ${new Date().toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"})}`:status==="present"?"":before.note;
@@ -66,55 +61,42 @@ export default function LessonAttendance({classId,date,canEdit}:{classId:number;
 
  const summary=useMemo(()=>{
   let present=0,late=0,away=0;
-  for(const s of students){const status=edits[s.id]?.status??rows.find(x=>x.student_id===s.id)?.status??"present";if(status==="present")present++;else if(status==="late")late++;else away++}
+  for(const row of rows){const status=edits[row.student_id]?.status??row.status;if(status==="present")present++;else if(status==="late")late++;else away++}
   return{present,late,away};
- },[students,rows,edits]);
+ },[rows,edits]);
  const dirtyCount=Object.keys(edits).length;
 
  async function save(){
-  if(!canEdit||saving||!Number.isFinite(scheduleId))return;
+  if(!canTakeAttendance||saving||!Number.isFinite(scheduleId))return;
   setSaving(true);setMessage("");
-  const{data:auth}=await supabase.auth.getSession();
-  const user=auth.session?.user;
-  if(!user){setMessage("Din session er udløbet.");setSaving(false);return}
-
-  const dirty=Object.entries(edits).map(([studentId,edit])=>({studentId:Number(studentId),...edit})).filter(x=>!parentLocked(x.studentId));
-  const deleteIds=dirty.filter(x=>x.status==="present").map(x=>rows.find(r=>r.student_id===x.studentId)?.id).filter((x):x is number=>typeof x==="number");
-  const upserts=dirty.filter(x=>x.status!=="present").map(x=>({student_id:x.studentId,absence_date:date,status:x.status,note:x.note.trim()||null,source:"teacher",reported_by:user.id}));
-
-  const results=await Promise.all([
-   deleteIds.length?supabase.from("student_absence").delete().in("id",deleteIds):Promise.resolve({error:null}),
-   upserts.length?supabase.from("student_absence").upsert(upserts,{onConflict:"student_id,absence_date"}):Promise.resolve({error:null})
-  ]);
-  const absenceError=results.find(x=>x.error)?.error;
-  if(absenceError){setMessage(`Kunne ikke gemme fravær: ${absenceError.message}`);setSaving(false);return}
-
-  const checked=new Date().toISOString();
-  const{error:lessonError}=await supabase.from("lesson_instances").upsert({schedule_entry_id:scheduleId,lesson_date:date,attendance_checked_at:checked,attendance_checked_by:user.id},{onConflict:"schedule_entry_id,lesson_date"});
-  if(lessonError){setMessage(`Fravær blev gemt, men fremmøde kunne ikke markeres som ført: ${lessonError.message}`);setSaving(false);return}
-
+  const changes=Object.entries(edits)
+   .map(([studentId,edit])=>({student_id:Number(studentId),status:edit.status,note:edit.note.trim()||null}))
+   .filter(x=>!parentLocked(x.student_id));
+  const{error}=await supabase.rpc("save_lesson_attendance",{p_schedule_entry_id:scheduleId,p_lesson_date:date,p_changes:changes});
+  if(error){setMessage(`Kunne ikke gemme fremmøde: ${error.message}`);setSaving(false);return}
   await load();
   setMessage("Fremmøde ført ✓");setSaving(false);
  }
 
- if(!ready)return <section style={card}><strong>Henter fravær…</strong></section>;
+ if(!ready)return <section style={card}><strong>Henter fremmøde…</strong></section>;
  return <section style={{...card,borderColor:"#cfd9d1"}}>
   <div style={{display:"flex",justifyContent:"space-between",gap:14,alignItems:"start",flexWrap:"wrap"}}>
    <div><p style={eyebrow}>FREMMØDE</p><h2 style={{fontFamily:"Georgia,serif",fontSize:28,margin:"5px 0"}}>Hvem er her?</h2><p style={{color:"#707670",margin:"0 0 5px",lineHeight:1.5}}>Alle regnes som til stede. Registrér kun fravær, forsinkelse eller hvis en elev går tidligt.</p>{checkedAt&&<small style={{display:"block",marginTop:7,color:"#4f6d59",fontWeight:900}}>✓ Fremmøde ført {new Date(checkedAt).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"})}</small>}</div>
    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><span style={chip}>Til stede {summary.present}</span><span style={chip}>Forsinket {summary.late}</span><span style={chip}>Fravær {summary.away}</span></div>
   </div>
-  {message&&<div style={{marginTop:12,padding:"10px 12px",borderRadius:8,background:message.startsWith("Kunne")||message.startsWith("Fravær blev")?"#f7e5e2":"#e7eee9",color:message.startsWith("Kunne")||message.startsWith("Fravær blev")?"#7c342e":"#4d6657",fontWeight:700}}>{message}</div>}
+  {message&&<div style={{marginTop:12,padding:"10px 12px",borderRadius:8,background:message.startsWith("Kunne")?"#f7e5e2":"#e7eee9",color:message.startsWith("Kunne")?"#7c342e":"#4d6657",fontWeight:700}}>{message}</div>}
   <div style={{marginTop:15,borderTop:"1px solid #ece8df"}}>
-   {students.length===0?<p style={{color:"#707670"}}>Der er ingen elever i klassen.</p>:students.map(student=>{
-    const value=current(student.id),existing=rows.find(x=>x.student_id===student.id),locked=existing?.source==="parent";
-    return <div key={student.id} style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10,alignItems:"center",padding:"11px 0",borderBottom:"1px solid #f0ede7"}}>
-     <div><strong>{student.name}</strong>{locked&&<small style={{display:"block",marginTop:3,color:"#806936"}}>Meldt af forælder · {label(existing.status)}</small>}{!locked&&existing&&<small style={{display:"block",marginTop:3,color:"#6d756f"}}>Registreret · {label(existing.status)}</small>}</div>
-     <select disabled={!canEdit||locked} value={value.status} onChange={e=>setStatus(student.id,e.target.value)} style={{...selectStyle,opacity:(!canEdit||locked)?0.65:1}}>{TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select>
-     {locked?<div style={{fontSize:13,color:"#71664f"}}>{existing.note||"Registreringen bevares som forældremelding."}<div><Link href={`/students?class=${classId}&date=${date}`} style={{color:"#486b59",fontWeight:800,textDecoration:"none"}}>Åbn fuld fraværsoversigt →</Link></div></div>:<input disabled={!canEdit||value.status==="present"} value={value.note} onChange={e=>setNote(student.id,e.target.value)} placeholder={value.status==="late"?"Fx Ankom kl. 08.17":"Note (valgfri)"} style={{...inputStyle,opacity:(!canEdit||value.status==="present")?0.55:1}}/>}
+   {rows.length===0?<p style={{color:"#707670"}}>Der er ingen elever i klassen.</p>:rows.map(row=>{
+    const value=current(row.student_id),locked=row.source==="parent";
+    const provenance=locked?`Meldt af forælder · ${label(row.status)}`:row.source==="substitute"?`Registreret af vikar · ${label(row.status)}`:row.source?`Registreret · ${label(row.status)}`:"";
+    return <div key={row.student_id} style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10,alignItems:"center",padding:"11px 0",borderBottom:"1px solid #f0ede7"}}>
+     <div><strong>{row.student_name}</strong>{provenance&&<small style={{display:"block",marginTop:3,color:locked?"#806936":"#6d756f"}}>{provenance}</small>}</div>
+     <select disabled={!canTakeAttendance||locked} value={value.status} onChange={e=>setStatus(row.student_id,e.target.value)} style={{...selectStyle,opacity:(!canTakeAttendance||locked)?0.65:1}}>{TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select>
+     {locked?<div style={{fontSize:13,color:"#71664f"}}>{row.note||"Registreringen bevares som forældremelding."}<div><Link href={`/students?class=${classId}&date=${date}`} style={{color:"#486b59",fontWeight:800,textDecoration:"none"}}>Åbn fuld fraværsoversigt →</Link></div></div>:<input disabled={!canTakeAttendance||value.status==="present"} value={value.note} onChange={e=>setNote(row.student_id,e.target.value)} placeholder={value.status==="late"?"Fx Ankom kl. 08.17":"Note (valgfri)"} style={{...inputStyle,opacity:(!canTakeAttendance||value.status==="present")?0.55:1}}/>}
     </div>
    })}
   </div>
-  {canEdit&&<div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginTop:15}}><button type="button" disabled={saving} onClick={save} style={{border:0,borderRadius:9,padding:"11px 15px",background:"#365044",color:"white",fontWeight:900,cursor:saving?"default":"pointer",opacity:saving?0.55:1}}>{saving?"Gemmer…":dirtyCount?`Gem fravær og markér ført (${dirtyCount})`:checkedAt?"Opdatér fremmøde":"Markér fremmøde ført"}</button><small style={{color:"#707670"}}>Registreringen bruges også i klassens almindelige fraværsoversigt.</small></div>}
+  {canTakeAttendance&&<div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginTop:15}}><button type="button" disabled={saving} onClick={save} style={{border:0,borderRadius:9,padding:"11px 15px",background:"#365044",color:"white",fontWeight:900,cursor:saving?"default":"pointer",opacity:saving?0.55:1}}>{saving?"Gemmer…":dirtyCount?`Gem fravær og markér ført (${dirtyCount})`:checkedAt?"Opdatér fremmøde":"Markér fremmøde ført"}</button><small style={{color:"#707670"}}>Lærer eller tildelt vikar kan føre fremmøde. Registreringen genbruges i klassens fraværsoversigt.</small></div>}
  </section>;
 }
 
