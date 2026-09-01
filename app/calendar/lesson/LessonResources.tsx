@@ -63,9 +63,10 @@ export default function LessonResources({lessonId,classId,canEdit}:{lessonId:num
  async function add(){
   if(!lessonId||!choice)return;const[kind,idText]=choice.split(":");const id=Number(idText);if(!id)return;
   setSaving(true);setMessage("");
-  const payload=kind==="item"?{lesson_instance_id:lessonId,subject_room_item_id:id,position:links.length}:{lesson_instance_id:lessonId,assignment_id:id,position:links.length};
-  const{error}=await supabase.from("lesson_resource_links").insert(payload);
-  if(error)setMessage(error.message);else{setChoice("");setMessage("Koblet til lektionen ✓");await load()}
+  const result=kind==="item"
+   ?await supabase.from("lesson_resource_links").insert({lesson_instance_id:lessonId,subject_room_item_id:id,assignment_id:null,position:links.length})
+   :await supabase.from("lesson_resource_links").insert({lesson_instance_id:lessonId,subject_room_item_id:null,assignment_id:id,position:links.length});
+  if(result.error)setMessage(result.error.message);else{setChoice("");setMessage("Koblet til lektionen ✓");await load()}
   setSaving(false);
  }
  async function remove(id:number){setSaving(true);const{error}=await supabase.from("lesson_resource_links").delete().eq("id",id);if(error)setMessage(error.message);else await load();setSaving(false)}
