@@ -44,14 +44,64 @@ where n.nspname='public' and p.prokind='f'
 order by 1;
 
 -- 3. Anonymous SECURITY DEFINER surface.
--- Production target: only explicitly documented student-code/session bootstrap RPCs.
-select p.oid::regprocedure::text as function_name
+-- Expected result: exactly the nine documented session/bootstrap RPCs below.
+with expected(signature) as (
+  values
+    ('get_student_training_progress_session(text)'),
+    ('save_student_draft_session(text,bigint,jsonb)'),
+    ('save_student_grammar_attempt_session(text,bigint,jsonb,integer,integer)'),
+    ('save_student_training_attempt_session(text,text,text,text,text,jsonb,integer,integer)'),
+    ('student_end_session(text)'),
+    ('student_session_data(text)'),
+    ('student_session_feedback(text)'),
+    ('student_session_grammar_assignments(text)'),
+    ('student_start_session(text)')
+), actual as (
+  select p.oid::regprocedure::text as signature
+  from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname='public' and p.prokind='f' and p.prosecdef
+    and has_function_privilege('anon',p.oid,'EXECUTE')
+)
+select 'unexpected_anonymous_function' as issue, signature from actual
+where signature not in (select signature from expected)
+union all
+select 'missing_expected_student_function', signature from expected
+where signature not in (select signature from actual)
+order by 1,2;
+
+-- 4. Legacy short-code RPCs must never be executable directly.
+-- Expected result: no rows.
+select p.oid::regprocedure::text as function_name,
+       has_function_privilege('anon',p.oid,'EXECUTE') as anon_execute,
+       has_function_privilege('authenticated',p.oid,'EXECUTE') as authenticated_execute
 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-where n.nspname='public' and p.prokind='f' and p.prosecdef
-  and has_function_privilege('anon',p.oid,'EXECUTE')
+where n.nspname='public'
+  and p.proname in (
+    'student_data','student_feedback','student_grammar_assignments','student_login',
+    'save_student_draft','save_student_grammar_attempt','save_student_training_attempt',
+    'get_student_training_progress'
+  )
+  and (
+    has_function_privilege('anon',p.oid,'EXECUTE')
+    or has_function_privilege('authenticated',p.oid,'EXECUTE')
+  )
 order by 1;
 
--- 4. Foreign keys without a supporting leading index.
+-- 5. Student-code integrity. Existing codes may still be six characters until rotated.
+-- Expected: no duplicates ignoring case, and the unique upper(access_code) index exists.
+select upper(access_code) as duplicated_code, count(*)
+from public.students
+where access_code is not null
+group by upper(access_code)
+having count(*) > 1;
+
+select indexname
+from pg_indexes
+where schemaname='public'
+  and tablename='students'
+  and indexname='students_access_code_upper_unique_idx';
+
+-- 6. Foreign keys without a supporting leading index.
 -- Expected result: 0 rows.
 with fk as (
   select con.oid,con.conrelid,con.conname,con.conkey,n.nspname as schema_name,c.relname as table_name,
@@ -73,7 +123,7 @@ where not exists (
 )
 order by table_name,conname;
 
--- 5. Root objects that must always carry a school id.
+-- 7. Root objects that must always carry a school id.
 select 'calendar_meetings' as table_name,count(*) filter(where school_id is null) as missing_school from public.calendar_meetings
 union all select 'noticeboard_posts',count(*) filter(where school_id is null) from public.noticeboard_posts
 union all select 'staff_absence',count(*) filter(where school_id is null) from public.staff_absence
