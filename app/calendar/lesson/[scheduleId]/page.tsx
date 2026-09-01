@@ -8,7 +8,7 @@ import {hasRole} from "../../../../lib/roles";
 import LessonAttendance from "../LessonAttendance";
 import LessonResources from "../LessonResources";
 
-type Entry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null};
+type Entry={id:number;class_id:number;class_subject_id:number|null;weekday:number;start_time:string;end_time:string;subject:string;room:string|null};
 type Klass={id:number;name:string;school_id:number|null};
 type Lesson={id:number;schedule_entry_id:number;lesson_date:string;learning_goals:string|null;plan:string|null;materials:unknown;status:"planned"|"active"|"completed"|"cancelled";started_at:string|null;ended_at:string|null;carry_forward_to:string|null;carry_forward_note:string|null};
 type CarryFrom={lesson_date:string;carry_forward_note:string|null};
@@ -76,7 +76,7 @@ export default function LessonWorkRoom(){
    if(!user){window.location.replace("/");return}
 
    const[eRes,tRes,lRes,fRes]=await Promise.all([
-    supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room").eq("id",scheduleId).maybeSingle(),
+    supabase.from("schedule_entries").select("id,class_id,class_subject_id,weekday,start_time,end_time,subject,room").eq("id",scheduleId).maybeSingle(),
     supabase.from("schedule_teachers").select("schedule_entry_id").eq("schedule_entry_id",scheduleId).eq("teacher_id",user.id).maybeSingle(),
     supabase.from("lesson_instances").select("id,schedule_entry_id,lesson_date,learning_goals,plan,materials,status,started_at,ended_at,carry_forward_to,carry_forward_note").eq("schedule_entry_id",scheduleId).eq("lesson_date",lessonDate).maybeSingle(),
     supabase.from("lesson_instances").select("lesson_date,carry_forward_note").eq("schedule_entry_id",scheduleId).eq("carry_forward_to",lessonDate).order("lesson_date",{ascending:false}).limit(1).maybeSingle()
@@ -171,7 +171,7 @@ export default function LessonWorkRoom(){
    </div>
    <aside style={{display:"grid",gap:14,minWidth:0}}>
     <section style={card}><p style={{fontSize:10,fontWeight:900,letterSpacing:1.4,color:"#718077",margin:0}}>STATUS</p><h2 style={{fontFamily:"Georgia,serif",fontSize:22,margin:"7px 0 12px"}}>{status==="active"?"I gang":status==="completed"?"Afsluttet":status==="cancelled"?"Aflyst":"Planlagt"}</h2>{startedAt&&<small style={{display:"block",color:"#707670"}}>Startet {new Date(startedAt).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"})}</small>}{endedAt&&<small style={{display:"block",color:"#707670",marginTop:4}}>Afsluttet {new Date(endedAt).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"})}</small>}{canEdit&&<div style={{display:"grid",gap:8,marginTop:16}}>{status!=="active"&&status!=="completed"&&<button onClick={startLesson} disabled={saving} style={action}>▶ Start lektion</button>}{status!=="completed"&&<button onClick={finishLesson} disabled={saving} style={{...action,background:"#6c755f"}}>✓ Afslut lektion</button>}</div>}</section>
-    <section style={card}><p style={{fontSize:10,fontWeight:900,letterSpacing:1.4,color:"#718077",margin:0}}>KLASSEN</p><h3 style={{fontFamily:"Georgia,serif",fontSize:20,margin:"7px 0 12px"}}>{klass?.name||"Klasse"}</h3><Link href={`/students?class=${entry.class_id}`} style={{display:"block",color:"#486b59",fontWeight:900,textDecoration:"none"}}>Elever & fravær →</Link><Link href={`/teacher-overview?class=${entry.class_id}`} style={{display:"block",color:"#486b59",fontWeight:900,textDecoration:"none",marginTop:10}}>Opgaver & besvarelser →</Link></section>
+    <section style={card}><p style={{fontSize:10,fontWeight:900,letterSpacing:1.4,color:"#718077",margin:0}}>KLASSEN</p><h3 style={{fontFamily:"Georgia,serif",fontSize:20,margin:"7px 0 12px"}}>{klass?.name||"Klasse"}</h3>{canEdit&&entry.class_subject_id&&<Link href={`/students/subjects/${entry.class_subject_id}`} style={{display:"block",color:"#486b59",fontWeight:900,textDecoration:"none",marginBottom:10}}>Åbn {entry.subject}-faglokalet →</Link>}<Link href={`/students?class=${entry.class_id}`} style={{display:"block",color:"#486b59",fontWeight:900,textDecoration:"none"}}>Elever & fravær →</Link><Link href={`/teacher-overview?class=${entry.class_id}`} style={{display:"block",color:"#486b59",fontWeight:900,textDecoration:"none",marginTop:10}}>Opgaver & besvarelser →</Link></section>
     <section style={{...card,background:"#eef2ed"}}><p style={{fontSize:10,fontWeight:900,letterSpacing:1.4,color:"#718077",margin:0}}>NÆSTE SAMME TIME</p><h3 style={{fontFamily:"Georgia,serif",fontSize:19,margin:"7px 0 10px"}}>{shortDate(nextLessonDate)}</h3>{skippedClosures>0&&<small style={{display:"block",color:"#6d756f",marginBottom:9}}>Skolekalenderen springer lukkede uger over.</small>}<Link href={`/calendar/lesson/${entry.id}?date=${nextLessonDate}`} style={{color:"#486b59",fontWeight:900,textDecoration:"none"}}>Åbn næste lektion →</Link></section>
    </aside>
   </section>
