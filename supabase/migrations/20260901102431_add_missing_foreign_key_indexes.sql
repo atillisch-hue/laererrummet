@@ -1,0 +1,26 @@
+-- Add indexes for foreign keys used by joins, RLS checks and cascades.
+create index if not exists idx_assignments_class_id on public.assignments(class_id);
+create index if not exists idx_board_meetings_school_id on public.board_meetings(school_id);
+create index if not exists idx_calendar_meetings_created_by on public.calendar_meetings(created_by);
+create index if not exists idx_class_handover_student_id on public.class_handover(student_id);
+create index if not exists idx_drafts_assignment_id on public.drafts(assignment_id);
+create index if not exists idx_feedback_assignment_id on public.feedback(assignment_id);
+create index if not exists idx_grammar_assignment_students_student_id on public.grammar_assignment_students(student_id);
+create index if not exists idx_meeting_actions_created_by on public.meeting_actions(created_by);
+create index if not exists idx_meeting_decisions_created_by on public.meeting_decisions(created_by);
+create index if not exists idx_meeting_decisions_meeting_id on public.meeting_decisions(meeting_id);
+create index if not exists idx_parent_students_student_id on public.parent_students(student_id);
+create index if not exists idx_resource_bookings_created_by on public.resource_bookings(created_by);
+create index if not exists idx_schedule_entries_class_id on public.schedule_entries(class_id);
+create index if not exists idx_schedule_teachers_teacher_id on public.schedule_teachers(teacher_id);
+create index if not exists idx_school_memberships_user_id on public.school_memberships(user_id);
+create index if not exists idx_staff_absence_created_by on public.staff_absence(created_by);
+create index if not exists idx_staff_absence_user_id on public.staff_absence(user_id);
+create index if not exists idx_student_action_plans_created_by on public.student_action_plans(created_by);
+create index if not exists idx_student_plan_actions_created_by on public.student_plan_actions(created_by);
+create index if not exists idx_student_plan_followups_created_by on public.student_plan_followups(created_by);
+create index if not exists idx_students_class_id on public.students(class_id);
+create index if not exists idx_substitute_assignments_absent_teacher_id on public.substitute_assignments(absent_teacher_id);
+create index if not exists idx_substitute_assignments_school_id on public.substitute_assignments(school_id);
+create index if not exists idx_substitute_assignments_substitute_teacher_id on public.substitute_assignments(substitute_teacher_id);
+create index if not exists idx_teacher_classes_class_id on public.teacher_classes(class_id);
