@@ -74,11 +74,12 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
  const choose=(s:string)=>{if(onSelectDate){onSelectDate(s);return}if(typeof window!=="undefined"&&window.location.pathname==="/noticeboard"){window.dispatchEvent(new CustomEvent("noticeboard-date",{detail:s}))}};
 
  const activeDate=selectedDate||iso(new Date());
+ const activeClosure=marked.get(activeDate)||null;
  const weekday=new Date(activeDate+"T12:00:00").getDay();
  const regularIds=new Set(scheduleTeachers.map(x=>x.schedule_entry_id));
  const daySubs=substitutions.filter(x=>x.assignment_date===activeDate&&(x.absent_teacher_id===userId||x.substitute_teacher_id===userId));
  const relevantIds=new Set<number>([...Array.from(regularIds),...daySubs.filter(x=>x.substitute_teacher_id===userId).map(x=>x.schedule_entry_id)]);
- const dayLessons=schedule.filter(x=>x.weekday===weekday&&relevantIds.has(x.id)).sort((a,b)=>a.start_time.localeCompare(b.start_time));
+ const dayLessons=activeClosure?[]:schedule.filter(x=>x.weekday===weekday&&relevantIds.has(x.id)).sort((a,b)=>a.start_time.localeCompare(b.start_time));
  const dayTasks=tasks.filter(x=>x.due_date===activeDate);
  const staffName=(id:string)=>staff.find(x=>x.user_id===id)?.display_name||"kollega";
  const className=(id:number)=>classes.find(x=>x.id===id)?.name||"Klasse";
@@ -92,8 +93,9 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
   {pathname==="/calendar"&&<section style={{background:"white",border:"1px solid #ddd9d0",borderRadius:15,padding:18}}>
    <p style={{fontSize:10,fontWeight:900,letterSpacing:1.5,color:"#718077",margin:0}}>MIN DAG</p>
    <h3 style={{fontFamily:"Georgia,serif",fontSize:22,margin:"6px 0 12px"}}>{new Date(activeDate+"T12:00:00").toLocaleDateString("da-DK",{weekday:"long",day:"numeric",month:"long"})}</h3>
+   {activeClosure&&<div style={{background:"#f6edd7",border:"1px solid #dfca96",borderRadius:10,padding:"11px 12px",marginBottom:12,color:"#655538"}}><strong>{activeClosure}</strong><small style={{display:"block",marginTop:3}}>Skolekalenderen skjuler det almindelige undervisningsskema denne dag.</small></div>}
    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}><span style={chip}>Undervisning {dayLessons.length}</span><span style={chip}>Vikarændringer {daySubs.length}</span><span style={chip}>Deadlines {dayTasks.length}</span></div>
-   {dayLessons.length===0&&dayTasks.length===0?<p style={{color:"#737b75",fontSize:13,margin:"10px 0 0"}}>Ingen undervisning eller deadlines i dit arbejdsflow denne dag.</p>:<div style={{display:"grid",gap:8}}>
+   {dayLessons.length===0&&dayTasks.length===0?<p style={{color:"#737b75",fontSize:13,margin:"10px 0 0"}}>{activeClosure?"Ingen undervisning i det faste skema denne dag.":"Ingen undervisning eller deadlines i dit arbejdsflow denne dag."}</p>:<div style={{display:"grid",gap:8}}>
     {dayLessons.map(entry=>{const change=daySubs.find(x=>x.schedule_entry_id===entry.id);const absent=change?.absent_teacher_id===userId;const substitute=change?.substitute_teacher_id===userId;return <Link key={`lesson-${entry.id}`} href={`/calendar/lesson/${entry.id}?date=${activeDate}`} style={{textDecoration:"none",color:"inherit",border:"1px solid #e2ded5",borderRadius:10,padding:"11px 12px",background:absent?"#f5eadc":substitute?"#e7eee9":"#faf9f6",display:"block"}}><div style={{display:"flex",justifyContent:"space-between",gap:10}}><strong style={{fontSize:13}}>{entry.start_time.slice(0,5)}–{entry.end_time.slice(0,5)} · {entry.subject}</strong>{(absent||substitute)&&<small style={{fontWeight:900,color:"#6c5d43"}}>{absent?"FRAVÆR":"VIKAR"}</small>}</div><small style={{display:"block",color:"#717771",marginTop:3}}>{className(entry.class_id)}{entry.room?` · ${entry.room}`:""}</small>{substitute&&change?.substitute_plan&&<small style={{display:"block",marginTop:6,color:"#52675a"}}>Vikarplan: {change.substitute_plan}</small>}{absent&&change&&<small style={{display:"block",marginTop:6,color:"#765f42"}}>Vikar: {staffName(change.substitute_teacher_id)}</small>}</Link>})}
     {dayTasks.map(task=><Link key={`task-${task.id}`} href="/my-tasks" style={{textDecoration:"none",color:"inherit",border:"1px solid #e2ded5",borderRadius:10,padding:"11px 12px",background:"#fff7e8",display:"block"}}><strong style={{fontSize:13}}>Deadline · {task.title}</strong><small style={{display:"block",color:"#7a6a4b",marginTop:3}}>Åbn Mine opgaver →</small></Link>)}
    </div>}
