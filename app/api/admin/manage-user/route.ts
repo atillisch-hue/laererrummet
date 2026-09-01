@@ -26,6 +26,11 @@ async function verifyTarget(admin:any,schoolId:number,userId:string){
  return!error&&Boolean(data?.length);
 }
 
+async function syncActiveCache(admin:any,userId:string){
+ const{data}=await admin.from("school_memberships").select("id").eq("user_id",userId).eq("active",true).limit(1);
+ await admin.from("user_profiles").update({active:Boolean(data?.length)}).eq("user_id",userId);
+}
+
 async function syncRoleCaches(admin:any,userId:string){
  const{data:memberships}=await admin.from("school_memberships").select("role").eq("user_id",userId).eq("active",true);
  const roles=[...new Set((memberships||[]).map((m:any)=>String(m.role)).filter((r:string)=>allowed.includes(r)))];
@@ -33,6 +38,7 @@ async function syncRoleCaches(admin:any,userId:string){
  await admin.from("user_roles").delete().eq("user_id",userId);
  if(roles.length)await admin.from("user_roles").insert(roles.map(role=>({user_id:userId,role})));
  if(roles.length)await admin.from("user_profiles").update({role:roles[0]}).eq("user_id",userId);
+ await syncActiveCache(admin,userId);
 }
 
 export async function PATCH(req:Request){
