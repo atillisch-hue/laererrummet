@@ -191,7 +191,13 @@ export default function Home() {
 
   async function studentLogout() {
     const token = studentSessionToken || getStudentSessionToken();
-    if (token) await supabase.rpc("student_end_session", { p_session_token: token }).catch(() => undefined);
+    if (token) {
+      try {
+        await supabase.rpc("student_end_session", { p_session_token: token });
+      } catch {
+        // Local logout still proceeds if the network request fails.
+      }
+    }
     clearStudentSession();
     setStudentId(null);
     setStudentSessionToken("");
