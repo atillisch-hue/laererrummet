@@ -1,7 +1,7 @@
 "use client";
 
 import {useEffect,useState} from "react";
-import {supabase} from "../../../../../lib/supabase";
+import {supabase} from "../../../../lib/supabase";
 
 type Teacher={user_id:string;display_name:string;selected:boolean};
 const card:React.CSSProperties={background:"#f7f5ef",border:"1px solid #ddd9d0",borderRadius:11,padding:15};
