@@ -74,7 +74,9 @@ export default function GrammarPage(){
    supabase.from("students").select("id,name,class_id").order("name")
   ]);
   const rows=(c.data||[]) as ClassRow[];setClasses(rows);setStudents((st.data||[]) as Student[]);
-  if(rows[0]){setClassId(rows[0].id);await loadAssignments(rows[0].id)}
+  const requested=Number(new URLSearchParams(window.location.search).get("class"));
+  const initial=rows.find(x=>x.id===requested)?.id||rows[0]?.id;
+  if(initial){setClassId(initial);await loadAssignments(initial)}
   setReady(true);
  })()},[]);
 
@@ -133,8 +135,9 @@ export default function GrammarPage(){
  };
 
  if(!ready)return <main style={{padding:50}}>Åbner grammatik…</main>;
+ const sourceRoom=Number(new URLSearchParams(window.location.search).get("room"))||0;
  return <main style={{minHeight:"100vh",background:"#f5f3ee",padding:"30px 24px 80px",color:"#26342e"}}><section style={{maxWidth:1080,margin:"0 auto"}}>
-  <a href="/preparation" style={{color:"#526b60",fontWeight:800,textDecoration:"none"}}>← Til Forberedelsen</a>
+  <a href={sourceRoom?`/students/subjects/${sourceRoom}`:"/preparation"} style={{color:"#526b60",fontWeight:800,textDecoration:"none"}}>← {sourceRoom?"Til faglokalet":"Til Forberedelsen"}</a>
   <p className="eyebrow" style={{marginTop:28}}>TRÆNINGSOPGAVE</p><h1 style={{marginBottom:8}}>Tildel noget nu</h1><p style={{fontSize:17,color:"#707670",maxWidth:760,lineHeight:1.5,marginTop:0}}>Vælg område, emne, niveau og hvem der skal have det. Ubesvarede tildelinger kan redigeres eller slettes bagefter.</p>
 
   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:12,marginTop:25}}>{areas.map((a,i)=><button key={a.title} onClick={()=>chooseArea(i)} style={{background:selected===i?"#edf1ec":"white",border:selected===i?"2px solid #526b60":"1px solid #dfdcd4",borderRadius:13,padding:19,textAlign:"left",cursor:"pointer",minHeight:155}}><span style={{fontFamily:"Georgia,serif",fontWeight:800,fontSize:18,color:"#365044"}}>{a.icon}</span><strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:21,marginTop:12,color:"#27352d"}}>{a.title}</strong><span style={{display:"block",color:"#727772",lineHeight:1.4,marginTop:6,fontSize:14}}>{a.text}</span></button>)}</div>
