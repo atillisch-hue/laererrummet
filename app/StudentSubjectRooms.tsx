@@ -11,7 +11,7 @@ type Payload={ok?:boolean;error?:string;rooms?:Room[]};
 const card:React.CSSProperties={background:"#fff",border:"1px solid #d8d5cd",borderRadius:14,padding:20,color:"#26342e"};
 const labels:Record<Item["item_type"],string>={post:"Opslag",section:"Sektion",link:"Link",material:"Materiale"};
 
-export default function StudentSubjectRooms({sessionToken,onOpenAssignment}:{sessionToken:string;onOpenAssignment?:(assignmentId:number)=>void}){
+export default function StudentSubjectRooms({sessionToken}:{sessionToken:string}){
  const[rooms,setRooms]=useState<Room[]>([]);
  const[openRoom,setOpenRoom]=useState<number|null>(null);
  const[loading,setLoading]=useState(true);
@@ -42,9 +42,9 @@ export default function StudentSubjectRooms({sessionToken,onOpenAssignment}:{ses
   {current.assignments.length>0&&<section style={{margin:"18px 0 22px"}}>
    <p className="eyebrow">OPGAVER I FAGET</p>
    <div style={{display:"grid",gap:9,marginTop:10}}>
-    {current.assignments.map(a=><button key={a.id} onClick={()=>onOpenAssignment?.(a.id)} style={{...card,textAlign:"left",cursor:onOpenAssignment?"pointer":"default",font:"inherit",display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:12,alignItems:"center"}}>
+    {current.assignments.map(a=><button key={a.id} onClick={()=>window.location.href=`/student-assignment/${a.id}`} style={{...card,textAlign:"left",cursor:"pointer",font:"inherit",display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:12,alignItems:"center"}}>
      <span><strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:20}}>{a.title}</strong><small style={{display:"block",color:"#707670",marginTop:4}}>{a.type} · Skrivehjælp følger med</small></span>
-     {onOpenAssignment&&<b style={{color:"#526b60"}}>Åbn →</b>}
+     <b style={{color:"#526b60"}}>Åbn →</b>
     </button>)}
    </div>
   </section>}
