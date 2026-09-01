@@ -2,6 +2,7 @@
 import Link from "next/link";
 import {useEffect,useState} from "react";
 import {supabase} from "../../lib/supabase";
+import PublishToSubjectRoom from "./PublishToSubjectRoom";
 
 const areas=[
  {icon:"▤",title:"Undervisningsforløb",text:"Planlæg forløb med mål, tekster, aktiviteter og produkter.",href:"#forloeb"},
@@ -41,6 +42,9 @@ export default function Preparation(){
      <small style={{display:"inline-block",marginTop:13,fontWeight:800,color:a.title==="Opgaver"?"#365044":"#9a8156"}}>{a.title==="Opgaver"?"Åbn →":"Klar til at blive bygget"}</small>
     </Link>)}
    </div>
+
+   <PublishToSubjectRoom/>
+
    <section style={{marginTop:18,background:"#e8eee9",border:"1px solid #d4ddd6",borderRadius:14,padding:"20px"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:15,flexWrap:"wrap"}}>
      <div><p style={{fontSize:11,fontWeight:900,letterSpacing:1.3,color:"#65766d",margin:"0 0 5px"}}>SPONTAN TRÆNING</p><h2 style={{fontFamily:"Georgia,serif",fontSize:25,margin:0}}>Tildel noget nu</h2><p style={{color:"#687068",margin:"6px 0 0",lineHeight:1.45}}>Skal en elev eller klasse lige træne komma, ordklasser, læsning eller noget helt andet? Det behøver ikke ligge i et planlagt forløb.</p></div>
