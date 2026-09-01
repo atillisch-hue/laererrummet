@@ -46,9 +46,12 @@ export async function PATCH(req:Request){
    const roles=[...new Set(body.roles.filter((r:string)=>allowed.includes(r)))];
    if(!roles.length)return NextResponse.json({error:"Brugeren skal have mindst én rolle."},{status:400});
    if(id===access.me.id&&!roles.includes("admin"))return NextResponse.json({error:"Du kan ikke fjerne din egen admin-rolle."},{status:400});
+   const{data:stateRows,error:stateError}=await access.admin.from("school_memberships").select("active").eq("school_id",access.schoolId).eq("user_id",id);
+   if(stateError)return NextResponse.json({error:"Brugerens nuværende status kunne ikke læses."},{status:500});
+   const wasActive=(stateRows||[]).some((m:any)=>m.active===true);
    const{error:deleteError}=await access.admin.from("school_memberships").delete().eq("school_id",access.schoolId).eq("user_id",id);
    if(deleteError)return NextResponse.json({error:"De gamle roller kunne ikke fjernes."},{status:500});
-   const{error:insertError}=await access.admin.from("school_memberships").insert(roles.map(role=>({school_id:access.schoolId,user_id:id,role,active:true})));
+   const{error:insertError}=await access.admin.from("school_memberships").insert(roles.map(role=>({school_id:access.schoolId,user_id:id,role,active:wasActive})));
    if(insertError)return NextResponse.json({error:"De nye roller kunne ikke gemmes."},{status:500});
    await syncRoleCaches(access.admin,id);
   }
