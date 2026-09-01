@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Enhancements from "./Enhancements";
 import DashboardNav from "./DashboardNav";
 import AccessGuard from "./AccessGuard";
 
@@ -13,9 +12,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="da">
       <body>
-        <AccessGuard>{children}</AccessGuard>
-        <Enhancements />
-        <DashboardNav />
+        <AccessGuard>
+          <DashboardNav />
+          {children}
+        </AccessGuard>
       </body>
     </html>
   );
