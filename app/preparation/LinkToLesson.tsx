@@ -34,7 +34,7 @@ export default function LinkToLesson(){
   const teacherIds=new Set((t.data||[]).map(x=>Number(x.schedule_entry_id)));
   const classes=(c.data||[]) as Klass[];
   const allEntries=(e.data||[]) as Entry[];
-  const entries=(teacherIds.size?allEntries.filter(x=>teacherIds.has(x.id)):admin?allEntries:[]) .filter(x=>!["pause","samling","gårdvagt","gaardvagt"].includes(normalize(x.subject)));
+  const entries=(teacherIds.size?allEntries.filter(x=>teacherIds.has(x.id)):admin?allEntries:[]).filter(x=>!["pause","samling","gårdvagt","gaardvagt"].includes(normalize(x.subject)));
   const schoolIds=[...new Set(classes.map(x=>x.school_id).filter((x):x is number=>typeof x==="number"))];
   const settings=schoolIds.length?await supabase.from("school_settings").select("school_id,closed_days").in("school_id",schoolIds):{data:[]};
   const closed=new Map<number,Set<string>>();
@@ -89,8 +89,10 @@ export default function LinkToLesson(){
    lessonId=created.data.id;
   }
   const[kind,idText]=resource.split(":");const id=Number(idText);
-  const payload=kind==="item"?{lesson_instance_id:lessonId,subject_room_item_id:id,position:0}:{lesson_instance_id:lessonId,assignment_id:id,position:0};
-  const{error}=await supabase.from("lesson_resource_links").insert(payload);
+  const result=kind==="item"
+   ?await supabase.from("lesson_resource_links").insert({lesson_instance_id:lessonId,subject_room_item_id:id,assignment_id:null,position:0})
+   :await supabase.from("lesson_resource_links").insert({lesson_instance_id:lessonId,subject_room_item_id:null,assignment_id:id,position:0});
+  const error=result.error;
   if(error?.code==="23505")setMessage("Det er allerede koblet til lektionen ✓");
   else if(error)setMessage(error.message);
   else setMessage("Koblet til den konkrete lektion ✓");
