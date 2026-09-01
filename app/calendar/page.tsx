@@ -18,6 +18,7 @@ const dbError=(step:string,e:DbError|null|undefined)=>!e?`${step}: ukendt databa
 
 export default function CalendarPage(){
  const[ready,setReady]=useState(false);
+ const[currentUserId,setCurrentUserId]=useState("");
  const[date,setDate]=useState(()=>iso(new Date()));
  const[meetings,setMeetings]=useState<Meeting[]>([]);
  const[directory,setDirectory]=useState<DirectoryUser[]>([]);
@@ -32,7 +33,6 @@ export default function CalendarPage(){
  const[minuteTaker,setMinuteTaker]=useState("");
  const[externalName,setExternalName]=useState("");
  const[externalRole,setExternalRole]=useState("");
- const[dbReady,setDbReady]=useState(true);
  const[open,setOpen]=useState(false);
  const[title,setTitle]=useState("");
  const[type,setType]=useState("Netværksmøde");
@@ -52,44 +52,43 @@ export default function CalendarPage(){
   setDirectory((staffResult.data||[]) as DirectoryUser[]);
   setStudents((studentResult.data||[]) as Student[]);
   setRooms((roomResult.data||[]) as Room[]);
-  setDbReady(!meetingResult.error&&!staffResult.error&&!studentResult.error&&!roomResult.error);
   const errors=[meetingResult.error&&dbError("Møder",meetingResult.error),staffResult.error&&dbError("Personale",staffResult.error),studentResult.error&&dbError("Elever",studentResult.error),roomResult.error&&dbError("Lokaler",roomResult.error)].filter(Boolean);
-  setFormError(errors.length?`Noget kunne ikke hentes. ${errors.join(" · ")}`:"");
+  setFormError(errors.length?`Noget kunne ikke hentes. Du kan stadig oprette et enkelt møde. ${errors.join(" · ")}`:"");
  }
 
- useEffect(()=>{(async()=>{const{data}=await supabase.auth.getSession();if(!data.session){window.location.href="/?teacher=1";return}await load();setReady(true)})()},[]);
+ useEffect(()=>{(async()=>{const{data}=await supabase.auth.getSession();if(!data.session){window.location.href="/?teacher=1";return}setCurrentUserId(data.session.user.id);await load();setReady(true)})()},[]);
  useEffect(()=>{(async()=>{setSelectedGuardians([]);if(!studentId){setGuardians([]);return}const{data}=await supabase.rpc("get_student_guardians",{p_student_id:studentId});setGuardians((data||[]) as Guardian[])})()},[studentId]);
 
  const marked=useMemo(()=>Array.from(new Set(meetings.map(m=>m.starts_at.slice(0,10)))),[meetings]);
  const studentMeeting=type==="Elevmøde"||type==="Netværksmøde";
  const selectedDateLabel=new Date(date+"T12:00:00").toLocaleDateString("da-DK",{weekday:"long",day:"numeric",month:"long"});
+ const bookedPeople=Array.from(new Set([currentUserId,...selected].filter(Boolean)));
+ const currentName=directory.find(u=>u.user_id===currentUserId)?.display_name||"Dig";
 
  function toggleUser(id:string){setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);if(selected.includes(id)){if(meetingLeader===id)setMeetingLeader("");if(minuteTaker===id)setMinuteTaker("")}}
  function toggleGuardian(id:string){setSelectedGuardians(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id])}
 
  async function createMeeting(){
   if(!title.trim())return;
-  if(endTime<=time){setFormError("Sluttid skal være efter starttid.");return}
+  const start=new Date(`${date}T${time}:00`),end=new Date(`${date}T${endTime}:00`);
+  if(Number.isNaN(start.getTime())||Number.isNaN(end.getTime())||end<=start){setFormError("Sluttid skal være efter starttid.");return}
   setSaving(true);setFormError("");
-  const{data:{user},error:userError}=await supabase.auth.getUser();
-  if(userError||!user){setFormError(dbError("Login",userError));setSaving(false);return}
-  const starts=`${date}T${time}:00`,ends=`${date}T${endTime}:00`,staffIds=Array.from(new Set([user.id,...selected]));
-  const{data:conflicts,error:conflictError}=await supabase.rpc("check_resource_booking_conflicts",{p_starts_at:starts,p_ends_at:ends,p_room_id:roomId||null,p_user_ids:staffIds,p_exclude_booking_id:null});
-  if(conflictError){setFormError(dbError("Ledighedskontrol",conflictError));setSaving(false);return}
-  if(conflicts?.length){const room=rooms.find(r=>r.id===roomId)?.name;setFormError(`Bookingen kolliderer med en eksisterende booking${room?` for ${room} eller valgt personale`:" for valgt personale"}. Vælg et andet tidspunkt, lokale eller personale.`);setSaving(false);return}
-  const roomName=rooms.find(r=>r.id===roomId)?.name||null;
-  const{data:meeting,error}=await supabase.from("calendar_meetings").insert({title:title.trim(),meeting_type:type,starts_at:starts,ends_at:ends,location:roomName,status:"planned",created_by:user.id,student_id:studentMeeting&&studentId?studentId:null,meeting_leader_user_id:meetingLeader||null,minute_taker_user_id:minuteTaker||null}).select("id").single();
-  if(error||!meeting){setFormError(dbError("Opret møde",error));setSaving(false);return}
-  const{data:booking,error:bookingError}=await supabase.from("resource_bookings").insert({title:title.trim(),starts_at:starts,ends_at:ends,room_id:roomId||null,meeting_id:meeting.id,created_by:user.id}).select("id").single();
-  if(bookingError||!booking){setFormError(dbError("Gem booking",bookingError));setSaving(false);await load();return}
-  if(staffIds.length){const{error:staffError}=await supabase.from("resource_booking_staff").insert(staffIds.map(user_id=>({booking_id:booking.id,user_id})));if(staffError){setFormError(dbError("Book personale",staffError));setSaving(false);await load();return}}
-  const participants:Array<Record<string,unknown>>=[
-   ...selected.filter(id=>id!==user.id).map(user_id=>({meeting_id:meeting.id,user_id,attendance_status:"invited",access_type:"internal"})),
-   ...selectedGuardians.map(user_id=>({meeting_id:meeting.id,user_id,attendance_status:"invited",access_type:"guardian"}))
-  ];
-  if(externalName.trim())participants.push({meeting_id:meeting.id,external_name:externalName.trim(),external_role:externalRole.trim()||null,attendance_status:"invited",access_type:"external"});
-  if(participants.length){const{error:pError}=await supabase.from("meeting_participants").insert(participants);if(pError){setFormError(dbError("Tilføj deltagere",pError));setSaving(false);await load();return}}
-  setTitle("");setRoomId("");setSelected([]);setMeetingLeader("");setMinuteTaker("");setStudentId("");setGuardians([]);setSelectedGuardians([]);setExternalName("");setExternalRole("");setOpen(false);await load();setSaving(false);
+  const{data:meetingId,error}=await supabase.rpc("create_meeting_atomic",{
+   p_title:title.trim(),
+   p_meeting_type:type,
+   p_starts_at:start.toISOString(),
+   p_ends_at:end.toISOString(),
+   p_room_id:roomId||null,
+   p_student_id:studentMeeting&&studentId?Number(studentId):null,
+   p_internal_user_ids:selected,
+   p_guardian_user_ids:studentMeeting?selectedGuardians:[],
+   p_external_name:externalName.trim()||null,
+   p_external_role:externalRole.trim()||null,
+   p_meeting_leader_user_id:meetingLeader||null,
+   p_minute_taker_user_id:minuteTaker||null
+  });
+  if(error||!meetingId){setFormError(error?.message||"Mødet kunne ikke oprettes.");setSaving(false);return}
+  window.location.href=`/calendar/meeting/${meetingId}`;
  }
 
  if(!ready)return <main style={{padding:50}}>Åbner kalenderen…</main>;
@@ -116,12 +115,12 @@ export default function CalendarPage(){
 
     {studentMeeting&&<div style={section}><p style={eyebrow}>MØDET HANDLER OM</p><select value={studentId} onChange={e=>setStudentId(e.target.value?Number(e.target.value):"")} style={input}><option value="">Vælg elev (eleven får ikke adgang)</option>{students.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>{studentId&&<><p style={{...eyebrow,marginTop:16}}>FORÆLDRE / VÆRGER</p>{guardians.length?<div style={{display:"grid",gap:7,marginTop:8}}>{guardians.map(g=><label key={g.user_id} style={choice(selectedGuardians.includes(g.user_id))}><input type="checkbox" checked={selectedGuardians.includes(g.user_id)} onChange={()=>toggleGuardian(g.user_id)}/><span><strong>{g.display_name}</strong>{g.relation&&<small> · {g.relation}</small>}</span></label>)}</div>:<p style={muted}>Der er endnu ingen forældre med login koblet til eleven.</p>}<small style={{display:"block",color:"#707670",marginTop:8}}>Valgte forældre får adgang til officielt mødemateriale, aldrig interne noter.</small></>}</div>}
 
-    <div style={section}><p style={eyebrow}>BOOK PERSONALE</p>{directory.length?<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:7,marginTop:8}}>{directory.map(u=><label key={u.user_id} style={choice(selected.includes(u.user_id))}><input type="checkbox" checked={selected.includes(u.user_id)} onChange={()=>toggleUser(u.user_id)}/><span><strong>{u.display_name}</strong> <small style={muted}>· {roleName(u.role)}</small></span></label>)}</div>:<p style={muted}>Der er endnu ikke aktive medarbejdere i personalekataloget.</p>}
-     {selected.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:10,marginTop:14}}><label style={label}>Mødeleder<select value={meetingLeader} onChange={e=>setMeetingLeader(e.target.value)} style={input}><option value="">Ikke valgt</option>{selected.map(id=><option key={id} value={id}>{directory.find(u=>u.user_id===id)?.display_name||"Personale"}</option>)}</select></label><label style={label}>Referent<select value={minuteTaker} onChange={e=>setMinuteTaker(e.target.value)} style={input}><option value="">Ikke valgt</option>{selected.map(id=><option key={id} value={id}>{directory.find(u=>u.user_id===id)?.display_name||"Personale"}</option>)}</select></label></div>}
+    <div style={section}><p style={eyebrow}>BOOK PERSONALE</p><div style={{padding:"9px 11px",background:"#e7eee9",borderRadius:8,marginTop:8,fontSize:13}}><strong>{currentName}</strong> · du er automatisk med som mødeopretter</div>{directory.filter(u=>u.user_id!==currentUserId).length?<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:7,marginTop:8}}>{directory.filter(u=>u.user_id!==currentUserId).map(u=><label key={u.user_id} style={choice(selected.includes(u.user_id))}><input type="checkbox" checked={selected.includes(u.user_id)} onChange={()=>toggleUser(u.user_id)}/><span><strong>{u.display_name}</strong> <small style={muted}>· {roleName(u.role)}</small></span></label>)}</div>:<p style={muted}>Der er endnu ikke andre aktive personer i personalekataloget.</p>}
+     {bookedPeople.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:10,marginTop:14}}><label style={label}>Mødeleder<select value={meetingLeader} onChange={e=>setMeetingLeader(e.target.value)} style={input}><option value="">Ikke valgt</option>{bookedPeople.map(id=><option key={id} value={id}>{directory.find(u=>u.user_id===id)?.display_name||currentName}</option>)}</select></label><label style={label}>Referent<select value={minuteTaker} onChange={e=>setMinuteTaker(e.target.value)} style={input}><option value="">Ikke valgt</option>{bookedPeople.map(id=><option key={id} value={id}>{directory.find(u=>u.user_id===id)?.display_name||currentName}</option>)}</select></label></div>}
     </div>
 
     <div style={section}><p style={eyebrow}>EKSTERN DELTAGER</p><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10}}><input value={externalName} onChange={e=>setExternalName(e.target.value)} placeholder="Navn (valgfrit)" style={input}/><input value={externalRole} onChange={e=>setExternalRole(e.target.value)} placeholder="Fx PPR-psykolog" style={input}/></div></div>
-    <button disabled={!dbReady||!title.trim()||saving} onClick={createMeeting} style={{...primary,width:"100%",marginTop:18,opacity:dbReady&&title.trim()&&!saving?1:.45}}>{saving?"Kontrollerer og booker…":"Opret og book møde →"}</button>
+    <button disabled={!title.trim()||saving} onClick={createMeeting} style={{...primary,width:"100%",marginTop:18,opacity:title.trim()&&!saving?1:.45}}>{saving?"Opretter mødet…":"Opret og åbn møde →"}</button>
    </section>}
 
    <SchoolCalendarWidget selectedDate={date} onSelectDate={setDate} markedDates={marked} meetings={meetings}/>
