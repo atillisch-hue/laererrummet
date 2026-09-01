@@ -5,6 +5,7 @@ import {useEffect,useMemo,useState} from "react";
 import {useParams,useSearchParams} from "next/navigation";
 import {supabase} from "../../../../lib/supabase";
 import {hasRole} from "../../../../lib/roles";
+import LessonAttendance from "../LessonAttendance";
 
 type Entry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null};
 type Klass={id:number;name:string;school_id:number|null};
@@ -159,6 +160,7 @@ export default function LessonWorkRoom(){
    <div style={{display:"grid",gap:16,minWidth:0}}>
     {!canEdit&&<div style={{padding:"13px 15px",borderRadius:10,background:"#fff4dc",border:"1px solid #e6cf9a",color:"#685a3c"}}><strong>Vikarvisning</strong><div style={{marginTop:4,fontSize:14}}>Du kan se planen og materialerne, men kun den tilknyttede lærer eller en administrator kan ændre dem.</div></div>}
     {carryFrom?.carry_forward_note&&<section style={{padding:"16px 18px",borderRadius:12,background:"#fff4dc",border:"1px solid #e5cf9c"}}><p style={{fontSize:10,fontWeight:900,letterSpacing:1.4,color:"#856f44",margin:0}}>FORTSAT FRA {shortDate(carryFrom.lesson_date).toUpperCase()}</p><p style={{margin:"8px 0 0",lineHeight:1.55,color:"#584d38",whiteSpace:"pre-wrap"}}>{carryFrom.carry_forward_note}</p></section>}
+    <LessonAttendance classId={entry.class_id} date={lessonDate} canEdit={canEdit}/>
     <section style={card}><label style={{fontWeight:900,display:"block"}}>Læringsmål</label><p style={{fontSize:13,color:"#747b75",margin:"5px 0 10px"}}>Hvad skal eleverne have med sig fra lektionen?</p><textarea disabled={!canEdit} value={goals} onChange={e=>setGoals(e.target.value)} rows={4} style={input} placeholder="Fx: Eleverne kan forklare forskellen på argument og belæg…"/></section>
     <section style={card}><label style={{fontWeight:900,display:"block"}}>Plan for lektionen</label><p style={{fontSize:13,color:"#747b75",margin:"5px 0 10px"}}>Skriv den plan, du selv eller en vikar skal kunne arbejde videre fra.</p><textarea disabled={!canEdit} value={plan} onChange={e=>setPlan(e.target.value)} rows={10} style={input} placeholder={'Fx:\n08.00 – intro\n08.10 – fælles læsning\n08.30 – makkeropgave…'}/></section>
     <section style={card}><label style={{fontWeight:900,display:"block"}}>Materialer og links</label><p style={{fontSize:13,color:"#747b75",margin:"5px 0 10px"}}>Ét link, dokumentnavn eller materiale pr. linje. Senere kan de kobles direkte fra Forberedelsen.</p><textarea disabled={!canEdit} value={materialsText} onChange={e=>setMaterialsText(e.target.value)} rows={6} style={input} placeholder={'Jeg er Henry – kap. 4\nhttps://…\nArbejdsark: Argumenter'}/></section>
