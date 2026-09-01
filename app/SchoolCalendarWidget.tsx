@@ -27,7 +27,18 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
  const[classes,setClasses]=useState<Klass[]>([]);
  const[staff,setStaff]=useState<Staff[]>([]);
 
- useEffect(()=>{supabase.from("school_settings").select("closed_days").eq("id",1).maybeSingle().then(({data})=>{if(Array.isArray(data?.closed_days))setClosed(data.closed_days)})},[]);
+ useEffect(()=>{
+  let active=true;
+  (async()=>{
+   const{data:auth}=await supabase.auth.getSession();const uid=auth.session?.user.id;
+   if(!uid||!active)return;
+   const{data:m}=await supabase.from("school_memberships").select("school_id").eq("user_id",uid).eq("active",true).in("role",["teacher","admin"]).limit(1).maybeSingle();
+   if(!m?.school_id||!active)return;
+   const{data:s}=await supabase.from("school_settings").select("closed_days").eq("school_id",m.school_id).maybeSingle();
+   if(active&&Array.isArray(s?.closed_days))setClosed(s.closed_days as ClosedDay[]);
+  })();
+  return()=>{active=false};
+ },[]);
  useEffect(()=>{if(selectedDate){const d=new Date(selectedDate+"T12:00:00");setView(new Date(d.getFullYear(),d.getMonth(),1))}},[selectedDate]);
  useEffect(()=>{
   if(pathname!=="/calendar")return;
