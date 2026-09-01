@@ -11,7 +11,7 @@ type SubstituteAssignment={id:number;schedule_entry_id:number;assignment_date:st
 type Task={id:number;title:string;due_date:string|null;completed:boolean;responsible_user_id:string|null};
 type Klass={id:number;name:string};
 type Staff={user_id:string;display_name:string;role:string};
-type LessonSummary={schedule_entry_id:number;lesson_date:string;attendance_checked_at:string|null;status:string};
+type LessonSummary={id:number;schedule_entry_id:number;lesson_date:string;attendance_checked_at:string|null;status:string;learning_goals:string|null;plan:string|null;materials:unknown};
 type CalendarMeeting={id:number;title:string;meeting_type:string;starts_at:string;ends_at:string|null;location:string|null};
 type AgendaItem=
  |{kind:"lesson";sort:number;entry:ScheduleEntry}
@@ -33,6 +33,7 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
  const[classes,setClasses]=useState<Klass[]>([]);
  const[staff,setStaff]=useState<Staff[]>([]);
  const[lessonSummaries,setLessonSummaries]=useState<LessonSummary[]>([]);
+ const[resourceLessonIds,setResourceLessonIds]=useState<Set<number>>(()=>new Set());
 
  useEffect(()=>{
   let active=true;
@@ -84,7 +85,16 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
  useEffect(()=>{
   if(pathname!=="/calendar")return;
   let active=true;
-  supabase.from("lesson_instances").select("schedule_entry_id,lesson_date,attendance_checked_at,status").eq("lesson_date",activeDate).then(({data})=>{if(active)setLessonSummaries((data||[]) as LessonSummary[])});
+  (async()=>{
+   const{data}=await supabase.from("lesson_instances").select("id,schedule_entry_id,lesson_date,attendance_checked_at,status,learning_goals,plan,materials").eq("lesson_date",activeDate);
+   if(!active)return;
+   const rows=(data||[]) as LessonSummary[];
+   setLessonSummaries(rows);
+   const ids=rows.map(x=>x.id);
+   if(ids.length===0){setResourceLessonIds(new Set());return}
+   const{data:links}=await supabase.from("lesson_resource_links").select("lesson_instance_id").in("lesson_instance_id",ids);
+   if(active)setResourceLessonIds(new Set((links||[]).map(x=>Number(x.lesson_instance_id))));
+  })();
   return()=>{active=false};
  },[pathname,activeDate]);
 
@@ -99,8 +109,16 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
  const staffName=(id:string)=>staff.find(x=>x.user_id===id)?.display_name||"kollega";
  const className=(id:number)=>classes.find(x=>x.id===id)?.name||"Klasse";
  const today=iso(new Date());
+ const lessonFor=(entry:ScheduleEntry)=>lessonSummaries.find(x=>x.schedule_entry_id===entry.id&&x.lesson_date===activeDate)||null;
+ const isPrepared=(entry:ScheduleEntry)=>{
+  const lesson=lessonFor(entry);if(!lesson)return false;
+  const hasText=!!lesson.learning_goals?.trim()||!!lesson.plan?.trim();
+  const hasQuickMaterials=Array.isArray(lesson.materials)&&lesson.materials.length>0;
+  return hasText||hasQuickMaterials||resourceLessonIds.has(lesson.id);
+ };
+ const preparedCount=dayLessons.filter(isPrepared).length;
  const attendanceState=(entry:ScheduleEntry)=>{
-  const lesson=lessonSummaries.find(x=>x.schedule_entry_id===entry.id&&x.lesson_date===activeDate);
+  const lesson=lessonFor(entry);
   if(lesson?.attendance_checked_at)return{label:"FREMMØDE FØRT ✓",tone:"done" as const,time:new Date(lesson.attendance_checked_at).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"})};
   if(activeDate<today)return{label:"FREMMØDE MANGLER",tone:"missing" as const,time:null};
   if(activeDate>today)return{label:"FREMMØDE IKKE FØRT ENDNU",tone:"future" as const,time:null};
@@ -125,12 +143,12 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
    <p style={{fontSize:10,fontWeight:900,letterSpacing:1.5,color:"#718077",margin:0}}>MIN DAG</p>
    <h3 style={{fontFamily:"Georgia,serif",fontSize:22,margin:"6px 0 12px"}}>{new Date(activeDate+"T12:00:00").toLocaleDateString("da-DK",{weekday:"long",day:"numeric",month:"long"})}</h3>
    {activeClosure&&<div style={{background:"#f6edd7",border:"1px solid #dfca96",borderRadius:10,padding:"11px 12px",marginBottom:12,color:"#655538"}}><strong>{activeClosure}</strong><small style={{display:"block",marginTop:3}}>Skolekalenderen skjuler det almindelige undervisningsskema denne dag.</small></div>}
-   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}><span style={chip}>Undervisning {dayLessons.length}</span><span style={chip}>Møder {dayMeetings.length}</span><span style={chip}>Deadlines {dayTasks.length}</span>{daySubs.length>0&&<span style={chip}>Vikarændringer {daySubs.length}</span>}</div>
+   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}><span style={chip}>Undervisning {dayLessons.length}</span>{dayLessons.length>0&&<span style={preparedChip}>Forberedt {preparedCount}/{dayLessons.length}</span>}<span style={chip}>Møder {dayMeetings.length}</span><span style={chip}>Deadlines {dayTasks.length}</span>{daySubs.length>0&&<span style={chip}>Vikarændringer {daySubs.length}</span>}</div>
    {agendaItems.length===0?<p style={{color:"#737b75",fontSize:13,margin:"10px 0 0"}}>{activeClosure?"Ingen planlagte arbejdsobjekter denne dag.":"Ingen undervisning, møder eller deadlines i dit arbejdsflow denne dag."}</p>:<div style={{display:"grid",gap:8}}>
     {agendaItems.map(item=>{
      if(item.kind==="lesson"){
-      const entry=item.entry,change=daySubs.find(x=>x.schedule_entry_id===entry.id),absent=change?.absent_teacher_id===userId,substitute=change?.substitute_teacher_id===userId,attendance=attendanceState(entry);
-      return <Link key={`lesson-${entry.id}`} href={`/calendar/lesson/${entry.id}?date=${activeDate}`} style={{textDecoration:"none",color:"inherit",border:"1px solid #e2ded5",borderRadius:10,padding:"11px 12px",background:absent?"#f5eadc":substitute?"#e7eee9":"#faf9f6",display:"block"}}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><strong style={{fontSize:13}}>{entry.start_time.slice(0,5)}–{entry.end_time.slice(0,5)} · {entry.subject}</strong><div style={{display:"flex",gap:5,alignItems:"center"}}><small style={kindTag}>LEKTION</small>{(absent||substitute)&&<small style={{fontWeight:900,color:"#6c5d43"}}>{absent?"FRAVÆR":"VIKAR"}</small>}</div></div><small style={{display:"block",color:"#717771",marginTop:3}}>{className(entry.class_id)}{entry.room?` · ${entry.room}`:""}</small><div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap",marginTop:7}}><span style={attendance.tone==="done"?attendanceDone:attendance.tone==="missing"?attendanceMissing:attendanceFuture}>{attendance.label}</span>{attendance.time&&<small style={{color:"#5c6f63",fontWeight:800}}>kl. {attendance.time}</small>}</div>{substitute&&change?.substitute_plan&&<small style={{display:"block",marginTop:6,color:"#52675a"}}>Vikarplan: {change.substitute_plan}</small>}{absent&&change&&<small style={{display:"block",marginTop:6,color:"#765f42"}}>Vikar: {staffName(change.substitute_teacher_id)}</small>}</Link>;
+      const entry=item.entry,change=daySubs.find(x=>x.schedule_entry_id===entry.id),absent=change?.absent_teacher_id===userId,substitute=change?.substitute_teacher_id===userId,attendance=attendanceState(entry),prepared=isPrepared(entry);
+      return <Link key={`lesson-${entry.id}`} href={`/calendar/lesson/${entry.id}?date=${activeDate}`} style={{textDecoration:"none",color:"inherit",border:"1px solid #e2ded5",borderRadius:10,padding:"11px 12px",background:absent?"#f5eadc":substitute?"#e7eee9":"#faf9f6",display:"block"}}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><strong style={{fontSize:13}}>{entry.start_time.slice(0,5)}–{entry.end_time.slice(0,5)} · {entry.subject}</strong><div style={{display:"flex",gap:5,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>{prepared&&<small style={preparedTag}>FORBEREDT ✓</small>}<small style={kindTag}>LEKTION</small>{(absent||substitute)&&<small style={{fontWeight:900,color:"#6c5d43"}}>{absent?"FRAVÆR":"VIKAR"}</small>}</div></div><small style={{display:"block",color:"#717771",marginTop:3}}>{className(entry.class_id)}{entry.room?` · ${entry.room}`:""}</small><div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap",marginTop:7}}><span style={attendance.tone==="done"?attendanceDone:attendance.tone==="missing"?attendanceMissing:attendanceFuture}>{attendance.label}</span>{attendance.time&&<small style={{color:"#5c6f63",fontWeight:800}}>kl. {attendance.time}</small>}</div>{substitute&&change?.substitute_plan&&<small style={{display:"block",marginTop:6,color:"#52675a"}}>Vikarplan: {change.substitute_plan}</small>}{absent&&change&&<small style={{display:"block",marginTop:6,color:"#765f42"}}>Vikar: {staffName(change.substitute_teacher_id)}</small>}</Link>;
      }
      if(item.kind==="meeting"){
       const meeting=item.meeting,start=new Date(meeting.starts_at).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"}),end=meeting.ends_at?new Date(meeting.ends_at).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"}):null;
@@ -148,7 +166,9 @@ const head:React.CSSProperties={fontSize:10,textAlign:"center",color:"#7a817b",p
 const wk:React.CSSProperties={display:"grid",placeItems:"center",fontSize:10,fontWeight:800,color:"#486b59",background:"#f0eadc",borderRadius:5,minHeight:32};
 const day:React.CSSProperties={display:"grid",placeItems:"center",minHeight:32,border:"1px solid",borderRadius:5,fontSize:11,fontFamily:"inherit"};
 const chip:React.CSSProperties={fontSize:11,fontWeight:800,color:"#53635a",background:"#eef1ed",border:"1px solid #dde3dd",borderRadius:999,padding:"5px 8px"};
+const preparedChip:React.CSSProperties={...chip,background:"#e2eee5",border:"1px solid #c6dbc9",color:"#476452"};
 const kindTag:React.CSSProperties={fontSize:8,fontWeight:900,letterSpacing:.7,borderRadius:999,padding:"3px 6px",background:"#e9ece8",color:"#607067"};
+const preparedTag:React.CSSProperties={...kindTag,background:"#dfece3",color:"#41614d",border:"1px solid #c5d9ca"};
 const attendanceBase:React.CSSProperties={display:"inline-flex",alignItems:"center",borderRadius:999,padding:"4px 7px",fontSize:9,fontWeight:900,letterSpacing:.5};
 const attendanceDone:React.CSSProperties={...attendanceBase,background:"#e2eee5",color:"#476452",border:"1px solid #c6dbc9"};
 const attendanceMissing:React.CSSProperties={...attendanceBase,background:"#f7e5e0",color:"#893f36",border:"1px solid #e5c0b9"};
