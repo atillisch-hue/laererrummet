@@ -3,6 +3,7 @@ import Link from "next/link";
 import {useEffect,useState} from "react";
 import {supabase} from "../../lib/supabase";
 import PublishToSubjectRoom from "./PublishToSubjectRoom";
+import LinkToLesson from "./LinkToLesson";
 
 const areas=[
  {icon:"▤",title:"Undervisningsforløb",text:"Planlæg forløb med mål, tekster, aktiviteter og produkter.",href:"#forloeb"},
@@ -44,6 +45,7 @@ export default function Preparation(){
    </div>
 
    <PublishToSubjectRoom/>
+   <LinkToLesson/>
 
    <section style={{marginTop:18,background:"#e8eee9",border:"1px solid #d4ddd6",borderRadius:14,padding:"20px"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:15,flexWrap:"wrap"}}>
