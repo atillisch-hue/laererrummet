@@ -55,25 +55,25 @@ export default function DashboardNav(){
  const roleLabel=starts(pathname,"/admin")?"Admin":starts(pathname,"/parent")?"Forælder":starts(pathname,"/board")?"Bestyrelse":teacher?"Lærer":"Bruger";
 
  return <nav aria-label="Primær navigation" style={{position:"sticky",top:0,zIndex:50,background:"rgba(245,242,234,.97)",borderBottom:"1px solid #ddd9d0",backdropFilter:"blur(10px)"}}>
-  <div style={{maxWidth:1240,margin:"0 auto",padding:"10px 18px",display:"flex",alignItems:"center",gap:12,overflowX:"auto"}}>
-   <Link href={teacher?"/noticeboard":parent?"/parent":board?"/board":"/"} style={{display:"inline-flex",alignItems:"center",gap:8,color:"#26342e",textDecoration:"none",fontWeight:900,whiteSpace:"nowrap",paddingRight:6}}><span aria-hidden="true">✦</span> Klasseværelset</Link>
+  <div style={{maxWidth:1280,margin:"0 auto",padding:"8px 14px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+   <Link href={teacher?"/noticeboard":parent?"/parent":board?"/board":"/"} style={{display:"inline-flex",alignItems:"center",gap:6,color:"#26342e",textDecoration:"none",fontWeight:900,whiteSpace:"nowrap",fontSize:14,paddingRight:2}}><span aria-hidden="true">✦</span> Klasseværelset</Link>
 
-   {teacher&&<div style={{display:"flex",gap:6,alignItems:"center",minWidth:"max-content"}}>
+   {teacher&&<div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap",flex:"1 1 auto",minWidth:0}}>
     {items.map(item=>{
      const active=item.roots.some(root=>starts(pathname,root));
-     return <Link key={item.href} href={item.href} aria-current={active?"page":undefined} style={{display:"inline-flex",alignItems:"center",padding:"9px 12px",borderRadius:9,textDecoration:"none",fontWeight:800,fontSize:13,whiteSpace:"nowrap",border:active?"1px solid #486b59":"1px solid transparent",background:active?"#486b59":"transparent",color:active?"white":"#425249"}}>{item.label}</Link>;
+     return <Link key={item.href} href={item.href} aria-current={active?"page":undefined} style={{display:"inline-flex",alignItems:"center",padding:"8px 9px",borderRadius:8,textDecoration:"none",fontWeight:800,fontSize:12,whiteSpace:"nowrap",border:active?"1px solid #486b59":"1px solid transparent",background:active?"#486b59":"transparent",color:active?"white":"#425249"}}>{item.label}</Link>;
     })}
    </div>}
 
-   <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:7,minWidth:"max-content"}}>
+   <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
     {board&&<Link href="/board" style={roleButton(starts(pathname,"/board"))}>Bestyrelse</Link>}
     {parent&&<Link href="/parent" style={roleButton(starts(pathname,"/parent"))}>Forælder</Link>}
-    {admin&&<Link href="/admin" style={roleButton(starts(pathname,"/admin"))}>Administration</Link>}
-    <span title={email||roleLabel} style={{display:"inline-flex",alignItems:"center",padding:"7px 9px",borderRadius:999,background:"#e8ece8",color:"#526159",fontSize:11,fontWeight:900,whiteSpace:"nowrap"}}>{roleLabel}</span>
-    <button onClick={logout} style={{display:"inline-flex",alignItems:"center",padding:"8px 11px",borderRadius:9,fontWeight:900,fontSize:12,whiteSpace:"nowrap",border:"1px solid #cfcac0",color:"#526159",background:"#fff",cursor:"pointer"}}>Log ud</button>
+    {admin&&<Link href="/admin" style={roleButton(starts(pathname,"/admin"))}>Admin</Link>}
+    <span title={email||roleLabel} style={{display:"inline-flex",alignItems:"center",padding:"6px 8px",borderRadius:999,background:"#e8ece8",color:"#526159",fontSize:10,fontWeight:900,whiteSpace:"nowrap"}}>{roleLabel}</span>
+    <button onClick={logout} style={{display:"inline-flex",alignItems:"center",padding:"7px 9px",borderRadius:8,fontWeight:900,fontSize:11,whiteSpace:"nowrap",border:"1px solid #cfcac0",color:"#526159",background:"#fff",cursor:"pointer"}}>Log ud</button>
    </div>
   </div>
  </nav>;
 }
 
-function roleButton(active:boolean):React.CSSProperties{return{display:"inline-flex",alignItems:"center",padding:"8px 10px",borderRadius:9,textDecoration:"none",fontWeight:800,fontSize:12,whiteSpace:"nowrap",border:active?"1px solid #486b59":"1px solid #cfcac0",color:active?"white":"#526159",background:active?"#486b59":"#fff"}}
+function roleButton(active:boolean):React.CSSProperties{return{display:"inline-flex",alignItems:"center",padding:"7px 8px",borderRadius:8,textDecoration:"none",fontWeight:800,fontSize:11,whiteSpace:"nowrap",border:active?"1px solid #486b59":"1px solid #cfcac0",color:active?"white":"#526159",background:active?"#486b59":"#fff"}}
