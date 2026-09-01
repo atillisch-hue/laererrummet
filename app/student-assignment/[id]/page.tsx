@@ -5,13 +5,13 @@ import {useEffect,useState} from "react";
 import {useParams} from "next/navigation";
 import {supabase} from "../../../lib/supabase";
 import {getStudentSessionToken} from "../../../lib/studentSession";
-import {danishGenreByName,type DanishGenre} from "../../../lib/danishGenres";
+import {danishGenreByName,type DanishGenre} from "../../../lib/danishGenreCatalog";
 
 type Assignment={id:number;title:string;type:string;instructions?:string};
 type StudentData={ok?:boolean;student?:{id:number;name:string};assignments?:Assignment[];drafts?:{assignment_id:number;content:string[]}[]};
 
 const card:React.CSSProperties={background:"white",border:"1px solid #d8d5cd",borderRadius:14,padding:20};
-const resolveGenre=(name:string)=>name==="Artikel"?danishGenreByName("Nyhedsartikel"):name==="Fortælling"?danishGenreByName("Novelle"):danishGenreByName(name);
+const resolveGenre=(name:string)=>name==="Artikel"?danishGenreByName("Artikel")||danishGenreByName("Nyhedsartikel"):name==="Fortælling"?danishGenreByName("Novelle"):danishGenreByName(name);
 
 export default function StudentAssignmentPage(){
  const params=useParams<{id:string}>();
