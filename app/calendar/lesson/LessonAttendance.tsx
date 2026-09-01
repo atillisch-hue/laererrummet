@@ -42,7 +42,7 @@ export default function LessonAttendance({classId,date,canEdit}:{classId:number;
   setReady(true);
  }
 
- useEffect(()=>{let active=true;(async()=>{if(active)await load()})();return()=>{active=false}},[classId,date]);
+ useEffect(()=>{load()},[classId,date]);
 
  const current=(studentId:number):Edit=>{
   if(edits[studentId])return edits[studentId];
@@ -98,8 +98,8 @@ export default function LessonAttendance({classId,date,canEdit}:{classId:number;
     const value=current(student.id),existing=rows.find(x=>x.student_id===student.id),locked=existing?.source==="parent";
     return <div key={student.id} style={{display:"grid",gridTemplateColumns:"minmax(150px,1fr) minmax(150px,.8fr) minmax(190px,1.2fr)",gap:10,alignItems:"center",padding:"11px 0",borderBottom:"1px solid #f0ede7"}}>
      <div><strong>{student.name}</strong>{locked&&<small style={{display:"block",marginTop:3,color:"#806936"}}>Meldt af forælder · {label(existing.status)}</small>}{!locked&&existing&&<small style={{display:"block",marginTop:3,color:"#6d756f"}}>Registreret · {label(existing.status)}</small>}</div>
-     <select disabled={!canEdit||locked} value={value.status} onChange={e=>setStatus(student.id,e.target.value)} style={{...selectStyle,opacity:!canEdit||locked?.65:1}}>{TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select>
-     {locked?<div style={{fontSize:13,color:"#71664f"}}>{existing.note||"Registreringen bevares som forældremelding."}<div><Link href={`/students?class=${classId}&date=${date}`} style={{color:"#486b59",fontWeight:800,textDecoration:"none"}}>Åbn fuld fraværsoversigt →</Link></div></div>:<input disabled={!canEdit||value.status==="present"} value={value.note} onChange={e=>setNote(student.id,e.target.value)} placeholder={value.status==="late"?"Fx Ankom kl. 08.17":"Note (valgfri)"} style={{...inputStyle,opacity:!canEdit||value.status==="present"?.55:1}}/>}
+     <select disabled={!canEdit||locked} value={value.status} onChange={e=>setStatus(student.id,e.target.value)} style={{...selectStyle,opacity:(!canEdit||locked)?0.65:1}}>{TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select>
+     {locked?<div style={{fontSize:13,color:"#71664f"}}>{existing.note||"Registreringen bevares som forældremelding."}<div><Link href={`/students?class=${classId}&date=${date}`} style={{color:"#486b59",fontWeight:800,textDecoration:"none"}}>Åbn fuld fraværsoversigt →</Link></div></div>:<input disabled={!canEdit||value.status==="present"} value={value.note} onChange={e=>setNote(student.id,e.target.value)} placeholder={value.status==="late"?"Fx Ankom kl. 08.17":"Note (valgfri)"} style={{...inputStyle,opacity:(!canEdit||value.status==="present")?0.55:1}}/>}
     </div>
    })}
   </div>
