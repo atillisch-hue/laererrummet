@@ -20,23 +20,27 @@ const label=(value:string)=>TYPES.find(x=>x.value===value)?.label||value;
 const selectStyle:React.CSSProperties={width:"100%",padding:"9px 10px",border:"1px solid #d8d5cd",borderRadius:8,background:"white",font:"inherit",color:"#26342e"};
 const inputStyle:React.CSSProperties={...selectStyle,minWidth:0};
 
-export default function LessonAttendance({classId,date,canTakeAttendance}:{classId:number;date:string;canTakeAttendance:boolean}){
+export default function LessonAttendance({classId,date,canEdit}:{classId:number;date:string;canEdit:boolean}){
  const params=useParams<{scheduleId:string}>();
  const scheduleId=Number(params.scheduleId);
  const[ready,setReady]=useState(false);
  const[rows,setRows]=useState<AttendanceRow[]>([]);
  const[edits,setEdits]=useState<Record<number,Edit>>({});
  const[checkedAt,setCheckedAt]=useState<string|null>(null);
+ const[attendanceAuthorized,setAttendanceAuthorized]=useState(false);
  const[saving,setSaving]=useState(false);
  const[message,setMessage]=useState("");
+ const canTakeAttendance=canEdit||attendanceAuthorized;
 
  async function load(){
   const[aRes,lRes]=await Promise.all([
    supabase.rpc("get_lesson_attendance",{p_schedule_entry_id:scheduleId,p_lesson_date:date}),
    supabase.from("lesson_instances").select("attendance_checked_at").eq("schedule_entry_id",scheduleId).eq("lesson_date",date).maybeSingle()
   ]);
-  if(aRes.error||lRes.error){setMessage(aRes.error?.message||lRes.error?.message||"Fremmøde kunne ikke hentes.");setReady(true);return}
+  if(aRes.error){setAttendanceAuthorized(false);setMessage(aRes.error.message||"Fremmøde kunne ikke hentes.");setReady(true);return}
+  setAttendanceAuthorized(true);
   setRows((aRes.data||[]) as AttendanceRow[]);
+  if(lRes.error)setMessage(lRes.error.message||"Status for fremmøde kunne ikke hentes.");
   setCheckedAt(lRes.data?.attendance_checked_at||null);
   setEdits({});
   setReady(true);
