@@ -114,7 +114,7 @@ export default function LessonAttendance({classId,date,canEdit}:{classId:number;
     </div>
    })}
   </div>
-  {canEdit&&<div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginTop:15}}><button type="button" disabled={saving} onClick={save} style={{border:0,borderRadius:9,padding:"11px 15px",background:"#365044",color:"white",fontWeight:900,cursor:saving?"default":"pointer",opacity:saving?.55:1}}>{saving?"Gemmer…":dirtyCount?`Gem fravær og markér ført (${dirtyCount})`:checkedAt?"Opdatér fremmøde":"Markér fremmøde ført"}</button><small style={{color:"#707670"}}>Registreringen bruges også i klassens almindelige fraværsoversigt.</small></div>}
+  {canEdit&&<div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginTop:15}}><button type="button" disabled={saving} onClick={save} style={{border:0,borderRadius:9,padding:"11px 15px",background:"#365044",color:"white",fontWeight:900,cursor:saving?"default":"pointer",opacity:saving?0.55:1}}>{saving?"Gemmer…":dirtyCount?`Gem fravær og markér ført (${dirtyCount})`:checkedAt?"Opdatér fremmøde":"Markér fremmøde ført"}</button><small style={{color:"#707670"}}>Registreringen bruges også i klassens almindelige fraværsoversigt.</small></div>}
  </section>;
 }
 
