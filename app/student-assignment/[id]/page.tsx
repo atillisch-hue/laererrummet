@@ -26,17 +26,18 @@ export default function StudentAssignmentPage(){
  const[studentName,setStudentName]=useState("");
  const[assignment,setAssignment]=useState<Assignment|null>(null);
  const[content,setContent]=useState<string[]>([]);
+ const[sessionToken,setSessionToken]=useState("");
  const[message,setMessage]=useState("");
  const[saving,setSaving]=useState(false);
- const token=typeof window!=="undefined"?getStudentSessionToken():"";
 
  useEffect(()=>{
   let active=true;
   (async()=>{
-   const sessionToken=getStudentSessionToken();
-   if(!sessionToken){window.location.replace("/?student=1");return}
+   const token=getStudentSessionToken();
+   if(!token){window.location.replace("/?student=1");return}
+   setSessionToken(token);
    if(!Number.isFinite(assignmentId)||assignmentId<=0){setMessage("Opgaven kunne ikke åbnes.");setReady(true);return}
-   const{data,error}=await supabase.rpc("student_session_data",{p_session_token:sessionToken});
+   const{data,error}=await supabase.rpc("student_session_data",{p_session_token:token});
    if(!active)return;
    const payload=data as StudentData|null;
    if(error||!payload?.ok){window.location.replace("/?student=1");return}
@@ -51,9 +52,9 @@ export default function StudentAssignmentPage(){
  },[assignmentId]);
 
  async function update(index:number,value:string){
-  if(!assignment||!token)return;
+  if(!assignment||!sessionToken)return;
   const next=[...content];next[index]=value;setContent(next);setSaving(true);setMessage("");
-  const{data,error}=await supabase.rpc("save_student_draft_session",{p_session_token:token,p_assignment_id:assignment.id,p_content:next});
+  const{data,error}=await supabase.rpc("save_student_draft_session",{p_session_token:sessionToken,p_assignment_id:assignment.id,p_content:next});
   setSaving(false);
   if(error||!data?.ok)setMessage("Kunne ikke gemme lige nu.");
  }
@@ -63,6 +64,7 @@ export default function StudentAssignmentPage(){
 
  const type=assignment.type as AssignmentType;
  const steps=templates[type];
+ const saveStatus=message|| (saving?"Gemmer…":"Din kladde gemmes automatisk.");
  return <main className="studentShell">
   <header className="studentTop"><div className="brand"><span>✦</span><div><strong>Klasseværelset</strong><small>{studentName}</small></div></div><Link href="/?student=1" style={{color:"inherit",fontWeight:800,textDecoration:"none"}}>Mit Klasseværelse</Link></header>
   <section className="studentContent">
@@ -73,7 +75,7 @@ export default function StudentAssignmentPage(){
    <div style={{display:"grid",gap:14}}>
     {steps.map((label,i)=><label key={label} style={{...card,display:"block",fontWeight:900}}><span style={{display:"block",marginBottom:8}}>{i+1}. {label}</span><textarea value={content[i]||""} onChange={e=>update(i,e.target.value)} rows={i===0?2:5} style={{width:"100%",boxSizing:"border-box",padding:12,border:"1px solid #d8d5cd",borderRadius:9,font:"inherit",lineHeight:1.5,resize:"vertical"}}/></label>)}
    </div>
-   <p style={{marginTop:16,color:message?"#8b342e":"#687168",fontWeight:700}}>{message||saving?"Gemmer…":"Din kladde gemmes automatisk."}</p>
+   <p style={{marginTop:16,color:message?"#8b342e":"#687168",fontWeight:700}}>{saveStatus}</p>
   </section>
  </main>;
 }
