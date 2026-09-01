@@ -11,6 +11,7 @@ type Assignment={id:number;title:string;type:string;instructions?:string};
 type StudentData={ok?:boolean;student?:{id:number;name:string};assignments?:Assignment[];drafts?:{assignment_id:number;content:string[]}[]};
 
 const card:React.CSSProperties={background:"white",border:"1px solid #d8d5cd",borderRadius:14,padding:20};
+const resolveGenre=(name:string)=>name==="Artikel"?danishGenreByName("Nyhedsartikel"):name==="Fortælling"?danishGenreByName("Novelle"):danishGenreByName(name);
 
 export default function StudentAssignmentPage(){
  const params=useParams<{id:string}>();
@@ -37,7 +38,7 @@ export default function StudentAssignmentPage(){
    if(error||!payload?.ok){window.location.replace("/?student=1");return}
    const found=(payload.assignments||[]).find(a=>a.id===assignmentId)||null;
    if(!found){setMessage("Du har ikke adgang til denne opgave.");setReady(true);return}
-   const foundGenre=danishGenreByName(found.type);
+   const foundGenre=resolveGenre(found.type);
    if(!foundGenre){setMessage("Denne opgavetype kan ikke åbnes i skriveværkstedet endnu.");setReady(true);return}
    const draft=(payload.drafts||[]).find(d=>d.assignment_id===assignmentId)?.content||[];
    setStudentName(payload.student?.name||"");setAssignment(found);setGenre(foundGenre);setContent(foundGenre.structure.map((_,i)=>draft[i]||""));setReady(true);
