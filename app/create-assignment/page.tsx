@@ -1,6 +1,7 @@
 "use client";
 
 import {useEffect,useMemo,useState} from "react";
+import {useSearchParams} from "next/navigation";
 import {supabase} from "../../lib/supabase";
 import {hasRole} from "../../lib/roles";
 
@@ -22,12 +23,13 @@ const btn=(active:boolean):React.CSSProperties=>({padding:"10px 13px",borderRadi
 const input:React.CSSProperties={boxSizing:"border-box",display:"block",width:"100%",marginTop:7,padding:11,border:"1px solid #d8d5cd",borderRadius:8,background:"white",font:"inherit"};
 
 export default function CreateAssignment(){
+ const search=useSearchParams();
  const[ready,setReady]=useState(false),[classes,setClasses]=useState<ClassRow[]>([]),[students,setStudents]=useState<Student[]>([]),[rooms,setRooms]=useState<Room[]>([]),[subjects,setSubjects]=useState<Subject[]>([]),[roomTeachers,setRoomTeachers]=useState<RoomTeacher[]>([]),[userId,setUserId]=useState(""),[admin,setAdmin]=useState(false);
  const[classId,setClassId]=useState<number|"">(""),[roomId,setRoomId]=useState<number|"">(""),[title,setTitle]=useState(""),[instructions,setInstructions]=useState(""),[type,setType]=useState<Type>("Debatindlæg"),[saving,setSaving]=useState(false),[recipientMode,setRecipientMode]=useState<"class"|"students">("class"),[selected,setSelected]=useState<number[]>([]);
 
  useEffect(()=>{(async()=>{
   const{data:s}=await supabase.auth.getSession();const user=s.session?.user;if(!user){window.location.href="/?teacher=1";return}
-  setUserId(user.id);setAdmin(hasRole(user,"admin"));
+  setUserId(user.id);const isAdmin=hasRole(user,"admin");setAdmin(isAdmin);
   const[c,st,r,sub,rt]=await Promise.all([
    supabase.from("classes").select("id,name").order("id"),
    supabase.from("students").select("id,name,class_id").order("name"),
@@ -35,8 +37,15 @@ export default function CreateAssignment(){
    supabase.from("subjects").select("id,name").eq("active",true),
    supabase.from("class_subject_teachers").select("class_subject_id,user_id")
   ]);
-  const rows=(c.data||[]) as ClassRow[];setClasses(rows);setStudents((st.data||[]) as Student[]);setRooms((r.data||[]) as Room[]);setSubjects((sub.data||[]) as Subject[]);setRoomTeachers((rt.data||[]) as RoomTeacher[]);if(rows[0])setClassId(rows[0].id);setReady(true);
- })()},[]);
+  const rows=(c.data||[]) as ClassRow[],roomRows=(r.data||[]) as Room[],teacherRows=(rt.data||[]) as RoomTeacher[];
+  setClasses(rows);setStudents((st.data||[]) as Student[]);setRooms(roomRows);setSubjects((sub.data||[]) as Subject[]);setRoomTeachers(teacherRows);
+  const requestedClass=Number(search.get("class")),requestedRoom=Number(search.get("subject"));
+  const allowedRequestedRoom=roomRows.find(x=>x.id===requestedRoom&&(isAdmin||teacherRows.some(t=>t.class_subject_id===x.id&&t.user_id===user.id)));
+  const initialClass=allowedRequestedRoom?.class_id||(rows.some(x=>x.id===requestedClass)?requestedClass:rows[0]?.id);
+  if(initialClass)setClassId(initialClass);
+  if(allowedRequestedRoom&&allowedRequestedRoom.class_id===initialClass)setRoomId(allowedRequestedRoom.id);
+  setReady(true);
+ })()},[search]);
 
  const classStudents=students.filter(s=>s.class_id===Number(classId));
  const editableRooms=useMemo(()=>rooms.filter(r=>r.class_id===Number(classId)&&(admin||roomTeachers.some(t=>t.class_subject_id===r.id&&t.user_id===userId))),[rooms,classId,admin,roomTeachers,userId]);
@@ -59,7 +68,7 @@ export default function CreateAssignment(){
  if(!ready)return <main style={{padding:50}}>Henter opgaver…</main>;
 
  return <main style={{minHeight:"100vh",background:"#f5f3ee",padding:"28px 24px 80px",color:"#26342e"}}><section style={{maxWidth:980,margin:"0 auto"}}>
-  <a href="/preparation" style={{color:"#526b60",fontWeight:800,textDecoration:"none"}}>← Til Forberedelsen</a>
+  <a href={roomId?`/students/subjects/${roomId}`:"/preparation"} style={{color:"#526b60",fontWeight:800,textDecoration:"none"}}>← {roomId?`Til ${roomLabel(editableRooms.find(r=>r.id===roomId)!)}`:"Til Forberedelsen"}</a>
   <div style={{margin:"25px 0 18px"}}><p className="eyebrow" style={{margin:"0 0 5px"}}>OPGAVE</p><h1 style={{margin:0}}>Lav og send en opgave</h1><p style={{color:"#707670",margin:"7px 0 0"}}>Byg det vigtigste først. Eleven får skrivehjælpen automatisk, og opgaven kan høre til et faglokale.</p></div>
 
   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}>{(Object.keys(templates) as Type[]).map(t=><button key={t} onClick={()=>setType(t)} style={{textAlign:"left",padding:16,borderRadius:11,border:type===t?"2px solid #526b60":"1px solid #dedbd3",background:type===t?"#edf1ec":"white",cursor:"pointer"}}><strong style={{fontFamily:"Georgia,serif",fontSize:18}}>{t}</strong><span style={{display:"block",fontSize:12,color:"#777",marginTop:5}}>{templates[t].length} trin</span></button>)}</div>
