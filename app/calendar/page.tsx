@@ -33,6 +33,8 @@ export default function CalendarPage(){
  const[minuteTaker,setMinuteTaker]=useState("");
  const[externalName,setExternalName]=useState("");
  const[externalRole,setExternalRole]=useState("");
+ const[agendaDraft,setAgendaDraft]=useState("");
+ const[internalNotesDraft,setInternalNotesDraft]=useState("");
  const[open,setOpen]=useState(false);
  const[title,setTitle]=useState("");
  const[type,setType]=useState("Netværksmøde");
@@ -85,7 +87,9 @@ export default function CalendarPage(){
    p_external_name:externalName.trim()||null,
    p_external_role:externalRole.trim()||null,
    p_meeting_leader_user_id:meetingLeader||null,
-   p_minute_taker_user_id:minuteTaker||null
+   p_minute_taker_user_id:minuteTaker||null,
+   p_agenda:agendaDraft.trim()||null,
+   p_internal_notes:internalNotesDraft.trim()||null
   });
   if(error||!meetingId){setFormError(error?.message||"Mødet kunne ikke oprettes.");setSaving(false);return}
   window.location.href=`/calendar/meeting/${meetingId}`;
@@ -115,6 +119,8 @@ export default function CalendarPage(){
 
     {studentMeeting&&<div style={section}><p style={eyebrow}>MØDET HANDLER OM</p><select value={studentId} onChange={e=>setStudentId(e.target.value?Number(e.target.value):"")} style={input}><option value="">Vælg elev (eleven får ikke adgang)</option>{students.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>{studentId&&<><p style={{...eyebrow,marginTop:16}}>FORÆLDRE / VÆRGER</p>{guardians.length?<div style={{display:"grid",gap:7,marginTop:8}}>{guardians.map(g=><label key={g.user_id} style={choice(selectedGuardians.includes(g.user_id))}><input type="checkbox" checked={selectedGuardians.includes(g.user_id)} onChange={()=>toggleGuardian(g.user_id)}/><span><strong>{g.display_name}</strong>{g.relation&&<small> · {g.relation}</small>}</span></label>)}</div>:<p style={muted}>Der er endnu ingen forældre med login koblet til eleven.</p>}<small style={{display:"block",color:"#707670",marginTop:8}}>Valgte forældre får adgang til officielt mødemateriale, aldrig interne noter.</small></>}</div>}
 
+    <div style={section}><p style={eyebrow}>DAGSORDEN</p><label style={label}>Start dagsordenen <span style={{fontWeight:500,color:"#707670"}}>(valgfrit)</span><textarea value={agendaDraft} onChange={e=>setAgendaDraft(e.target.value)} rows={5} placeholder={"Fx:\n1. Kort status\n2. Hvad fungerer lige nu?\n3. Aftaler og næste skridt"} style={{...input,resize:"vertical",lineHeight:1.5}}/></label><small style={{display:"block",marginTop:7,color:"#707670"}}>Du kan altid tilføje, flytte eller ændre punkter efter mødet er oprettet.</small><label style={{...label,marginTop:14}}>Interne forberedelsesnoter <span style={{fontWeight:500,color:"#707670"}}>(valgfrit)</span><textarea value={internalNotesDraft} onChange={e=>setInternalNotesDraft(e.target.value)} rows={3} placeholder="Noter kun til personale – deles ikke med forældre eller eksterne deltagere." style={{...input,resize:"vertical",lineHeight:1.5}}/></label></div>
+
     <div style={section}><p style={eyebrow}>BOOK PERSONALE</p><div style={{padding:"9px 11px",background:"#e7eee9",borderRadius:8,marginTop:8,fontSize:13}}><strong>{currentName}</strong> · du er automatisk med som mødeopretter</div>{directory.filter(u=>u.user_id!==currentUserId).length?<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:7,marginTop:8}}>{directory.filter(u=>u.user_id!==currentUserId).map(u=><label key={u.user_id} style={choice(selected.includes(u.user_id))}><input type="checkbox" checked={selected.includes(u.user_id)} onChange={()=>toggleUser(u.user_id)}/><span><strong>{u.display_name}</strong> <small style={muted}>· {roleName(u.role)}</small></span></label>)}</div>:<p style={muted}>Der er endnu ikke andre aktive personer i personalekataloget.</p>}
      {bookedPeople.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:10,marginTop:14}}><label style={label}>Mødeleder<select value={meetingLeader} onChange={e=>setMeetingLeader(e.target.value)} style={input}><option value="">Ikke valgt</option>{bookedPeople.map(id=><option key={id} value={id}>{directory.find(u=>u.user_id===id)?.display_name||currentName}</option>)}</select></label><label style={label}>Referent<select value={minuteTaker} onChange={e=>setMinuteTaker(e.target.value)} style={input}><option value="">Ikke valgt</option>{bookedPeople.map(id=><option key={id} value={id}>{directory.find(u=>u.user_id===id)?.display_name||currentName}</option>)}</select></label></div>}
     </div>
@@ -132,7 +138,7 @@ const primary:React.CSSProperties={border:0,borderRadius:9,padding:"11px 15px",b
 const card:React.CSSProperties={background:"white",border:"1px solid #ddd9d0",borderRadius:14,padding:18};
 const warning:React.CSSProperties={marginBottom:16,padding:16,background:"#fff3cd",borderRadius:11};
 const label:React.CSSProperties={display:"block",fontWeight:800,fontSize:13,marginTop:10};
-const input:React.CSSProperties={display:"block",width:"100%",boxSizing:"border-box",marginTop:6,padding:11,border:"1px solid #d8d5cd",borderRadius:8,background:"white"};
+const input:React.CSSProperties={display:"block",width:"100%",boxSizing:"border-box",marginTop:6,padding:11,border:"1px solid #d8d5cd",borderRadius:8,background:"white",font:"inherit"};
 const eyebrow:React.CSSProperties={fontSize:11,fontWeight:900,letterSpacing:1.3,color:"#718077",margin:0};
 const section:React.CSSProperties={marginTop:18,paddingTop:15,borderTop:"1px solid #e2ded5"};
 const muted:React.CSSProperties={color:"#707670"};
