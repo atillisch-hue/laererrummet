@@ -5,7 +5,20 @@ import { usePathname } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { hasRole } from "../lib/roles";
 
-const teacherRoots=["/noticeboard","/students","/teacher-dashboard","/teacher-overview","/teacher-room","/create-assignment","/grammar","/preparation"];
+const teacherRoots=[
+ "/noticeboard",
+ "/students",
+ "/student-profile",
+ "/teacher-dashboard",
+ "/teacher-overview",
+ "/teacher-room",
+ "/create-assignment",
+ "/grammar",
+ "/preparation",
+ "/calendar",
+ "/archive",
+ "/my-tasks"
+];
 
 function starts(path:string,root:string){return path===root||path.startsWith(root+"/")}
 function protectedArea(path:string){
