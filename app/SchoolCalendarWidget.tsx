@@ -21,7 +21,7 @@ type AgendaItem=
 const iso=(d:Date)=>{const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0");return `${y}-${m}-${day}`};
 function week(s:string){const d=new Date(s+"T12:00:00"),x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())),day=x.getUTCDay()||7;x.setUTCDate(x.getUTCDate()+4-day);const ys=new Date(Date.UTC(x.getUTCFullYear(),0,1));return Math.ceil((((x.getTime()-ys.getTime())/86400000)+1)/7)}
 
-export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDates=[]}:{selectedDate?:string;onSelectDate?:(date:string)=>void;markedDates?:string[]}){
+export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDates=[],meetings=[]}:{selectedDate?:string;onSelectDate?:(date:string)=>void;markedDates?:string[];meetings?:CalendarMeeting[]}){
  const pathname=usePathname();
  const[closed,setClosed]=useState<ClosedDay[]>([]);
  const[view,setView]=useState(()=>{const n=selectedDate?new Date(selectedDate+"T12:00:00"):new Date();return new Date(n.getFullYear(),n.getMonth(),1)});
@@ -33,7 +33,6 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
  const[classes,setClasses]=useState<Klass[]>([]);
  const[staff,setStaff]=useState<Staff[]>([]);
  const[lessonSummaries,setLessonSummaries]=useState<LessonSummary[]>([]);
- const[meetings,setMeetings]=useState<CalendarMeeting[]>([]);
 
  useEffect(()=>{
   let active=true;
@@ -56,14 +55,13 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
    const uid=auth.session?.user.id||"";
    if(!uid||!active)return;
    setUserId(uid);
-   const[eRes,stRes,subRes,tRes,cRes,pRes,mRes]=await Promise.all([
+   const[eRes,stRes,subRes,tRes,cRes,pRes]=await Promise.all([
     supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room"),
     supabase.from("schedule_teachers").select("schedule_entry_id,teacher_id").eq("teacher_id",uid),
     supabase.from("substitute_assignments").select("id,schedule_entry_id,assignment_date,absent_teacher_id,substitute_teacher_id,substitute_plan"),
     supabase.from("meeting_actions").select("id,title,due_date,completed,responsible_user_id").eq("responsible_user_id",uid).eq("completed",false),
     supabase.from("classes").select("id,name"),
-    supabase.rpc("get_internal_staff_directory"),
-    supabase.from("calendar_meetings").select("id,title,meeting_type,starts_at,ends_at,location").order("starts_at")
+    supabase.rpc("get_internal_staff_directory")
    ]);
    if(!active)return;
    setSchedule((eRes.data||[]) as ScheduleEntry[]);
@@ -72,7 +70,6 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
    setTasks((tRes.data||[]) as Task[]);
    setClasses((cRes.data||[]) as Klass[]);
    setStaff((pRes.data||[]) as Staff[]);
-   setMeetings((mRes.data||[]) as CalendarMeeting[]);
   })();
   return()=>{active=false};
  },[pathname]);
@@ -118,7 +115,7 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
   ...dayTasks.map(task=>({kind:"task" as const,sort:new Date(`${activeDate}T23:59:59`).getTime(),task}))
  ].sort((a,b)=>a.sort-b.sort);
 
- return <div style={{display:"grid",gap:14}}>
+ return <div style={{display:"grid",gridTemplateColumns:pathname==="/calendar"?"minmax(280px,390px) minmax(0,1fr)":"1fr",gap:14,alignItems:"start"}}>
   <section style={{background:"white",border:"1px solid #ddd9d0",borderRadius:15,padding:20}}>
    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}><div><p style={{fontSize:10,fontWeight:800,letterSpacing:1.5,color:"#718077",margin:0}}>SKOLEKALENDER</p><h2 style={{fontFamily:"Georgia,serif",textTransform:"capitalize",margin:"6px 0 0"}}>{view.toLocaleDateString("da-DK",{month:"long",year:"numeric"})}</h2></div><div style={{display:"flex",gap:6}}><button style={nav} onClick={()=>setView(v=>new Date(v.getFullYear(),v.getMonth()-1,1))}>←</button><button style={nav} onClick={()=>setView(v=>new Date(v.getFullYear(),v.getMonth()+1,1))}>→</button></div></div>
    <div style={{display:"grid",gridTemplateColumns:"34px repeat(5,1fr)",gap:3,marginTop:14}}><b style={head}>U</b>{["M","T","O","T","F"].map((x,i)=><b key={i} style={head}>{x}</b>)}{weeks.map((w,i)=><div key={`${w.num}-${i}`} style={{display:"contents"}}><span style={wk}>{w.num}</span>{w.days.slice(0,5).map(d=>{const s=iso(d),off=marked.get(s),other=d.getMonth()!==view.getMonth(),today=s===iso(new Date()),selected=s===selectedDate,hasSpecial=special.has(s);return <button key={s} onClick={()=>choose(s)} title={off||"Vis dagen"} style={{...day,opacity:other?.3:1,background:selected?"#365044":off?"#efe0b7":today?"#e7eee9":"#faf9f6",color:selected?"white":"inherit",borderColor:selected?"#365044":today?"#86a294":"#eee9df",cursor:"pointer"}}><strong>{d.getDate()}</strong>{(off||hasSpecial)&&<span style={{display:"block",width:5,height:5,borderRadius:9,background:selected?"#dfa94f":hasSpecial?"#486b59":"#a57c2b",margin:"3px auto 0"}}/>}</button>})}</div>)}</div>
