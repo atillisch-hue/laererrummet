@@ -1,5 +1,5 @@
 -- Klassevaerelset security hardening phase 1b
--- Keep parent-link administration school-scoped.
+-- Keep parent-link administration school-scoped without depending on later helpers.
 
 create or replace function public.admin_parent_links()
 returns table(parent_id uuid, student_id bigint)
@@ -12,5 +12,12 @@ as $$
   from public.parent_students ps
   join public.students s on s.id = ps.student_id
   join public.classes c on c.id = s.class_id
-  where public.has_school_role(c.school_id, 'admin');
+  where exists (
+    select 1
+    from public.school_memberships sm
+    where sm.user_id = auth.uid()
+      and sm.school_id = c.school_id
+      and sm.role = 'admin'
+      and sm.active = true
+  );
 $$;
