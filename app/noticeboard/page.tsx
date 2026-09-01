@@ -4,6 +4,7 @@ import Link from "next/link";
 import {useEffect,useState} from "react";
 import {supabase} from "../../lib/supabase";
 import {hasRole} from "../../lib/roles";
+import MeetingActionInbox from "../MeetingActionInbox";
 
 type Audience="teacher"|"parent"|"board"|"admin"|"student";
 type Note={id:string;text:string;author_email:string;author_id:string;created_at:string;audiences:Audience[]};
@@ -113,7 +114,7 @@ export default function Noticeboard(){
   </header>
 
   <section style={{maxWidth:1000,margin:"auto",padding:"32px 26px 60px"}}>
-   <section style={{background:"white",border:"1px solid #ddd9d0",borderRadius:16,padding:"20px 22px"}}>
+   <section style={{background:"white",border:"1px solid #ddd9d0",borderRadius:16,padding:"20px 22px",marginBottom:20}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
      <div><p style={{fontSize:11,fontWeight:900,letterSpacing:1.4,color:"#718077",margin:0,textTransform:"uppercase"}}>{isToday?"I DAG · ":""}{selectedLabel}</p><h2 style={{fontFamily:"Georgia,serif",margin:"5px 0 0",fontSize:27}}>Dagens overblik</h2></div>
      <div style={{display:"flex",gap:7}}><button onClick={()=>moveDay(-1)}>←</button>{!isToday&&<button onClick={()=>setSelectedDate(iso(new Date()))}>I dag</button>}<button onClick={()=>moveDay(1)}>→</button></div>
@@ -123,6 +124,8 @@ export default function Noticeboard(){
     </div>}
     <div style={{marginTop:15}}><Link href="/calendar" style={{color:"#365044",fontWeight:800,textDecoration:"none"}}>Åbn hele arbejdsdagen i Kalender →</Link></div>
    </section>
+
+   <MeetingActionInbox/>
 
    {!dbReady&&<div style={{marginTop:18,padding:14,background:"#fff3cd",borderRadius:10}}>Opslagstavlen kunne ikke hente databasen.</div>}
 
