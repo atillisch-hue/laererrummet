@@ -18,7 +18,7 @@ const card:React.CSSProperties={background:"white",border:"1px solid #ddd9d0",bo
 const input:React.CSSProperties={width:"100%",boxSizing:"border-box",padding:"10px 11px",border:"1px solid #d8d5cd",borderRadius:8,font:"inherit",background:"white"};
 const typeLabel:Record<ItemType,string>={post:"Opslag",section:"Sektion",link:"Link",material:"Materiale",note:"Lærernote"};
 
-export default function LessonResources({lessonId,classId,canEdit}:{lessonId:number|null;classId:number;canEdit:boolean}){
+export default function LessonResources({lessonId,classId,classSubjectId,canEdit}:{lessonId:number|null;classId:number;classSubjectId?:number|null;canEdit:boolean}){
  const[resources,setResources]=useState<LinkedResource[]>([]),[items,setItems]=useState<RoomItem[]>([]),[assignments,setAssignments]=useState<Assignment[]>([]),[rooms,setRooms]=useState<Room[]>([]),[subjects,setSubjects]=useState<Subject[]>([]),[choice,setChoice]=useState(""),[message,setMessage]=useState(""),[saving,setSaving]=useState(false);
 
  const load=async()=>{
@@ -31,8 +31,9 @@ export default function LessonResources({lessonId,classId,canEdit}:{lessonId:num
 
  useEffect(()=>{load()},[lessonId]);
  useEffect(()=>{if(!canEdit)return;(async()=>{
+  const roomQuery=supabase.from("class_subjects").select("id,title,subject_id").eq("active",true);
   const [r,s,a]=await Promise.all([
-   supabase.from("class_subjects").select("id,title,subject_id").eq("class_id",classId).eq("active",true),
+   classSubjectId?roomQuery.eq("id",classSubjectId):roomQuery.eq("class_id",classId),
    supabase.from("subjects").select("id,name").eq("active",true),
    supabase.from("assignments").select("id,title,type,instructions,class_subject_id").eq("class_id",classId).order("id",{ascending:false})
   ]);
@@ -42,14 +43,14 @@ export default function LessonResources({lessonId,classId,canEdit}:{lessonId:num
    const i=await supabase.from("subject_room_items").select("id,class_subject_id,item_type,title,body,url").in("class_subject_id",roomIds).order("position").order("created_at");
    setItems((i.data||[]) as RoomItem[]);
   }else setItems([]);
- })()},[classId,canEdit]);
+ })()},[classId,classSubjectId,canEdit]);
 
  const roomLabel=(roomId:number)=>{const r=rooms.find(x=>x.id===roomId);return r?.title||subjects.find(s=>s.id===r?.subject_id)?.name||"Fag"};
  const linkedItemIds=new Set(resources.filter((x):x is Extract<LinkedResource,{kind:"item"}>=>x.kind==="item").map(x=>x.source_id));
  const linkedAssignmentIds=new Set(resources.filter((x):x is Extract<LinkedResource,{kind:"assignment"}>=>x.kind==="assignment").map(x=>x.source_id));
  const options=[
   ...items.filter(i=>!linkedItemIds.has(i.id)).map(i=>({value:`item:${i.id}`,label:`${roomLabel(i.class_subject_id)} · ${i.title||typeLabel[i.item_type]}`})),
-  ...assignments.filter(a=>!linkedAssignmentIds.has(a.id)).map(a=>({value:`assignment:${a.id}`,label:`Opgave · ${a.title}`}))
+  ...assignments.filter(a=>!linkedAssignmentIds.has(a.id)&&(!classSubjectId||!a.class_subject_id||a.class_subject_id===classSubjectId)).map(a=>({value:`assignment:${a.id}`,label:`Opgave · ${a.title}`}))
  ].sort((a,b)=>a.label.localeCompare(b.label,"da"));
 
  async function add(){
@@ -69,7 +70,7 @@ export default function LessonResources({lessonId,classId,canEdit}:{lessonId:num
   {!lessonId?<div style={{marginTop:14,padding:"12px 13px",background:"#f5f3ee",borderRadius:9,color:"#687068"}}>Gem lektionen én gang, før du kobler materialer til den.</div>:<>
    {resources.length===0?<div style={{marginTop:14,padding:"12px 13px",background:"#f8f7f3",borderRadius:9,color:"#687068"}}>Der er endnu ikke koblet materiale eller opgaver til denne time.</div>:<div style={{display:"grid",gap:9,marginTop:14}}>{resources.map(r=>r.kind==="item"?<article key={`i-${r.link_id}`} style={{padding:"12px 13px",border:"1px solid #e0ddd5",borderRadius:10,background:"#fbfaf7",position:"relative"}}>{canEdit&&<button onClick={()=>remove(r.link_id)} aria-label="Fjern fra lektionen" style={removeButton}>×</button>}<small style={{fontWeight:900,color:"#718077"}}>{r.source_label.toUpperCase()} · {typeLabel[r.item_type].toUpperCase()}</small>{r.title&&<strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:19,marginTop:4}}>{r.title}</strong>}{r.body&&<p style={{margin:"7px 0 0",lineHeight:1.5,color:"#5f675f",whiteSpace:"pre-wrap"}}>{r.body}</p>}{r.url&&<a href={r.url} target="_blank" rel="noreferrer" style={{display:"inline-block",marginTop:8,color:"#486b59",fontWeight:900}}>Åbn →</a>}</article>:<article key={`a-${r.link_id}`} style={{padding:"12px 13px",border:"1px solid #d7dfd8",borderRadius:10,background:"#eef3ee",position:"relative"}}>{canEdit&&<button onClick={()=>remove(r.link_id)} aria-label="Fjern fra lektionen" style={removeButton}>×</button>}<small style={{fontWeight:900,color:"#65766d"}}>OPGAVE · {r.assignment_type.toUpperCase()}</small><strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:19,marginTop:4}}>{r.title}</strong>{r.instructions&&<p style={{margin:"7px 0 0",lineHeight:1.5,color:"#5f675f"}}>{r.instructions}</p>}{canEdit&&<Link href={`/teacher-overview?class=${classId}`} style={{display:"inline-block",marginTop:8,color:"#486b59",fontWeight:900,textDecoration:"none"}}>Se opgaven →</Link>}</article>)}</div>}
 
-   {canEdit&&<div style={{borderTop:"1px solid #e1ded7",marginTop:15,paddingTop:14}}><label style={{fontWeight:800,fontSize:13}}>Tilføj fra klassens faglokaler eller opgaver<select value={choice} onChange={e=>setChoice(e.target.value)} style={{...input,marginTop:6}}><option value="">Vælg materiale eller opgave</option>{options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></label><button disabled={!choice||saving} onClick={add} style={{marginTop:9,border:0,borderRadius:8,padding:"9px 12px",background:"#486b59",color:"white",fontWeight:900,cursor:"pointer",opacity:!choice||saving?0.55:1}}>{saving?"Gemmer…":"Kobl til lektionen"}</button></div>}
+   {canEdit&&<div style={{borderTop:"1px solid #e1ded7",marginTop:15,paddingTop:14}}><label style={{fontWeight:800,fontSize:13}}>Tilføj fra {classSubjectId?"faglokalet":"klassens faglokaler"} eller opgaver<select value={choice} onChange={e=>setChoice(e.target.value)} style={{...input,marginTop:6}}><option value="">Vælg materiale eller opgave</option>{options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></label><button disabled={!choice||saving} onClick={add} style={{marginTop:9,border:0,borderRadius:8,padding:"9px 12px",background:"#486b59",color:"white",fontWeight:900,cursor:"pointer",opacity:!choice||saving?0.55:1}}>{saving?"Gemmer…":"Kobl til lektionen"}</button></div>}
   </>}
   {message&&<div style={{marginTop:10,fontSize:13,fontWeight:800,color:message.includes("✓")?"#486b59":"#8b342e"}}>{message}</div>}
  </section>;
