@@ -1,9 +1,8 @@
 export type AppRole="teacher"|"admin"|"parent"|"board";
 
 export function userRoles(user:any):AppRole[]{
- const meta=user?.user_metadata||{};
  const app=user?.app_metadata||{};
- const values=[...(Array.isArray(meta.roles)?meta.roles:[]),...(Array.isArray(app.roles)?app.roles:[]),meta.role,app.role].filter(Boolean);
+ const values=[...(Array.isArray(app.roles)?app.roles:[]),app.role].filter(Boolean);
  return Array.from(new Set(values)).filter((r):r is AppRole=>r==="teacher"||r==="admin"||r==="parent"||r==="board");
 }
 
