@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {useEffect,useMemo,useState} from "react";
+import {useSearchParams} from "next/navigation";
 import {supabase} from "../../lib/supabase";
 import {hasRole} from "../../lib/roles";
 
@@ -19,6 +20,8 @@ const input:React.CSSProperties={width:"100%",boxSizing:"border-box",padding:"11
 const dateOnly=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 
 export default function LinkToLesson(){
+ const search=useSearchParams();
+ const requestedLesson=search.get("lesson")||"";
  const[lessons,setLessons]=useState<Upcoming[]>([]),[selectedKey,setSelectedKey]=useState(""),[options,setOptions]=useState<ResourceOption[]>([]),[resource,setResource]=useState(""),[lessonInstanceId,setLessonInstanceId]=useState<number|null>(null),[goals,setGoals]=useState(""),[plan,setPlan]=useState(""),[loadingResources,setLoadingResources]=useState(false),[saving,setSaving]=useState(false),[message,setMessage]=useState("");
  const selected=useMemo(()=>lessons.find(l=>`${l.scheduleId}:${l.date}`===selectedKey)||null,[lessons,selectedKey]);
 
@@ -57,6 +60,11 @@ export default function LinkToLesson(){
   next.sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start)||a.className.localeCompare(b.className,"da"));
   setLessons(next);
  })()},[]);
+
+ useEffect(()=>{
+  if(!requestedLesson||lessons.length===0)return;
+  if(lessons.some(l=>`${l.scheduleId}:${l.date}`===requestedLesson))setSelectedKey(requestedLesson);
+ },[requestedLesson,lessons]);
 
  useEffect(()=>{
   if(!selected){setOptions([]);setResource("");setLessonInstanceId(null);setGoals("");setPlan("");return}
