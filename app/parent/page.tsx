@@ -10,7 +10,8 @@ import RoleNoticeboard from "../RoleNoticeboard";
 type Assignment={id:number;title:string;type:string;instructions:string|null;class_subject_id:number|null;subject_title:string|null;created_at:string};
 type ScheduleEntry={id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:"lesson"|"assembly"|"break";recurrence_pattern:RecurrencePattern};
 type Absence={id:number;absence_date:string;status:string;source:string;created_at:string};
-type Child={id:number;name:string;class_id:number|null;class_name:string|null;assignments:Assignment[];schedule:ScheduleEntry[];absence:Absence[]};
+type ClosedDay={date:string;label?:string};
+type Child={id:number;name:string;class_id:number|null;class_name:string|null;closed_days:ClosedDay[];assignments:Assignment[];schedule:ScheduleEntry[];absence:Absence[]};
 type ParentPayload={children?:Child[]};
 
 const shell:React.CSSProperties={maxWidth:1100,margin:"auto",padding:"42px 24px 80px"};
@@ -43,7 +44,8 @@ export default function ParentPage(){
  const active=children.find(c=>c.id===activeId)||children[0]||null;
  const today=dateOnly(new Date());
  const weekday=new Date(today+"T12:00:00").getDay();
- const todaySchedule=useMemo(()=>active?.schedule.filter(entry=>entry.weekday===weekday&&scheduleOccursOn(entry.recurrence_pattern,today)).sort((a,b)=>a.start_time.localeCompare(b.start_time))||[],[active,weekday,today]);
+ const activeClosure=active?.closed_days?.find(x=>x.date===today)||null;
+ const todaySchedule=useMemo(()=>activeClosure?[]:(active?.schedule.filter(entry=>entry.weekday===weekday&&scheduleOccursOn(entry.recurrence_pattern,today)).sort((a,b)=>a.start_time.localeCompare(b.start_time))||[]),[active,weekday,today,activeClosure]);
  const recentAssignments=active?.assignments.slice(0,6)||[];
  const recentAbsence=active?.absence.slice(0,5)||[];
 
@@ -59,13 +61,13 @@ export default function ParentPage(){
    {!children.length?<section style={{...card,marginTop:22}}>Skolen mangler at knytte et barn til din aktive forældrekonto.</section>:<>
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:24}}>{children.map(child=><button key={child.id} onClick={()=>{setActiveId(child.id);setOpenAssignmentId(null)}} style={{padding:"10px 14px",borderRadius:9,border:active?.id===child.id?"1px solid #365044":"1px solid #d8d5cd",background:active?.id===child.id?"#365044":"white",color:active?.id===child.id?"white":"#27352d",fontWeight:850,cursor:"pointer"}}>{child.name}{child.class_name?` · ${child.class_name}`:""}</button>)}</div>
 
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:14,flexWrap:"wrap",marginTop:28}}><div><p style={eyebrow}>DU SER NU</p><h2 style={{fontFamily:"Georgia,serif",fontSize:31,margin:"5px 0 0"}}>{active?.name}{active?.class_name?` · ${active.class_name}`:""}</h2></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><Link href="/parent/absence" style={secondary}>Meld syg / fravær →</Link><Link href="/parent/meetings" style={secondary}>Møder →</Link></div></div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:14,flexWrap:"wrap",marginTop:28}}><div><p style={eyebrow}>DU SER NU</p><h2 style={{fontFamily:"Georgia,serif",fontSize:31,margin:"5px 0 0"}}>{active?.name}{active?.class_name?` · ${active.class_name}`:""}</h2></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><Link href="/parent/schedule" style={secondary}>Hele skemaet →</Link><Link href="/parent/absence" style={secondary}>Meld syg / fravær →</Link><Link href="/parent/meetings" style={secondary}>Møder →</Link></div></div>
 
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(285px,1fr))",gap:16,marginTop:18,alignItems:"start"}}>
      <section id="today" style={{...card,background:"#eef2ed"}}>
       <p style={eyebrow}>I DAG · {new Date(today+"T12:00:00").toLocaleDateString("da-DK",{weekday:"long",day:"numeric",month:"long"}).toUpperCase()}</p>
-      <h3 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"7px 0 13px"}}>Skema</h3>
-      {todaySchedule.length===0?<p style={{color:"#687068",margin:0}}>Der er ingen almindelige skemabrikker for klassen i dag.</p>:<div style={{display:"grid",gap:8}}>{todaySchedule.map(entry=><article key={entry.id} style={{padding:"10px 11px",background:"white",border:"1px solid #d9e0da",borderRadius:9}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"start"}}><strong>{entry.start_time.slice(0,5)}–{entry.end_time.slice(0,5)} · {entry.subject}</strong><small style={{fontSize:9,fontWeight:900,color:"#627168"}}>{kindLabel(entry.entry_kind).toUpperCase()}</small></div><small style={{display:"block",marginTop:3,color:"#6d756f"}}>{entry.room||"Intet lokale angivet"}{entry.recurrence_pattern!=="weekly"?` · ${recurrenceLabel(entry.recurrence_pattern)}`:""}</small></article>)}</div>}
+      <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><h3 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"7px 0 13px"}}>Skema</h3><Link href="/parent/schedule" style={{...secondary,padding:"6px 8px"}}>Se uge →</Link></div>
+      {activeClosure?<div style={{padding:"11px 12px",background:"#f6edd7",border:"1px solid #dfca96",borderRadius:9,color:"#655538"}}><strong>{activeClosure.label||"Skolen er lukket"}</strong><small style={{display:"block",marginTop:3}}>Det almindelige skema vises derfor ikke i dag.</small></div>:todaySchedule.length===0?<p style={{color:"#687068",margin:0}}>Der er ingen almindelige skemabrikker for klassen i dag.</p>:<div style={{display:"grid",gap:8}}>{todaySchedule.map(entry=><article key={entry.id} style={{padding:"10px 11px",background:"white",border:"1px solid #d9e0da",borderRadius:9}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"start"}}><strong>{entry.start_time.slice(0,5)}–{entry.end_time.slice(0,5)} · {entry.subject}</strong><small style={{fontSize:9,fontWeight:900,color:"#627168"}}>{kindLabel(entry.entry_kind).toUpperCase()}</small></div><small style={{display:"block",marginTop:3,color:"#6d756f"}}>{entry.room||"Intet lokale angivet"}{entry.recurrence_pattern!=="weekly"?` · ${recurrenceLabel(entry.recurrence_pattern)}`:""}</small></article>)}</div>}
      </section>
 
      <section id="assignments" style={card}>
