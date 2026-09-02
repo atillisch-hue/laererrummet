@@ -14,6 +14,7 @@ import { foundationGrammarLibrary } from "./foundation-library";
 import {
   filterLevelsForGrade,
   gradeBandLabel,
+  prerequisiteTopicForGrade,
   tagLibraryForGrades,
   type GradedGrammarLibrary,
   type GradedGrammarQuestion,
@@ -237,7 +238,12 @@ export default function StudentGrammar() {
     })();
   }, []);
 
-  const rawTopicLevels = useMemo<Record<string, IQ[]>>(() => assignment ? library[assignment.topic] || {} : {}, [assignment]);
+  const prerequisiteTopic = useMemo(
+    () => assignment ? prerequisiteTopicForGrade(assignment.topic, assignment.grade_level, assignment.level) : null,
+    [assignment]
+  );
+  const activeTopic = prerequisiteTopic || assignment?.topic || "";
+  const rawTopicLevels = useMemo<Record<string, IQ[]>>(() => activeTopic ? library[activeTopic] || {} : {}, [activeTopic]);
   const topicLevels = useMemo<Record<string, IQ[]>>(
     () => assignment ? filterLevelsForGrade(rawTopicLevels, assignment.grade_level, assignment.level) : {},
     [assignment, rawTopicLevels]
@@ -282,7 +288,9 @@ export default function StudentGrammar() {
       correct: answerIsCorrect(question, answers[index]),
       explanation: question.why,
       round: roundNumber,
-      kind: question.kind || "choice"
+      kind: question.kind || "choice",
+      trainedTopic: activeTopic,
+      assignedTopic: assignment.topic
     }]));
 
     const { data, error: saveError } = await studentSupabase.rpc("save_student_grammar_attempt_session", {
@@ -329,10 +337,11 @@ export default function StudentGrammar() {
         <p style={{marginTop:38,fontSize:11,fontWeight:800,letterSpacing:1.7,color:"#718077"}}>GRAMMATIK · {assignment.area.toUpperCase()}</p>
         <h1 style={{fontFamily:"Georgia,serif",fontSize:42,margin:"8px 0"}}>{assignment.title}</h1>
         <p style={{fontSize:18,color:"#707670",lineHeight:1.55}}>Arbejd dig gennem opgaverne. Nogle løses ved at vælge, andre ved at skrive eller rette selv. Opgaverne er valgt til dit klassetrin, og Udfordring kan løfte dig lidt videre.</p>
-        {assignment.grade_level !== null && assignment.grade_level !== undefined && <span style={{display:"inline-block",marginTop:4,padding:"6px 10px",borderRadius:999,background:"#e7eee9",color:"#486b59",fontSize:12,fontWeight:900}}>TILPASSET · {gradeBandLabel(Number(assignment.grade_level))}</span>}
+        {assignment.grade_level !== null && assignment.grade_level !== undefined && <span style={{display:"inline-block",marginTop:4,padding:"6px 10px",borderRadius:999,background:"#e7eee9",color:"#486b59",fontSize:12,fontWeight:900}}>TILPASSET · {Number(assignment.grade_level)}. klasse · {gradeBandLabel(Number(assignment.grade_level))}</span>}
+        {prerequisiteTopic && <div style={{marginTop:14,padding:"12px 14px",borderRadius:10,background:"#fff7e8",border:"1px solid #ead8ad",color:"#665431",lineHeight:1.5}}><strong>Du bygger fundament først</strong><br />Emnet <strong>{assignment.topic}</strong> ligger normalt senere i progressionen. Derfor træner du først <strong>{prerequisiteTopic}</strong>, som gør dig klar til næste skridt.</div>}
         {topicPool.length > questions.length && <p style={{fontSize:14,color:"#718077",fontWeight:700}}>Runde {roundNumber} · {questions.length} spørgsmål · {topicPool.length} passende spørgsmål i emnebanken</p>}
 
-        {questions.length === 0 ? <div style={{marginTop:30,background:"white",padding:28,borderRadius:14,border:"1px solid #ddd9d0"}}><h2>{assignment.topic}</h2><p>{assignment.grade_level === null || assignment.grade_level === undefined ? "Opgaver til dette emne er på vej." : "Dette emne ligger over den normale progression for dit klassetrin. Din lærer kan vælge et forberedende emne eller tildele en særlig udfordring."}</p></div> : <>
+        {questions.length === 0 ? <div style={{marginTop:30,background:"white",padding:28,borderRadius:14,border:"1px solid #ddd9d0"}}><h2>{assignment.topic}</h2><p>{assignment.grade_level === null || assignment.grade_level === undefined ? "Opgaver til dette emne er på vej." : "Der er endnu ikke et passende forberedende sæt til dette klassetrin. Din lærer kan vælge et tidligere emne."}</p></div> : <>
           <div style={{display:"grid",gap:16,marginTop:28}}>
             {questions.map((question, index) => {
               const correctNow = submitted && answerIsCorrect(question, answers[index]);
