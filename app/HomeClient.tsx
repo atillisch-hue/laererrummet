@@ -12,6 +12,7 @@ type StaffRole="teacher"|"admin"|"parent"|"board";
 type Assignment={id:number;title:string;type:string;instructions?:string};
 type GrammarAssignment={id:number;title:string;area:string;topic:string;level:string};
 type SpellingExamAssignment={id:number;title:string;time_limit_minutes:number|null;question_count:number;started:boolean;submitted:boolean;score:number|null;max_score:number|null};
+type ReadingExamAssignment={id:number;title:string;time_limit_minutes:number|null;question_count:number;target_grade:number;started:boolean;submitted:boolean;score:number|null;max_score:number|null};
 type StudentData={ok?:boolean;student?:{id:number;name:string;class_id:number};class?:{id:number;name:string};assignments?:Assignment[]};
 
 export default function HomeClient(){
@@ -31,6 +32,7 @@ export default function HomeClient(){
  const[assignments,setAssignments]=useState<Assignment[]>([]);
  const[grammarAssignments,setGrammarAssignments]=useState<GrammarAssignment[]>([]);
  const[spellingExamAssignments,setSpellingExamAssignments]=useState<SpellingExamAssignment[]>([]);
+ const[readingExamAssignments,setReadingExamAssignments]=useState<ReadingExamAssignment[]>([]);
 
  async function hydrateStudent(token:string){
   const{data,error}=await studentSupabase.rpc("student_session_data",{p_session_token:token});
@@ -38,12 +40,14 @@ export default function HomeClient(){
   if(error||!sd?.ok||!sd.student||!sd.class)return false;
   setStudentMode(true);setStudentSessionToken(token);setStudentId(sd.student.id);setStudentName(sd.student.name);setStudentClassName(sd.class.name);
   setAssignments((sd.assignments||[]).map(a=>({id:a.id,title:a.title,type:a.type,instructions:a.instructions||""})));
-  const[grammarResponse,examResponse]=await Promise.all([
+  const[grammarResponse,spellingResponse,readingResponse]=await Promise.all([
    studentSupabase.rpc("student_session_grammar_assignments",{p_session_token:token}),
-   studentSupabase.rpc("student_session_spelling_exam_assignments",{p_session_token:token})
+   studentSupabase.rpc("student_session_spelling_exam_assignments",{p_session_token:token}),
+   studentSupabase.rpc("student_session_reading_exam_assignments",{p_session_token:token})
   ]);
   setGrammarAssignments(grammarResponse.data?.ok?(grammarResponse.data.assignments||[]):[]);
-  setSpellingExamAssignments(examResponse.data?.ok?(examResponse.data.assignments||[]):[]);
+  setSpellingExamAssignments(spellingResponse.data?.ok?(spellingResponse.data.assignments||[]):[]);
+  setReadingExamAssignments(readingResponse.data?.ok?(readingResponse.data.assignments||[]):[]);
   return true;
  }
 
@@ -87,7 +91,7 @@ export default function HomeClient(){
  async function studentLogout(){
   const token=studentSessionToken||getStudentSessionToken();
   if(token){try{await studentSupabase.rpc("student_end_session",{p_session_token:token})}catch{}}
-  clearStudentSession();setStudentId(null);setStudentSessionToken("");setAssignments([]);setGrammarAssignments([]);setSpellingExamAssignments([]);setStudentName("");setStudentClassName("");setStudentMode(false);
+  clearStudentSession();setStudentId(null);setStudentSessionToken("");setAssignments([]);setGrammarAssignments([]);setSpellingExamAssignments([]);setReadingExamAssignments([]);setStudentName("");setStudentClassName("");setStudentMode(false);
  }
 
  if(!ready)return <main className="login"><div className="loginCard"><h1>Klasseværelset</h1><p>Henter Klasseværelset…</p></div></main>;
@@ -129,7 +133,8 @@ export default function HomeClient(){
    <StudentSubjectRooms sessionToken={studentSessionToken}/>
 
    <section style={{margin:"28px 0 34px"}}><p className="eyebrow">FRA DIN LÆRER</p>
-    {spellingExamAssignments.length===0&&grammarAssignments.length===0&&assignments.length===0?<div style={whiteCard}><strong>Du har ikke fået nye opgaver.</strong><p style={{margin:"6px 0 0",color:"#707670"}}>Du kan stadig åbne dine fag eller træne selv.</p></div>:<div className="studentAssignments">
+    {readingExamAssignments.length===0&&spellingExamAssignments.length===0&&grammarAssignments.length===0&&assignments.length===0?<div style={whiteCard}><strong>Du har ikke fået nye opgaver.</strong><p style={{margin:"6px 0 0",color:"#707670"}}>Du kan stadig åbne dine fag eller træne selv.</p></div>:<div className="studentAssignments">
+     {readingExamAssignments.map(p=><button key={`l-${p.id}`} onClick={()=>window.location.href=`/student-laeseproeve?assignment=${p.id}`}><span>L</span><div><strong>{p.title}</strong><small>Læseprøve · {p.target_grade}. kl. niveau · {p.question_count} delspørgsmål · {p.time_limit_minutes?`${p.time_limit_minutes} min`:"uden tid"}{p.submitted&&p.max_score?` · afleveret ${p.score}/${p.max_score}`:p.started?" · i gang":""}</small></div><b>{p.submitted?"Se resultat →":p.started?"Fortsæt →":"Start →"}</b></button>)}
      {spellingExamAssignments.map(p=><button key={`r-${p.id}`} onClick={()=>window.location.href=`/student-retskrivningsproeve?assignment=${p.id}`}><span>R</span><div><strong>{p.title}</strong><small>Retskrivningsprøve · {p.question_count} opgaver · {p.time_limit_minutes?`${p.time_limit_minutes} min`:"uden tid"}{p.submitted&&p.max_score?` · afleveret ${p.score}/${p.max_score}`:p.started?" · i gang":""}</small></div><b>{p.submitted?"Se resultat →":p.started?"Fortsæt →":"Start →"}</b></button>)}
      {grammarAssignments.map(g=><button key={`g-${g.id}`} onClick={()=>window.location.href=`/student-grammar?assignment=${g.id}`}><span>✓</span><div><strong>{g.title}</strong><small>Grammatik · {g.area} · {g.topic}</small></div><b>Start →</b></button>)}
      {assignments.map(a=><button key={a.id} onClick={()=>window.location.href=`/student-assignment/${a.id}`}><span>▤</span><div><strong>{a.title}</strong><small>{a.type} · Skrivehjælp følger med</small></div><b>Åbn →</b></button>)}
