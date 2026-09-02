@@ -5,14 +5,32 @@ import { studentSupabase } from "../../lib/studentSupabase";
 import { trainingCatalog } from "../../lib/trainingCatalog";
 import { freeTrainingQuestions, type TrainingQuestion } from "../../lib/freeTrainingQuestions";
 import { clearStudentSession, getStudentSessionToken } from "../../lib/studentSession";
+import { gradeBandLabel, minimumGradeForTopic } from "../student-grammar/grade-progression";
 
 type ProgressEntry = { attempts: number; best: number; total: number; lastScore: number; updatedAt: string };
 type Progress = Record<string, ProgressEntry>;
+
+const grammarLevelMinimumGrade: Record<string, number> = {
+  start: 1,
+  basis: 3,
+  traening: 5,
+  udfordring: 7,
+  anvendt: 7,
+};
+
+function freeTrainingLevelAllowed(subjectId: string, skill: string | null, levelId: string, gradeLevel: number | null) {
+  if (subjectId !== "dansk-grammatik" || gradeLevel === null) return true;
+  const effectiveGrade = Math.min(10, gradeLevel + (levelId === "udfordring" ? 1 : 0));
+  const levelMinimum = grammarLevelMinimumGrade[levelId] ?? 1;
+  const topicMinimum = skill ? minimumGradeForTopic(skill) : 1;
+  return levelMinimum <= effectiveGrade && topicMinimum <= effectiveGrade;
+}
 
 export default function StudentTraining() {
   const [ready, setReady] = useState(false);
   const [sessionToken, setSessionToken] = useState("");
   const [studentId, setStudentId] = useState<number | null>(null);
+  const [gradeLevel, setGradeLevel] = useState<number | null>(null);
   const [subjectId, setSubjectId] = useState("dansk-grammatik");
   const [areaId, setAreaId] = useState<string | null>(null);
   const [skill, setSkill] = useState<string | null>(null);
@@ -38,8 +56,10 @@ export default function StudentTraining() {
       }
 
       const id = Number(studentData.student.id);
+      const rawGrade = studentData.student.grade_level;
       setSessionToken(token);
       setStudentId(id);
+      setGradeLevel(rawGrade === null || rawGrade === undefined ? null : Number(rawGrade));
 
       let local: Progress = {};
       try {
@@ -74,7 +94,7 @@ export default function StudentTraining() {
   const subject = useMemo(() => trainingCatalog.find((item) => item.id === subjectId) ?? trainingCatalog[0], [subjectId]);
   const area = subject?.areas.find((item) => item.id === areaId);
   const skillBank = skill && areaId ? freeTrainingQuestions[subjectId]?.[areaId]?.[skill] ?? {} : {};
-  const questions: TrainingQuestion[] = levelId ? skillBank[levelId] ?? [] : [];
+  const questions: TrainingQuestion[] = levelId && freeTrainingLevelAllowed(subjectId, skill, levelId, gradeLevel) ? skillBank[levelId] ?? [] : [];
   const score = questions.filter((question, index) => answers[index] === question.answer).length;
   const allAnswered = questions.length > 0 && Object.keys(answers).length === questions.length;
   const runKey = subjectId && areaId && skill && levelId ? [subjectId, areaId, skill, levelId].join("|") : "";
@@ -82,6 +102,7 @@ export default function StudentTraining() {
   const subjectStats = useMemo(() => {
     let available = 0, tried = 0, safe = 0;
     subject.areas.forEach((a) => a.skills.forEach((s) => Object.keys(freeTrainingQuestions[subjectId]?.[a.id]?.[s] ?? {}).forEach((l) => {
+      if (!freeTrainingLevelAllowed(subjectId, s, l, gradeLevel)) return;
       available++;
       const item = progress[[subjectId, a.id, s, l].join("|")];
       if (item) {
@@ -90,11 +111,12 @@ export default function StudentTraining() {
       }
     })));
     return { available, tried, safe };
-  }, [subject, subjectId, progress]);
+  }, [subject, subjectId, progress, gradeLevel]);
 
   const recommendation = useMemo(() => {
     const candidates: {areaId:string;areaTitle:string;skill:string;levelId:string;levelTitle:string;rank:number}[] = [];
     subject.areas.forEach((a) => a.skills.forEach((s) => subject.levels.forEach((level, index) => {
+      if (!freeTrainingLevelAllowed(subjectId, s, level.id, gradeLevel)) return;
       if (!(freeTrainingQuestions[subjectId]?.[a.id]?.[s]?.[level.id] ?? []).length) return;
       const item = progress[[subjectId, a.id, s, level.id].join("|")];
       const pct = item?.total ? item.best / item.total : -1;
@@ -102,7 +124,7 @@ export default function StudentTraining() {
       candidates.push({areaId:a.id,areaTitle:a.title,skill:s,levelId:level.id,levelTitle:level.title,rank});
     })));
     return candidates.sort((a, b) => a.rank - b.rank)[0] ?? null;
-  }, [subject, subjectId, progress]);
+  }, [subject, subjectId, progress, gradeLevel]);
 
   function persist(next: Progress) {
     setProgress(next);
@@ -134,7 +156,8 @@ export default function StudentTraining() {
       studentAnswer: answers[index],
       correctAnswer: question.answer,
       correct: answers[index] === question.answer,
-      explanation: question.why
+      explanation: question.why,
+      gradeLevel
     }]));
 
     const { data, error } = await studentSupabase.rpc("save_student_training_attempt_session", {
@@ -181,7 +204,10 @@ export default function StudentTraining() {
   function chooseSkill(nextSkill: string) {
     if (!areaId) return;
     const levels = freeTrainingQuestions[subjectId]?.[areaId]?.[nextSkill] ?? {};
-    if (!Object.keys(levels).length) return;
+    const hasAllowedLevel = Object.keys(levels).some((candidateLevel) =>
+      freeTrainingLevelAllowed(subjectId, nextSkill, candidateLevel, gradeLevel) && (levels[candidateLevel] ?? []).length > 0
+    );
+    if (!hasAllowedLevel) return;
     setSkill(nextSkill); setLevelId(null); resetRun();
   }
 
@@ -201,6 +227,7 @@ export default function StudentTraining() {
 
   const title = levelId ? `${skill} · ${subject.levels.find((item) => item.id === levelId)?.title ?? levelId}` : skill ?? area?.title ?? subject.title;
   const backLabel = levelId ? skill : skill ? area?.title : areaId ? subject.title : "Mit Klasseværelse";
+  const gradeAwareGrammar = subjectId === "dansk-grammatik";
 
   return <main style={{minHeight:"100vh",background:"#f5f3ee",padding:"36px 24px 80px",color:"#26342e",fontFamily:"Arial,sans-serif"}}>
     <section style={{maxWidth:1000,margin:"0 auto"}}>
@@ -209,7 +236,11 @@ export default function StudentTraining() {
       <h1 style={{fontFamily:"Georgia,serif",fontSize:42,margin:"7px 0"}}>{title}</h1>
       <p style={{fontSize:17,color:"#707670",lineHeight:1.55,maxWidth:720}}>{levelId ? "Tag fem opgaver i dit eget tempo. Når du retter, får du forklaringen med." : skill ? "Vælg det niveau, der passer til det, du vil øve. Dine resultater følger nu din elevsession." : area?.description ?? subject.description}</p>
 
+      {gradeAwareGrammar && gradeLevel !== null && <span style={{display:"inline-block",marginTop:2,marginBottom:12,padding:"6px 10px",borderRadius:999,background:"#e7eee9",color:"#486b59",fontSize:12,fontWeight:900}}>TILPASSET · {gradeLevel}. klasse · {gradeBandLabel(gradeLevel)}</span>}
+      {gradeAwareGrammar && gradeLevel === null && <div style={{margin:"10px 0 16px",padding:"11px 13px",borderRadius:9,background:"#fff7e8",border:"1px solid #ead8ad",color:"#665431",fontSize:14,lineHeight:1.45}}><strong>Klassetrin er ikke angivet endnu.</strong> Indtil en administrator sætter det, vises alle grammatikniveauer som før.</div>}
+
       {levelId ? <>
+        {questions.length === 0 ? <div style={{background:"white",border:"1px solid #ddd9d0",borderRadius:13,padding:22,marginTop:20}}><strong>Dette niveau er ikke åbent endnu.</strong><p style={{marginBottom:0,color:"#6b716d"}}>Vælg et af de niveauer, der passer til dit klassetrin.</p></div> : <>
         <div style={{display:"grid",gap:14,marginTop:25}}>
           {questions.map((item, index) => <article key={`${levelId}-${index}`} style={{background:"#fff",border:"1px solid #d8d5cd",borderRadius:14,padding:22}}>
             <small style={{fontWeight:800,color:"#718077",letterSpacing:1}}>OPGAVE {index + 1} AF {questions.length}</small>
@@ -232,28 +263,31 @@ export default function StudentTraining() {
             <small>{saveState}</small><br />
             <button onClick={resetRun} style={{marginTop:14,padding:"10px 14px",borderRadius:9,border:"1px solid rgba(255,255,255,.35)",background:"transparent",color:"#fff",fontWeight:800,cursor:"pointer"}}>Prøv igen</button>
           </div>}
+        </>}
       </> : skill ?
         <div style={{display:"grid",gap:10,marginTop:24}}>{subject.levels.map((level) => {
-          const available = (skillBank[level.id] ?? []).length > 0;
+          const allowed = freeTrainingLevelAllowed(subjectId, skill, level.id, gradeLevel);
+          const available = allowed && (skillBank[level.id] ?? []).length > 0;
           const key = [subjectId, areaId, skill, level.id].join("|");
           const stat = statusFor(key);
-          return <button key={level.id} disabled={!available} onClick={() => {setLevelId(level.id);resetRun();}} style={{textAlign:"left",background:available ? "#fff" : "#f8f6f1",border:"1px solid #d8d5cd",borderRadius:13,padding:"17px 19px",cursor:available ? "pointer" : "default",opacity:available ? 1 : .55,color:"#26342e"}}><div style={{display:"flex",justifyContent:"space-between",gap:15,alignItems:"center"}}><div><strong style={{fontSize:18}}>{level.title}</strong><small style={{display:"block",marginTop:4,color:"#777"}}>{level.stage} · {level.description}</small>{stat && <small style={{display:"block",marginTop:6,color:"#526b60",fontWeight:800}}>{stat} · bedste {progress[key].best}/{progress[key].total}</small>}</div><b style={{color:"#526b60",fontSize:13}}>{available ? stat ? "Træn igen →" : "Start →" : "På vej"}</b></div></button>;
+          return <button key={level.id} disabled={!available} onClick={() => {setLevelId(level.id);resetRun();}} style={{textAlign:"left",background:available ? "#fff" : "#f8f6f1",border:"1px solid #d8d5cd",borderRadius:13,padding:"17px 19px",cursor:available ? "pointer" : "default",opacity:available ? 1 : .55,color:"#26342e"}}><div style={{display:"flex",justifyContent:"space-between",gap:15,alignItems:"center"}}><div><strong style={{fontSize:18}}>{level.title}</strong><small style={{display:"block",marginTop:4,color:"#777"}}>{level.stage} · {level.description}</small>{stat && available && <small style={{display:"block",marginTop:6,color:"#526b60",fontWeight:800}}>{stat} · bedste {progress[key].best}/{progress[key].total}</small>}</div><b style={{color:"#526b60",fontSize:13}}>{available ? stat ? "Træn igen →" : "Start →" : allowed ? "På vej" : "Senere i progressionen"}</b></div></button>;
         })}</div> : !area ? <>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"22px 0"}}>{trainingCatalog.map((item) => <button key={item.id} onClick={() => chooseSubject(item.id)} style={{border:item.id === subjectId ? "2px solid #526b60" : "1px solid #d8d5cd",background:item.id === subjectId ? "#edf1ec" : "#fff",borderRadius:999,padding:"9px 13px",fontWeight:800,cursor:"pointer"}}>{item.title}</button>)}</div>
-          {recommendation && <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:18,alignItems:"center",background:"#273f35",color:"white",borderRadius:15,padding:"19px 21px",marginBottom:14}}><div><small style={{fontWeight:900,letterSpacing:1,opacity:.75}}>MIT NÆSTE SKRIDT</small><strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:21,marginTop:5}}>{recommendation.skill} · {recommendation.levelTitle}</strong><span style={{display:"block",marginTop:4,opacity:.82,fontSize:14}}>{recommendation.areaTitle} · valgt ud fra det, du allerede har trænet</span></div><button onClick={startRecommendation} style={{border:0,borderRadius:9,padding:"11px 14px",background:"white",color:"#273f35",fontWeight:900,cursor:"pointer"}}>Træn nu →</button></div>}
+          {recommendation && <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:18,alignItems:"center",background:"#273f35",color:"white",borderRadius:15,padding:"19px 21px",marginBottom:14}}><div><small style={{fontWeight:900,letterSpacing:1,opacity:.75}}>MIT NÆSTE SKRIDT</small><strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:21,marginTop:5}}>{recommendation.skill} · {recommendation.levelTitle}</strong><span style={{display:"block",marginTop:4,opacity:.82,fontSize:14}}>{recommendation.areaTitle} · valgt ud fra {gradeAwareGrammar && gradeLevel !== null ? "dit klassetrin og " : ""}det, du allerede har trænet</span></div><button onClick={startRecommendation} style={{border:0,borderRadius:9,padding:"11px 14px",background:"white",color:"#273f35",fontWeight:900,cursor:"pointer"}}>Træn nu →</button></div>}
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}><span style={{background:"#fff",border:"1px solid #ddd9d0",borderRadius:999,padding:"7px 10px",fontSize:12,fontWeight:800}}>{subjectStats.tried} niveauer prøvet</span><span style={{background:"#edf1ec",borderRadius:999,padding:"7px 10px",fontSize:12,fontWeight:800}}>{subjectStats.safe} sikre</span><span style={{background:"#fff",border:"1px solid #ddd9d0",borderRadius:999,padding:"7px 10px",fontSize:12,fontWeight:800}}>{Math.max(0, subjectStats.available - subjectStats.safe)} at udforske</span></div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14}}>{subject.areas.map((item) => {
-            const completed = item.skills.reduce((sum, currentSkill) => sum + Object.keys(freeTrainingQuestions[subjectId]?.[item.id]?.[currentSkill] ?? {}).filter((level) => statusFor([subjectId,item.id,currentSkill,level].join("|")) === "Sikker ✓").length, 0);
-            return <button key={item.id} onClick={() => setAreaId(item.id)} style={{textAlign:"left",background:"#fff",border:"1px solid #d8d5cd",borderRadius:14,padding:20,cursor:"pointer",color:"#26342e"}}><strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:23}}>{item.title}</strong><span style={{display:"block",margin:"7px 0 14px",color:"#707670",lineHeight:1.45}}>{item.description}</span><small style={{fontWeight:800,color:"#526b60"}}>{completed ? `${completed} niveau${completed === 1 ? "" : "er"} sikkert · ` : ""}Åbn →</small></button>;
+            const completed = item.skills.reduce((sum, currentSkill) => sum + Object.keys(freeTrainingQuestions[subjectId]?.[item.id]?.[currentSkill] ?? {}).filter((level) => freeTrainingLevelAllowed(subjectId,currentSkill,level,gradeLevel) && statusFor([subjectId,item.id,currentSkill,level].join("|")) === "Sikker ✓").length, 0);
+            const availableInArea = item.skills.some((currentSkill) => Object.keys(freeTrainingQuestions[subjectId]?.[item.id]?.[currentSkill] ?? {}).some((level) => freeTrainingLevelAllowed(subjectId,currentSkill,level,gradeLevel)));
+            return <button key={item.id} disabled={!availableInArea} onClick={() => availableInArea && setAreaId(item.id)} style={{textAlign:"left",background:availableInArea?"#fff":"#f8f6f1",border:"1px solid #d8d5cd",borderRadius:14,padding:20,cursor:availableInArea?"pointer":"default",opacity:availableInArea?1:.55,color:"#26342e"}}><strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:23}}>{item.title}</strong><span style={{display:"block",margin:"7px 0 14px",color:"#707670",lineHeight:1.45}}>{item.description}</span><small style={{fontWeight:800,color:"#526b60"}}>{availableInArea ? <>{completed ? `${completed} niveau${completed === 1 ? "" : "er"} sikkert · ` : ""}Åbn →</> : "Senere i progressionen"}</small></button>;
           })}</div>
         </> : <>
           <div style={{display:"grid",gap:10,marginTop:24}}>{area.skills.map((areaSkill) => {
             const levels = freeTrainingQuestions[subjectId]?.[area.id]?.[areaSkill] ?? {};
-            const availableLevels = Object.keys(levels);
-            const safe = availableLevels.filter((level) => statusFor([subjectId,area.id,areaSkill,level].join("|")) === "Sikker ✓").length;
-            return <button key={areaSkill} disabled={!availableLevels.length} onClick={() => chooseSkill(areaSkill)} style={{textAlign:"left",background:availableLevels.length ? "#fff" : "#f8f6f1",border:"1px solid #d8d5cd",borderRadius:13,padding:"17px 19px",cursor:availableLevels.length ? "pointer" : "default",opacity:availableLevels.length ? 1 : .65,color:"#26342e"}}><strong style={{fontSize:17}}>{areaSkill}</strong><small style={{display:"block",marginTop:7,color:availableLevels.length ? "#526b60" : "#8a8d88",fontWeight:700}}>{availableLevels.length ? `${availableLevels.length} niveau${availableLevels.length === 1 ? "" : "er"}${safe ? ` · ${safe} sikkert` : ""} · Vælg →` : "Flere opgaver på vej"}</small></button>;
+            const availableLevels = Object.keys(levels).filter((candidateLevel) => freeTrainingLevelAllowed(subjectId,areaSkill,candidateLevel,gradeLevel));
+            const safe = availableLevels.filter((candidateLevel) => statusFor([subjectId,area.id,areaSkill,candidateLevel].join("|")) === "Sikker ✓").length;
+            return <button key={areaSkill} disabled={!availableLevels.length} onClick={() => chooseSkill(areaSkill)} style={{textAlign:"left",background:availableLevels.length ? "#fff" : "#f8f6f1",border:"1px solid #d8d5cd",borderRadius:13,padding:"17px 19px",cursor:availableLevels.length ? "pointer" : "default",opacity:availableLevels.length ? 1 : .65,color:"#26342e"}}><strong style={{fontSize:17}}>{areaSkill}</strong><small style={{display:"block",marginTop:7,color:availableLevels.length ? "#526b60" : "#8a8d88",fontWeight:700}}>{availableLevels.length ? `${availableLevels.length} niveau${availableLevels.length === 1 ? "" : "er"}${safe ? ` · ${safe} sikkert` : ""} · Vælg →` : gradeAwareGrammar && gradeLevel !== null ? "Kommer senere i progressionen" : "Flere opgaver på vej"}</small></button>;
           })}</div>
-          <div style={{marginTop:24,background:"#edf1ec",borderRadius:13,padding:18,lineHeight:1.5}}><strong>Ingen klassetrin her.</strong><br /><span style={{color:"#667068"}}>Du vælger efter det, du vil træne, og kan altid gå et niveau op eller ned.</span></div>
+          <div style={{marginTop:24,background:"#edf1ec",borderRadius:13,padding:18,lineHeight:1.5}}><strong>{gradeAwareGrammar ? gradeLevel !== null ? `Træning til ${gradeLevel}. klasse` : "Klassetrin mangler" : "Vælg frit efter behov"}.</strong><br /><span style={{color:"#667068"}}>{gradeAwareGrammar ? gradeLevel !== null ? "Du ser de emner og niveauer, der passer til din progression. Udfordring kan åbne næste lille skridt, når det giver mening." : "Når skolen angiver dit klassetrin, bliver grammatikken automatisk tilpasset." : "Du vælger efter det, du vil træne, og kan altid gå et niveau op eller ned."}</span></div>
         </>}
     </section>
   </main>;
