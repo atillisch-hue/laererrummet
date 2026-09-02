@@ -2,6 +2,7 @@
 
 import {useEffect,useState} from "react";
 import {supabase} from "../lib/supabase";
+import {studentSupabase} from "../lib/studentSupabase";
 import {hasRole} from "../lib/roles";
 import {trainingCatalog} from "../lib/trainingCatalog";
 import {clearStudentSession,getStudentSessionToken,storeStudentSession} from "../lib/studentSession";
@@ -30,12 +31,12 @@ export default function HomeClient(){
  const[grammarAssignments,setGrammarAssignments]=useState<GrammarAssignment[]>([]);
 
  async function hydrateStudent(token:string){
-  const{data,error}=await supabase.rpc("student_session_data",{p_session_token:token});
+  const{data,error}=await studentSupabase.rpc("student_session_data",{p_session_token:token});
   const sd=data as StudentData|null;
   if(error||!sd?.ok||!sd.student||!sd.class)return false;
   setStudentMode(true);setStudentSessionToken(token);setStudentId(sd.student.id);setStudentName(sd.student.name);setStudentClassName(sd.class.name);
   setAssignments((sd.assignments||[]).map(a=>({id:a.id,title:a.title,type:a.type,instructions:a.instructions||""})));
-  const{data:grammarData}=await supabase.rpc("student_session_grammar_assignments",{p_session_token:token});
+  const{data:grammarData}=await studentSupabase.rpc("student_session_grammar_assignments",{p_session_token:token});
   setGrammarAssignments(grammarData?.ok?(grammarData.assignments||[]):[]);
   return true;
  }
@@ -70,7 +71,7 @@ export default function HomeClient(){
 
  async function studentLogin(e:React.FormEvent){
   e.preventDefault();setStudentError("");const code=studentCode.trim().toUpperCase();if(!code)return;
-  const{data,error}=await supabase.rpc("student_start_session",{p_access_code:code});
+  const{data,error}=await studentSupabase.rpc("student_start_session",{p_access_code:code});
   if(error||!data?.ok||!data.session_token||!data.student_id){setStudentError(data?.error==="rate_limited"?"Der har været mange loginforsøg. Vent lidt og prøv igen.":"Koden blev ikke genkendt. Prøv igen.");return}
   const token=String(data.session_token);storeStudentSession(token,Number(data.student_id));
   const ok=await hydrateStudent(token);if(!ok){clearStudentSession();setStudentError("Klasseværelset kunne ikke åbnes. Prøv igen.");return}
@@ -79,7 +80,7 @@ export default function HomeClient(){
 
  async function studentLogout(){
   const token=studentSessionToken||getStudentSessionToken();
-  if(token){try{await supabase.rpc("student_end_session",{p_session_token:token})}catch{}}
+  if(token){try{await studentSupabase.rpc("student_end_session",{p_session_token:token})}catch{}}
   clearStudentSession();setStudentId(null);setStudentSessionToken("");setAssignments([]);setGrammarAssignments([]);setStudentName("");setStudentClassName("");setStudentMode(false);
  }
 
