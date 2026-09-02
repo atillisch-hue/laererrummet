@@ -5,8 +5,9 @@ import {useEffect,useMemo,useState} from "react";
 import {useSearchParams} from "next/navigation";
 import {supabase} from "../../lib/supabase";
 import {hasRole} from "../../lib/roles";
+import {scheduleOccursOn,type RecurrencePattern} from "../../lib/scheduleRecurrence";
 
-type Entry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;class_subject_id:number|null};
+type Entry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;class_subject_id:number|null;recurrence_pattern:RecurrencePattern};
 type Klass={id:number;name:string;school_id:number|null};
 type Settings={school_id:number;closed_days:unknown};
 type Room={id:number;class_id:number;subject_id:number;title:string|null};
@@ -30,7 +31,7 @@ export default function LinkToLesson(){
   const admin=hasRole(user,"admin");
   const[t,e,c]=await Promise.all([
    supabase.from("schedule_teachers").select("schedule_entry_id,teacher_id").eq("teacher_id",user.id),
-   supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,class_subject_id"),
+   supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,class_subject_id,recurrence_pattern"),
    supabase.from("classes").select("id,name,school_id")
   ]);
   const teacherIds=new Set((t.data||[]).map(x=>Number(x.schedule_entry_id)));
@@ -49,10 +50,11 @@ export default function LinkToLesson(){
   const next:Upcoming[]=[];
   for(const entry of entries){
    const klass=classes.find(x=>x.id===entry.class_id);if(!klass)continue;
-   for(let offset=0;offset<28;offset++){
+   for(let offset=0;offset<35;offset++){
     const d=new Date(today);d.setDate(today.getDate()+offset);
     if(d.getDay()!==entry.weekday)continue;
     const iso=dateOnly(d);
+    if(!scheduleOccursOn(entry.recurrence_pattern,iso))continue;
     if(klass.school_id&&closed.get(klass.school_id)?.has(iso))continue;
     next.push({scheduleId:entry.id,classId:entry.class_id,classSubjectId:entry.class_subject_id,schoolId:klass.school_id,date:iso,start:entry.start_time,end:entry.end_time,subject:entry.subject,className:klass.name});
    }
