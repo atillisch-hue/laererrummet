@@ -59,11 +59,14 @@ export function tagLibraryForGrades(
   for (const [topic, levels] of Object.entries(source)) {
     tagged[topic] ||= {};
     for (const [level, questions] of Object.entries(levels)) {
-      tagged[topic][level] = questions.map((question) => ({
-        ...question,
-        minGrade: question.minGrade ?? Math.max(sourceMinimumGrade, minimumGradeForTopic(topic)),
-        maxGrade: question.maxGrade ?? sourceMaximumGrade,
-      }));
+      tagged[topic][level] = questions.map((question) => {
+        const graded = question as GradedGrammarQuestion;
+        return {
+          ...question,
+          minGrade: graded.minGrade ?? Math.max(sourceMinimumGrade, minimumGradeForTopic(topic)),
+          maxGrade: graded.maxGrade ?? sourceMaximumGrade,
+        };
+      });
     }
   }
 
