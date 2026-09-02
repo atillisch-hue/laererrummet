@@ -1,7 +1,7 @@
 "use client";
 
 import {useEffect,useState} from "react";
-import {supabase} from "../lib/supabase";
+import {studentSupabase} from "../lib/studentSupabase";
 
 type Item={id:number;item_type:"post"|"section"|"link"|"material";title:string|null;body:string|null;url:string|null;position:number};
 type Assignment={id:number;title:string;type:string;instructions:string|null};
@@ -20,7 +20,7 @@ export default function StudentSubjectRooms({sessionToken}:{sessionToken:string}
   let active=true;
   (async()=>{
    if(!sessionToken){if(active){setRooms([]);setLoading(false)}return}
-   const{data,error}=await supabase.rpc("student_session_subject_rooms",{p_session_token:sessionToken});
+   const{data,error}=await studentSupabase.rpc("student_session_subject_rooms",{p_session_token:sessionToken});
    if(!active)return;
    const payload=data as Payload|null;
    setRooms(!error&&payload?.ok&&Array.isArray(payload.rooms)?payload.rooms:[]);
