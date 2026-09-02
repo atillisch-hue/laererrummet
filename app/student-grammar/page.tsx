@@ -34,6 +34,12 @@ function normalizeQuestion(question: Q): Q {
   return { ...question, options };
 }
 
+function uniqueQuestions(questions: Q[]) {
+  const byKey = new Map<string, Q>();
+  for (const question of questions) byKey.set(questionKey(question), question);
+  return Array.from(byKey.values());
+}
+
 function mergeLibraries(...sources: GrammarLibrary[]): GrammarLibrary {
   const merged: GrammarLibrary = {};
   for (const source of sources) {
@@ -41,12 +47,7 @@ function mergeLibraries(...sources: GrammarLibrary[]): GrammarLibrary {
       merged[topic] ||= {};
       for (const [level, questions] of Object.entries(levels)) {
         const existing = merged[topic][level] || [];
-        const byKey = new Map(existing.map((question) => [questionKey(question), question]));
-        for (const raw of questions) {
-          const question = normalizeQuestion(raw);
-          byKey.set(questionKey(question), question);
-        }
-        merged[topic][level] = Array.from(byKey.values());
+        merged[topic][level] = uniqueQuestions([...existing, ...questions.map(normalizeQuestion)]);
       }
     }
   }
@@ -69,6 +70,41 @@ function prepareRound(pool: Q[], excludedKeys: Set<string>) {
     const selectedKeys = new Set(selected.map(questionKey));
     const fallback = shuffle(pool.filter((question) => !selectedKeys.has(questionKey(question))));
     selected = [...selected, ...fallback.slice(0, needed - selected.length)];
+  }
+
+  return selected.map((question) => ({ ...question, options: shuffle(question.options) }));
+}
+
+function prepareAdaptiveRetry(primaryPool: Q[], topicLevels: Record<string, Q[]>, assignedLevel: string, score: number, excludedKeys: Set<string>) {
+  const needed = Math.min(ROUND_SIZE, uniqueQuestions(Object.values(topicLevels).flat()).length);
+  const selected: Q[] = [];
+
+  const addFreshFrom = (pool: Q[]) => {
+    const alreadySelected = new Set(selected.map(questionKey));
+    const candidates = shuffle(pool.filter((question) => !excludedKeys.has(questionKey(question)) && !alreadySelected.has(questionKey(question))));
+    selected.push(...candidates.slice(0, Math.max(0, needed - selected.length)));
+  };
+
+  addFreshFrom(primaryPool);
+
+  const supportOrder = assignedLevel === "basis"
+    ? ["traening", "udfordring"]
+    : assignedLevel === "udfordring"
+      ? ["traening", "basis"]
+      : score < Math.ceil(ROUND_SIZE * 0.6)
+        ? ["basis", "udfordring"]
+        : ["udfordring", "basis"];
+
+  for (const level of supportOrder) {
+    if (selected.length >= needed) break;
+    addFreshFrom(topicLevels[level] || []);
+  }
+
+  if (selected.length < needed) {
+    const allTopicQuestions = uniqueQuestions(Object.values(topicLevels).flat());
+    const selectedKeys = new Set(selected.map(questionKey));
+    const repeatFallback = shuffle(allTopicQuestions.filter((question) => !selectedKeys.has(questionKey(question))));
+    selected.push(...repeatFallback.slice(0, needed - selected.length));
   }
 
   return selected.map((question) => ({ ...question, options: shuffle(question.options) }));
@@ -118,7 +154,9 @@ export default function StudentGrammar() {
     })();
   }, []);
 
-  const questionPool = useMemo(() => assignment ? library[assignment.topic]?.[assignment.level] || [] : [], [assignment]);
+  const topicLevels = useMemo<Record<string, Q[]>>(() => assignment ? library[assignment.topic] || {} : {}, [assignment]);
+  const questionPool = useMemo(() => assignment ? topicLevels[assignment.level] || [] : [], [assignment, topicLevels]);
+  const topicPool = useMemo(() => uniqueQuestions(Object.values(topicLevels).flat()), [topicLevels]);
 
   useEffect(() => {
     if (!assignment || questionPool.length === 0) return;
@@ -133,7 +171,7 @@ export default function StudentGrammar() {
 
   const score = questions.filter((question, index) => answers[index] === question.answer).length;
   const allCorrect = questions.length > 0 && score === questions.length;
-  const unseenCount = questionPool.filter((question) => !seenQuestionKeys.includes(questionKey(question))).length;
+  const unseenCount = topicPool.filter((question) => !seenQuestionKeys.includes(questionKey(question))).length;
 
   async function submit() {
     if (!assignment || !sessionToken || Object.keys(answers).length !== questions.length) return;
@@ -169,7 +207,7 @@ export default function StudentGrammar() {
 
   function retryWithFreshQuestions() {
     const seen = new Set(seenQuestionKeys);
-    const next = prepareRound(questionPool, seen);
+    const next = prepareAdaptiveRetry(questionPool, topicLevels, assignment.level, score, seen);
     const nextKeys = next.map(questionKey);
     setQuestions(next);
     setSeenQuestionKeys((current) => Array.from(new Set([...current, ...nextKeys])));
@@ -190,8 +228,8 @@ export default function StudentGrammar() {
       </div> : <>
         <p style={{marginTop:38,fontSize:11,fontWeight:800,letterSpacing:1.7,color:"#718077"}}>GRAMMATIK · {assignment.area.toUpperCase()}</p>
         <h1 style={{fontFamily:"Georgia,serif",fontSize:42,margin:"8px 0"}}>{assignment.title}</h1>
-        <p style={{fontSize:18,color:"#707670",lineHeight:1.55}}>Arbejd dig gennem opgaverne. Når du retter, får du både svar og forklaring. Hvis noget driller, får du et nyt sæt spørgsmål at træne videre med.</p>
-        {questionPool.length > questions.length && <p style={{fontSize:14,color:"#718077",fontWeight:700}}>Runde {roundNumber} · {questions.length} spørgsmål · {questionPool.length} forskellige spørgsmål i banken på dette niveau</p>}
+        <p style={{fontSize:18,color:"#707670",lineHeight:1.55}}>Arbejd dig gennem opgaverne. Når du retter, får du både svar og forklaring. Hvis noget driller, får du et nyt sæt spørgsmål fra samme emne at træne videre med.</p>
+        {topicPool.length > questions.length && <p style={{fontSize:14,color:"#718077",fontWeight:700}}>Runde {roundNumber} · {questions.length} spørgsmål · {questionPool.length} på dit niveau · {topicPool.length} i emnebanken</p>}
 
         {questions.length === 0 ? <div style={{marginTop:30,background:"white",padding:28,borderRadius:14,border:"1px solid #ddd9d0"}}><h2>{assignment.topic}</h2><p>Opgaver til dette emne er på vej.</p></div> : <>
           <div style={{display:"grid",gap:16,marginTop:28}}>
@@ -215,7 +253,7 @@ export default function StudentGrammar() {
               <div style={{fontFamily:"Georgia,serif",fontSize:32,fontWeight:800}}>{score} / {questions.length}</div>
               <p>{allCorrect ? "Flot, alle rigtige. Du har styr på denne runde." : score >= Math.ceil(questions.length * .6) ? "Godt arbejde. Kig på forklaringerne, og prøv et nyt sæt, så du får trænet det, der drillede." : "Kig på forklaringerne og prøv et nyt sæt. Det er sådan træning virker."}</p>
               <small>{saveState}</small>
-              {!allCorrect && unseenCount > 0 && <p style={{fontSize:13,opacity:.8,marginBottom:0}}>{unseenCount} usete spørgsmål er klar i banken.</p>}
+              {!allCorrect && unseenCount > 0 && <p style={{fontSize:13,opacity:.8,marginBottom:0}}>{unseenCount} usete spørgsmål er klar i emnet.</p>}
               <div style={{marginTop:14,display:"flex",gap:9,justifyContent:"center",flexWrap:"wrap"}}>
                 {!allCorrect && <button onClick={retryWithFreshQuestions} style={{padding:"9px 13px",borderRadius:9,border:"1px solid rgba(255,255,255,.35)",background:"transparent",color:"white",fontWeight:800}}>{unseenCount > 0 ? "Prøv igen med nye spørgsmål" : "Træn en ny blanding"}</button>}
                 <button onClick={() => window.location.href = "/?student=1"} style={{padding:"9px 13px",borderRadius:9,border:0,background:"white",color:"#273f35",fontWeight:800}}>Til mine opgaver</button>
