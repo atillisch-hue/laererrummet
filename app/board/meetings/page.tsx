@@ -1,14 +1,18 @@
 "use client";
 
-import {FormEvent,useEffect,useState} from "react";
+import Link from "next/link";
+import {FormEvent,useEffect,useMemo,useState} from "react";
 import {supabase} from "../../../lib/supabase";
 import {hasRole} from "../../../lib/roles";
 
 type Meeting={id:number;title:string;meeting_date:string;start_time:string|null;location:string|null;agenda:string|null;minutes:string|null};
 type Decision={id:number;meeting_id:number;decision:string;responsible:string|null;due_date:string|null;completed:boolean};
+type BoardFile={id:string;board_meeting_id:number|null;object_path:string;display_name:string;category:string;size_bytes:number|null};
+const fileCategoryLabel:Record<string,string>={agenda:"Dagsorden",attachment:"Bilag",minutes:"Referat",finance:"Økonomi",policy:"Politik & vedtægter",personnel:"Personale",other:"Andet"};
+const fileSize=(bytes:number|null)=>bytes===null?"Ukendt størrelse":bytes<1024?`${bytes} B`:bytes<1024*1024?`${(bytes/1024).toFixed(1)} KB`:`${(bytes/1024/1024).toFixed(1)} MB`;
 
 export default function BoardMeetingsPage(){
- const[ready,setReady]=useState(false),[meetings,setMeetings]=useState<Meeting[]>([]),[decisions,setDecisions]=useState<Decision[]>([]),[schoolId,setSchoolId]=useState<number|null>(null),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
+ const[ready,setReady]=useState(false),[meetings,setMeetings]=useState<Meeting[]>([]),[decisions,setDecisions]=useState<Decision[]>([]),[files,setFiles]=useState<BoardFile[]>([]),[schoolId,setSchoolId]=useState<number|null>(null),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
  const[title,setTitle]=useState("Bestyrelsesmøde"),[date,setDate]=useState(""),[time,setTime]=useState("19:00"),[meetingLocation,setMeetingLocation]=useState(""),[agenda,setAgenda]=useState("");
  const[minutesDraft,setMinutesDraft]=useState<Record<number,string>>({}),[decisionDraft,setDecisionDraft]=useState<Record<number,string>>({}),[responsibleDraft,setResponsibleDraft]=useState<Record<number,string>>({}),[dueDraft,setDueDraft]=useState<Record<number,string>>({});
  const[editingMeeting,setEditingMeeting]=useState<number|null>(null),[editTitle,setEditTitle]=useState(""),[editDate,setEditDate]=useState(""),[editTime,setEditTime]=useState(""),[editLocation,setEditLocation]=useState(""),[editAgenda,setEditAgenda]=useState("");
@@ -24,12 +28,13 @@ export default function BoardMeetingsPage(){
  })()},[]);
 
  async function load(){
-  const[m,d]=await Promise.all([
+  const[m,d,f]=await Promise.all([
    supabase.from("board_meetings").select("id,title,meeting_date,start_time,location,agenda,minutes").order("meeting_date",{ascending:false}).order("start_time",{ascending:false}),
-   supabase.from("board_decisions").select("id,meeting_id,decision,responsible,due_date,completed").order("created_at",{ascending:true})
+   supabase.from("board_decisions").select("id,meeting_id,decision,responsible,due_date,completed").order("created_at",{ascending:true}),
+   supabase.from("school_files").select("id,board_meeting_id,object_path,display_name,category,size_bytes").eq("area","board").eq("archived",false).not("board_meeting_id","is",null).order("created_at",{ascending:false})
   ]);
-  if(m.error||d.error)setMessage("Bestyrelsesmøderne kunne ikke hentes.");
-  setMeetings((m.data||[]) as Meeting[]);setDecisions((d.data||[]) as Decision[]);
+  if(m.error||d.error||f.error)setMessage("Bestyrelsesmøderne kunne ikke hentes.");
+  setMeetings((m.data||[]) as Meeting[]);setDecisions((d.data||[]) as Decision[]);setFiles((f.data||[]) as BoardFile[]);
   const drafts:Record<number,string>={};((m.data||[]) as Meeting[]).forEach(x=>drafts[x.id]=x.minutes||"");setMinutesDraft(drafts);
  }
 
@@ -54,14 +59,22 @@ export default function BoardMeetingsPage(){
  async function toggleDecision(d:Decision){const{error}=await supabase.from("board_decisions").update({completed:!d.completed}).eq("id",d.id);if(error)setMessage(error.message);else await load()}
  async function removeDecision(id:number){if(!confirm("Vil du slette denne beslutning/opgave?"))return;const{error}=await supabase.from("board_decisions").delete().eq("id",id);if(error)setMessage(error.message);else{if(editingDecision===id)setEditingDecision(null);setMessage("Beslutningen er slettet.");await load()}}
 
+ async function openFile(file:BoardFile){
+  const{data,error}=await supabase.storage.from("school-files").createSignedUrl(file.object_path,60);
+  if(error||!data?.signedUrl){setMessage("Dokumentet kunne ikke åbnes.");return}
+  window.open(data.signedUrl,"_blank","noopener,noreferrer");
+ }
+
  const today=new Date().toISOString().slice(0,10),upcoming=meetings.filter(m=>m.meeting_date>=today).sort((a,b)=>a.meeting_date.localeCompare(b.meeting_date)),previous=meetings.filter(m=>m.meeting_date<today);
+ const filesByMeeting=useMemo(()=>{const map=new Map<number,BoardFile[]>();for(const file of files){if(file.board_meeting_id===null)continue;const current=map.get(file.board_meeting_id)||[];current.push(file);map.set(file.board_meeting_id,current)}return map},[files]);
  const meetingCard=(m:Meeting)=>{
-  const edit=editingMeeting===m.id;
+  const edit=editingMeeting===m.id,meetingFiles=filesByMeeting.get(m.id)||[];
   return <article key={m.id} style={{...panel,marginBottom:16}}>
    {edit?<div style={{display:"grid",gap:12}}><p style={eyebrow}>REDIGÉR MØDE</p><div style={grid}><label style={label}>Titel<input style={input} value={editTitle} onChange={e=>setEditTitle(e.target.value)}/></label><label style={label}>Dato<input style={input} type="date" value={editDate} onChange={e=>setEditDate(e.target.value)}/></label><label style={label}>Tid<input style={input} type="time" value={editTime} onChange={e=>setEditTime(e.target.value)}/></label><label style={label}>Sted<input style={input} value={editLocation} onChange={e=>setEditLocation(e.target.value)}/></label></div><label style={label}>Dagsorden<textarea style={{...input,minHeight:130}} value={editAgenda} onChange={e=>setEditAgenda(e.target.value)}/></label><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button onClick={()=>saveMeeting(m.id)} disabled={busy} style={smallButton}>{busy?"Gemmer…":"Gem møde"}</button><button onClick={()=>setEditingMeeting(null)} style={secondaryButton}>Annullér</button><button onClick={()=>removeMeeting(m.id)} style={deleteButton}>Slet møde</button></div></div>:<>
     <div style={{display:"flex",justifyContent:"space-between",gap:18,flexWrap:"wrap"}}><div><p style={eyebrow}>{new Date(m.meeting_date+"T12:00:00").toLocaleDateString("da-DK",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).toUpperCase()}</p><h2 style={{fontFamily:"Georgia,serif",fontSize:28,margin:"5px 0"}}>{m.title}</h2><p style={{color:"#687068",margin:"5px 0"}}>{m.start_time?`Kl. ${m.start_time.slice(0,5)}`:""}{m.location?` · ${m.location}`:""}</p></div><div style={{display:"flex",gap:7,alignItems:"start"}}><button onClick={()=>startMeetingEdit(m)} style={secondaryButton}>Redigér</button><button onClick={()=>removeMeeting(m.id)} style={deleteButton}>Slet</button></div></div>
     <section style={section}><strong>Dagsorden</strong><div style={body}>{m.agenda||"Der er ikke tilføjet en dagsorden endnu."}</div></section>
     <section style={section}><strong>Referat</strong><textarea style={{...input,minHeight:140,marginTop:10}} value={minutesDraft[m.id]||""} onChange={e=>setMinutesDraft(x=>({...x,[m.id]:e.target.value}))} placeholder="Skriv referatet fra mødet…"/><button onClick={()=>saveMinutes(m.id)} style={smallButton}>Gem referat</button></section>
+    <section style={section}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}><strong>Bilag & dokumenter</strong><Link href={`/board/archive?meeting=${m.id}`} style={archiveLink}>{meetingFiles.length?"Administrér dokumenter":"Tilføj dokument"}</Link></div>{meetingFiles.length===0?<p style={{color:"#8a8f89",marginBottom:0}}>Der er endnu ikke knyttet dokumenter til mødet.</p>:<div style={{display:"grid",gap:7,marginTop:10}}>{meetingFiles.map(file=><div key={file.id} style={fileRow}><div style={{minWidth:0}}><strong style={{fontSize:13,overflowWrap:"anywhere"}}>{file.display_name}</strong><small style={{display:"block",color:"#777",marginTop:2}}>{fileCategoryLabel[file.category]||"Andet"} · {fileSize(file.size_bytes)}</small></div><button onClick={()=>openFile(file)} style={secondaryButton}>Åbn</button></div>)}</div>}</section>
     <section style={section}><strong>Beslutninger & opfølgning</strong><div style={{marginTop:10}}>{decisions.filter(d=>d.meeting_id===m.id).map(d=>{const decisionEdit=editingDecision===d.id;return <div key={d.id} style={{padding:"10px 0",borderBottom:"1px solid #eeeae2"}}>{decisionEdit?<div style={{display:"grid",gridTemplateColumns:"minmax(220px,2fr) minmax(150px,1fr) minmax(150px,1fr)",gap:8}}><input style={input} value={editDecision} onChange={e=>setEditDecision(e.target.value)} placeholder="Beslutning"/><input style={input} value={editResponsible} onChange={e=>setEditResponsible(e.target.value)} placeholder="Ansvarlig"/><input style={input} type="date" value={editDue} onChange={e=>setEditDue(e.target.value)}/><div style={{gridColumn:"1 / -1",display:"flex",gap:7,flexWrap:"wrap"}}><button onClick={()=>saveDecision(d.id)} style={smallButton}>Gem beslutning</button><button onClick={()=>setEditingDecision(null)} style={secondaryButton}>Annullér</button><button onClick={()=>removeDecision(d.id)} style={deleteButton}>Slet</button></div></div>:<div style={{display:"flex",gap:10,alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap"}}><label style={{display:"flex",gap:10,alignItems:"flex-start",flex:"1 1 300px"}}><input type="checkbox" checked={d.completed} onChange={()=>toggleDecision(d)}/><div><span style={{textDecoration:d.completed?"line-through":"none",fontWeight:700}}>{d.decision}</span>{(d.responsible||d.due_date)&&<small style={{display:"block",color:"#777",marginTop:3}}>{d.responsible?`Ansvarlig: ${d.responsible}`:""}{d.responsible&&d.due_date?" · ":""}{d.due_date?`Frist: ${new Date(d.due_date+"T12:00:00").toLocaleDateString("da-DK")}`:""}</small>}</div></label><div style={{display:"flex",gap:6}}><button onClick={()=>startDecisionEdit(d)} style={secondaryButton}>Redigér</button><button onClick={()=>removeDecision(d.id)} style={deleteButton}>Slet</button></div></div>}</div>})}{decisions.filter(d=>d.meeting_id===m.id).length===0&&<p style={{color:"#8a8f89"}}>Ingen beslutninger registreret endnu.</p>}</div><div style={{display:"grid",gridTemplateColumns:"minmax(220px,2fr) minmax(150px,1fr) minmax(150px,1fr) auto",gap:8,marginTop:14}}><input style={input} value={decisionDraft[m.id]||""} onChange={e=>setDecisionDraft(x=>({...x,[m.id]:e.target.value}))} placeholder="Beslutning eller opgave"/><input style={input} value={responsibleDraft[m.id]||""} onChange={e=>setResponsibleDraft(x=>({...x,[m.id]:e.target.value}))} placeholder="Ansvarlig"/><input style={input} type="date" value={dueDraft[m.id]||""} onChange={e=>setDueDraft(x=>({...x,[m.id]:e.target.value}))}/><button onClick={()=>addDecision(m.id)} style={{...smallButton,marginTop:0}}>Tilføj</button></div></section>
    </>}
   </article>;
@@ -85,3 +98,5 @@ const deleteButton:React.CSSProperties={padding:"7px 10px",border:"1px solid #e1
 const section:React.CSSProperties={borderTop:"1px solid #e4e0d8",marginTop:18,paddingTop:18};
 const body:React.CSSProperties={whiteSpace:"pre-wrap",lineHeight:1.65,marginTop:10,color:"#4e5852"};
 const sectionTitle:React.CSSProperties={fontFamily:"Georgia,serif",fontSize:30,margin:"38px 0 4px"};
+const archiveLink:React.CSSProperties={padding:"6px 9px",border:"1px solid #d1cdc4",borderRadius:8,color:"#486b59",fontWeight:800,fontSize:12,textDecoration:"none",background:"white"};
+const fileRow:React.CSSProperties={display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"9px 10px",border:"1px solid #e4e0d8",borderRadius:8,background:"#faf9f6"};
