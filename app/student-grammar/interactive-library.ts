@@ -24,6 +24,96 @@ const rewrite = (
 ): InteractiveGrammarQuestion => ({ q, options: [], answer, why, kind: "rewrite", acceptedAnswers, placeholder: "Skriv den rettede sætning…" });
 
 export const interactiveGrammarLibrary: Record<string, Levels> = {
+  "Navneord": {
+    basis: [
+      text("Skriv navneordet i sætningen: 'Hunden sover.'", "Hunden", "Hunden betegner et dyr og er et navneord."),
+      text("Skriv navneordet: 'Hun købte en cykel.'", "cykel", "Man kan sætte 'en' foran cykel."),
+      text("Skriv egennavnet i sætningen: 'Maja bor i Odense.'", "Odense", "Odense er navnet på et bestemt sted."),
+    ],
+    traening: [
+      text("Skriv navneordet i flertal: 'en bog' → ?", "bøger", "Bøger er ubestemt flertal af bog."),
+      text("Skriv det abstrakte navneord i sætningen: 'Frihed betyder meget for hende.'", "Frihed", "Frihed betegner et abstrakt begreb."),
+      text("Skriv det sammensatte navneord: 'Eleverne står i skolegården.'", "skolegården", "Skolegården er et sammensat navneord dannet af skole + gård."),
+    ],
+    udfordring: [
+      text("Gør 'ting' mere præcist i sætningen 'Der stod en ting på bordet.' Skriv ét konkret navneord.", "krus", "Et specifikt navneord skaber et tydeligere billede.", ["krus", "glas", "kop", "bog", "tallerken"]),
+      text("Skriv navneordet, der samler temaet i sætningen: 'Ensomhed fylder hele fortællingen.'", "Ensomhed", "Ensomhed er et abstrakt navneord, der kan fungere som tematisk nøgleord."),
+      text("Omskriv 'gennemførelsen af undersøgelsen' med et udsagnsord. Skriv kun verbet.", "undersøge", "Nominaliseringen kan pakkes ud til et mere direkte verbum.", ["undersøge", "undersøgte", "undersøger"]),
+    ],
+  },
+
+  "Udsagnsord": {
+    basis: [
+      text("Skriv udsagnsordet i sætningen: 'Maja løber hjem.'", "løber", "Løber fortæller, hvad Maja gør."),
+      text("Skriv udsagnsordet i datid: 'Hun spiser morgenmad.'", "spiste", "Spiste er datid af spise."),
+      text("Skriv navneformen af 'cykler'.", "cykle", "Navneformen findes ofte ved at sætte 'at' foran: at cykle."),
+    ],
+    traening: [
+      text("Skriv hele udsagnsleddet: 'Hun har læst bogen.'", "har læst", "Verballeddet består af hjælpeverbet har og hovedverbet læst."),
+      text("Skriv et mere præcist verbum end 'gik hurtigt'.", "løb", "Et mere præcist verbum kan samle handling og tempo.", ["løb", "sprintede", "styrtede"]),
+      text("Skriv verbet i nutid: 'De byggede en hule.'", "bygger", "Bygger er nutidsformen af bygge."),
+    ],
+    udfordring: [
+      text("Skriv hele udsagnsleddet: 'De ville have afsluttet arbejdet.'", "ville have afsluttet", "Modalverbum og hjælpe-/hovedverbum udgør tilsammen udsagnsleddet."),
+      text("Erstat 'sagde vredt' med ét præcist verbum.", "snerrede", "Et præcist verbum kan rumme både talehandling og attitude.", ["snerrede", "vrissede", "hvæsede"]),
+      text("Omskriv passiv til aktiv: 'Planen blev ændret af eleverne.'", "Eleverne ændrede planen.", "Aktiv form gør aktøren tydelig."),
+    ],
+  },
+
+  "Tillægsord": {
+    basis: [
+      text("Skriv tillægsordet: 'Den røde cykel står ude.'", "røde", "Røde beskriver navneordet cykel."),
+      text("Skriv tillægsordet i sætningen: 'Huset er gammelt.'", "gammelt", "Gammelt beskriver huset."),
+      text("Skriv grundformen af 'større'.", "stor", "Stor er grundformen; større er højere grad."),
+    ],
+    traening: [
+      text("Skriv højeste grad af 'hurtig'.", "hurtigst", "Hurtigst er superlativ/højeste grad."),
+      text("Skriv højere grad af 'god'.", "bedre", "God bøjes uregelmæssigt: god, bedre, bedst."),
+      text("Skriv tillægsordet, der beskriver eleven: 'Den nervøse elev ventede.'", "nervøse", "Nervøse knytter en egenskab til eleven."),
+    ],
+    udfordring: [
+      text("Erstat 'meget kold' med ét stærkere tillægsord.", "iskold", "Et mere præcist tillægsord kan intensivere betydningen.", ["iskold", "isnende"]),
+      text("Skriv det værdiladede tillægsord i 'en arrogant leder'.", "arrogant", "Arrogant beskriver og vurderer samtidig personen negativt."),
+      text("Gør 'god' mere præcist i 'en god forklaring'. Skriv ét mere præcist tillægsord.", "tydelig", "Et præcist tillægsord gør vurderingen mere konkret.", ["tydelig", "grundig", "overbevisende", "præcis"]),
+    ],
+  },
+
+  "Stedord": {
+    basis: [
+      text("Skriv stedordet: 'Hun læser bogen.'", "Hun", "Hun står i stedet for navnet på en person."),
+      text("Erstat 'Mikkel' med et stedord: 'Mikkel løber.'", "Han", "Han kan stå i stedet for et mandligt personnavn."),
+      text("Skriv stedordet i sætningen: 'De spiller fodbold.'", "De", "De henviser til flere personer eller ting."),
+    ],
+    traening: [
+      text("Udfyld korrekt: 'Emil vaskede ___ hænder.'", "sine", "Når ejeren er sætningens grundled, bruges det refleksive stedord sine."),
+      text("Udfyld korrekt: 'Maja tog ___ jakke.'", "sin", "Maja ejer selv jakken, derfor bruges sin."),
+      text("Skriv hvad 'den' henviser til: 'Jeg fandt bogen og lagde den på bordet.'", "bogen", "Den peger tilbage på bogen."),
+    ],
+    udfordring: [
+      rewrite("Fjern tvetydigheden, hvis Laura er bekymret: 'Laura ringede til Emma, fordi hun var bekymret.'", "Laura ringede bekymret til Emma.", "Omskrivningen gør det klart, at bekymringen knytter sig til Laura."),
+      text("Skriv stedordet, der skaber fællesskab i '___ kan løse det sammen.'", "Vi", "Vi inkluderer afsender og andre i samme gruppe."),
+      text("Skriv stedordet, der skaber afstand mellem grupper i '___ forstår os aldrig.'", "De", "De kan placere en gruppe uden for afsenderens eget fællesskab."),
+    ],
+  },
+
+  "Biord": {
+    basis: [
+      text("Skriv biordet: 'Hun løber hurtigt.'", "hurtigt", "Hurtigt fortæller, hvordan hun løber."),
+      text("Skriv tidsudtrykket i sætningen: 'Vi kom i går.'", "i går", "I går fortæller, hvornår handlingen fandt sted."),
+      text("Skriv biordet: 'Han talte stille.'", "stille", "Stille beskriver måden, han talte på."),
+    ],
+    traening: [
+      text("Skriv benægtelsesordet i 'Jeg kommer ikke.'", "ikke", "Ikke benægter udsagnet."),
+      text("Skriv ordet, der forstærker 'dygtig' i 'Hun er utrolig dygtig.'", "utrolig", "Utrolig fungerer her som gradsangivelse."),
+      text("Skriv et biord, der gør udsagnet usikkert: 'Det er ___ sandt.'", "måske", "Måske dæmper sikkerheden i udsagnet.", ["måske", "muligvis", "sandsynligvis"]),
+    ],
+    udfordring: [
+      text("Skriv et biord, der gør 'Det er forkert' mere kategorisk.", "helt klart", "Udtrykket markerer stærk sikkerhed.", ["helt klart", "tydeligvis", "bestemt"]),
+      text("Skriv timingordet, der skaber et brat skift i '___ smækkede døren.'", "Pludselig", "Pludselig signalerer en uventet overgang."),
+      text("Skriv biordet i 'Du lytter aldrig.'", "aldrig", "Aldrig angiver frekvens og gør udsagnet meget kategorisk."),
+    ],
+  },
+
   "Grundled og udsagnsled": {
     basis: [
       text("Skriv grundleddet i sætningen: 'Katten sover på sofaen.'", "Katten", "Grundleddet er den eller det, der udfører handlingen."),
