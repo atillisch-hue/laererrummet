@@ -9,12 +9,14 @@ import { coreGrammarLibrary } from "./core-library";
 import { extraLibrary as expandedGrammarLibrary } from "./extraLibrary";
 import { advancedLibrary } from "./grammar-advanced";
 import { advancedExtraLibrary } from "./advanced-extra";
+import { interactiveGrammarLibrary, type InteractiveGrammarQuestion } from "./interactive-library";
 
-type GrammarLibrary = Record<string, Record<string, Q[]>>;
+type IQ = Q & Partial<Pick<InteractiveGrammarQuestion, "kind" | "acceptedAnswers" | "placeholder">>;
+type GrammarLibrary = Record<string, Record<string, IQ[]>>;
 
 const ROUND_SIZE = 5;
 
-function questionKey(question: Q) {
+function questionKey(question: IQ) {
   return `${question.q}::${question.answer}`;
 }
 
@@ -27,17 +29,37 @@ function shuffle<T>(items: T[]) {
   return copy;
 }
 
-function normalizeQuestion(question: Q): Q {
+function isWrittenQuestion(question: IQ) {
+  return question.kind === "text" || question.kind === "rewrite";
+}
+
+function normalizeStudentText(value: string) {
+  return value
+    .normalize("NFC")
+    .trim()
+    .toLocaleLowerCase("da-DK")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.!?;:])/g, "$1");
+}
+
+function answerIsCorrect(question: IQ, value = "") {
+  const normalized = normalizeStudentText(value);
+  const accepted = question.acceptedAnswers?.length ? question.acceptedAnswers : [question.answer];
+  return accepted.some((answer) => normalizeStudentText(answer) === normalized);
+}
+
+function normalizeQuestion(question: IQ): IQ {
+  if (isWrittenQuestion(question)) return { ...question, options: [] };
   const options = Array.from(new Set(question.options));
   if (!options.includes(question.answer)) {
     if (options.length >= 4) options[options.length - 1] = question.answer;
     else options.push(question.answer);
   }
-  return { ...question, options };
+  return { ...question, kind: question.kind || "choice", options };
 }
 
-function uniqueQuestions(questions: Q[]) {
-  const byKey = new Map<string, Q>();
+function uniqueQuestions(questions: IQ[]) {
+  const byKey = new Map<string, IQ>();
   for (const question of questions) byKey.set(questionKey(question), question);
   return Array.from(byKey.values());
 }
@@ -79,10 +101,15 @@ const library = mergeLibraries(
   expandedGrammarLibrary,
   advancedLibrary,
   advancedExtraLibrary,
+  interactiveGrammarLibrary,
   freeTrainingAsAssignedGrammar()
 );
 
-function prepareRound(pool: Q[], excludedKeys: Set<string>) {
+function prepareQuestionForRound(question: IQ): IQ {
+  return isWrittenQuestion(question) ? question : { ...question, options: shuffle(question.options) };
+}
+
+function prepareRound(pool: IQ[], excludedKeys: Set<string>) {
   const fresh = shuffle(pool.filter((question) => !excludedKeys.has(questionKey(question))));
   const needed = Math.min(ROUND_SIZE, pool.length);
   let selected = fresh.slice(0, needed);
@@ -93,14 +120,14 @@ function prepareRound(pool: Q[], excludedKeys: Set<string>) {
     selected = [...selected, ...fallback.slice(0, needed - selected.length)];
   }
 
-  return selected.map((question) => ({ ...question, options: shuffle(question.options) }));
+  return selected.map(prepareQuestionForRound);
 }
 
-function prepareAdaptiveRetry(primaryPool: Q[], topicLevels: Record<string, Q[]>, assignedLevel: string, score: number, excludedKeys: Set<string>) {
+function prepareAdaptiveRetry(primaryPool: IQ[], topicLevels: Record<string, IQ[]>, assignedLevel: string, score: number, excludedKeys: Set<string>) {
   const needed = Math.min(ROUND_SIZE, uniqueQuestions(Object.values(topicLevels).flat()).length);
-  const selected: Q[] = [];
+  const selected: IQ[] = [];
 
-  const addFreshFrom = (pool: Q[]) => {
+  const addFreshFrom = (pool: IQ[]) => {
     const alreadySelected = new Set(selected.map(questionKey));
     const candidates = shuffle(pool.filter((question) => !excludedKeys.has(questionKey(question)) && !alreadySelected.has(questionKey(question))));
     selected.push(...candidates.slice(0, Math.max(0, needed - selected.length)));
@@ -128,7 +155,7 @@ function prepareAdaptiveRetry(primaryPool: Q[], topicLevels: Record<string, Q[]>
     selected.push(...repeatFallback.slice(0, needed - selected.length));
   }
 
-  return selected.map((question) => ({ ...question, options: shuffle(question.options) }));
+  return selected.map(prepareQuestionForRound);
 }
 
 export default function StudentGrammar() {
@@ -136,7 +163,7 @@ export default function StudentGrammar() {
   const [sessionToken, setSessionToken] = useState("");
   const [assignment, setAssignment] = useState<any>(null);
   const [error, setError] = useState("");
-  const [questions, setQuestions] = useState<Q[]>([]);
+  const [questions, setQuestions] = useState<IQ[]>([]);
   const [seenQuestionKeys, setSeenQuestionKeys] = useState<string[]>([]);
   const [roundNumber, setRoundNumber] = useState(1);
   const [answers, setAnswers] = useState<Record<number, string>>({});
@@ -175,7 +202,7 @@ export default function StudentGrammar() {
     })();
   }, []);
 
-  const topicLevels = useMemo<Record<string, Q[]>>(() => assignment ? library[assignment.topic] || {} : {}, [assignment]);
+  const topicLevels = useMemo<Record<string, IQ[]>>(() => assignment ? library[assignment.topic] || {} : {}, [assignment]);
   const questionPool = useMemo(() => assignment ? topicLevels[assignment.level] || [] : [], [assignment, topicLevels]);
   const topicPool = useMemo(() => uniqueQuestions(Object.values(topicLevels).flat()), [topicLevels]);
 
@@ -197,12 +224,14 @@ export default function StudentGrammar() {
     setSaveState("");
   }, [assignment, questionPool, topicLevels]);
 
-  const score = questions.filter((question, index) => answers[index] === question.answer).length;
+  const score = questions.filter((question, index) => answerIsCorrect(question, answers[index])).length;
   const allCorrect = questions.length > 0 && score === questions.length;
   const unseenCount = topicPool.filter((question) => !seenQuestionKeys.includes(questionKey(question))).length;
+  const answeredCount = questions.filter((_, index) => Boolean(answers[index]?.trim())).length;
+  const allAnswered = questions.length > 0 && answeredCount === questions.length;
 
   async function submit() {
-    if (!assignment || !sessionToken || Object.keys(answers).length !== questions.length) return;
+    if (!assignment || !sessionToken || !allAnswered) return;
     setSubmitted(true);
     setSaving(true);
     setSaveState("Gemmer resultat…");
@@ -211,9 +240,10 @@ export default function StudentGrammar() {
       question: question.q,
       studentAnswer: answers[index],
       correctAnswer: question.answer,
-      correct: answers[index] === question.answer,
+      correct: answerIsCorrect(question, answers[index]),
       explanation: question.why,
-      round: roundNumber
+      round: roundNumber,
+      kind: question.kind || "choice"
     }]));
 
     const { data, error: saveError } = await studentSupabase.rpc("save_student_grammar_attempt_session", {
@@ -259,27 +289,42 @@ export default function StudentGrammar() {
       </div> : <>
         <p style={{marginTop:38,fontSize:11,fontWeight:800,letterSpacing:1.7,color:"#718077"}}>GRAMMATIK · {assignment.area.toUpperCase()}</p>
         <h1 style={{fontFamily:"Georgia,serif",fontSize:42,margin:"8px 0"}}>{assignment.title}</h1>
-        <p style={{fontSize:18,color:"#707670",lineHeight:1.55}}>Arbejd dig gennem opgaverne. Når du retter, får du både svar og forklaring. Hvis noget driller, får du et nyt sæt spørgsmål fra samme emne at træne videre med.</p>
+        <p style={{fontSize:18,color:"#707670",lineHeight:1.55}}>Arbejd dig gennem opgaverne. Nogle løses ved at vælge, andre ved at skrive eller rette selv. Når du retter, får du både svar og forklaring. Hvis noget driller, får du et nyt sæt fra samme emne.</p>
         {topicPool.length > questions.length && <p style={{fontSize:14,color:"#718077",fontWeight:700}}>Runde {roundNumber} · {questions.length} spørgsmål · {questionPool.length} på dit niveau · {topicPool.length} i emnebanken</p>}
 
         {questions.length === 0 ? <div style={{marginTop:30,background:"white",padding:28,borderRadius:14,border:"1px solid #ddd9d0"}}><h2>{assignment.topic}</h2><p>Opgaver til dette emne er på vej.</p></div> : <>
           <div style={{display:"grid",gap:16,marginTop:28}}>
-            {questions.map((question, index) => <article key={`${roundNumber}-${questionKey(question)}`} style={{background:"white",padding:24,borderRadius:14,border:"1px solid #ddd9d0"}}>
-              <div style={{fontSize:11,fontWeight:800,letterSpacing:1.4,color:"#718077"}}>OPGAVE {index + 1} AF {questions.length}</div>
-              <h2 style={{fontFamily:"Georgia,serif",fontSize:22,lineHeight:1.35,margin:"10px 0 16px"}}>{question.q}</h2>
-              <div style={{display:"grid",gap:8}}>
-                {question.options.map((option) => {
-                  const chosen = answers[index] === option;
-                  const correct = submitted && option === question.answer;
-                  const wrong = submitted && chosen && option !== question.answer;
-                  return <button key={option} disabled={submitted} onClick={() => setAnswers((current) => ({...current,[index]:option}))} style={{padding:"12px 14px",textAlign:"left",borderRadius:9,border:`2px solid ${correct ? "#5f8068" : wrong ? "#b86b62" : chosen ? "#526b60" : "#e1ddd5"}`,background:correct ? "#edf5ef" : wrong ? "#fff0ed" : chosen ? "#edf1ec" : "#fff",fontWeight:chosen || correct ? 800 : 600,cursor:submitted ? "default" : "pointer"}}>{option}</button>;
-                })}
-              </div>
-              {submitted && <div style={{marginTop:14,padding:"12px 14px",borderRadius:9,background:answers[index] === question.answer ? "#edf5ef" : "#fff7e8",lineHeight:1.5}}><strong>{answers[index] === question.answer ? "Rigtigt ✓" : "Ikke helt endnu"}</strong><br />{question.why}</div>}
-            </article>)}
+            {questions.map((question, index) => {
+              const correctNow = submitted && answerIsCorrect(question, answers[index]);
+              return <article key={`${roundNumber}-${questionKey(question)}`} style={{background:"white",padding:24,borderRadius:14,border:"1px solid #ddd9d0"}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                  <div style={{fontSize:11,fontWeight:800,letterSpacing:1.4,color:"#718077"}}>OPGAVE {index + 1} AF {questions.length}</div>
+                  {isWrittenQuestion(question) && <span style={{fontSize:11,fontWeight:900,color:"#526b60",background:"#edf1ec",padding:"5px 8px",borderRadius:999}}>{question.kind === "rewrite" ? "RET SELV" : "SKRIV SELV"}</span>}
+                </div>
+                <h2 style={{fontFamily:"Georgia,serif",fontSize:22,lineHeight:1.35,margin:"10px 0 16px"}}>{question.q}</h2>
+
+                {isWrittenQuestion(question) ?
+                  question.kind === "rewrite" ? <textarea disabled={submitted} value={answers[index] || ""} onChange={(event) => setAnswers((current) => ({...current,[index]:event.target.value}))} placeholder={question.placeholder || "Skriv dit svar…"} rows={3} style={{width:"100%",boxSizing:"border-box",padding:"13px 14px",borderRadius:9,border:`2px solid ${submitted ? (correctNow ? "#5f8068" : "#b86b62") : "#d8d5cd"}`,background:submitted ? (correctNow ? "#edf5ef" : "#fff0ed") : "white",font:"inherit",fontSize:16,lineHeight:1.5,resize:"vertical"}} />
+                  : <input disabled={submitted} value={answers[index] || ""} onChange={(event) => setAnswers((current) => ({...current,[index]:event.target.value}))} placeholder={question.placeholder || "Skriv dit svar…"} style={{width:"100%",boxSizing:"border-box",padding:"13px 14px",borderRadius:9,border:`2px solid ${submitted ? (correctNow ? "#5f8068" : "#b86b62") : "#d8d5cd"}`,background:submitted ? (correctNow ? "#edf5ef" : "#fff0ed") : "white",font:"inherit",fontSize:16}} />
+                  : <div style={{display:"grid",gap:8}}>
+                    {question.options.map((option) => {
+                      const chosen = answers[index] === option;
+                      const correct = submitted && option === question.answer;
+                      const wrong = submitted && chosen && option !== question.answer;
+                      return <button key={option} disabled={submitted} onClick={() => setAnswers((current) => ({...current,[index]:option}))} style={{padding:"12px 14px",textAlign:"left",borderRadius:9,border:`2px solid ${correct ? "#5f8068" : wrong ? "#b86b62" : chosen ? "#526b60" : "#e1ddd5"}`,background:correct ? "#edf5ef" : wrong ? "#fff0ed" : chosen ? "#edf1ec" : "#fff",fontWeight:chosen || correct ? 800 : 600,cursor:submitted ? "default" : "pointer"}}>{option}</button>;
+                    })}
+                  </div>}
+
+                {submitted && <div style={{marginTop:14,padding:"12px 14px",borderRadius:9,background:correctNow ? "#edf5ef" : "#fff7e8",lineHeight:1.5}}>
+                  <strong>{correctNow ? "Rigtigt ✓" : "Ikke helt endnu"}</strong>
+                  {!correctNow && isWrittenQuestion(question) && <><br /><span style={{color:"#59615c"}}>Et korrekt svar er: <strong>{question.answer}</strong></span></>}
+                  <br />{question.why}
+                </div>}
+              </article>;
+            })}
           </div>
 
-          {!submitted ? <button disabled={Object.keys(answers).length !== questions.length || saving} onClick={submit} style={{marginTop:22,width:"100%",padding:"14px 18px",border:0,borderRadius:10,background:"#365044",color:"white",fontWeight:800,fontSize:16,opacity:Object.keys(answers).length !== questions.length ? .45 : 1,cursor:Object.keys(answers).length !== questions.length ? "not-allowed" : "pointer"}}>Ret mine svar</button> :
+          {!submitted ? <button disabled={!allAnswered || saving} onClick={submit} style={{marginTop:22,width:"100%",padding:"14px 18px",border:0,borderRadius:10,background:"#365044",color:"white",fontWeight:800,fontSize:16,opacity:!allAnswered ? .45 : 1,cursor:!allAnswered ? "not-allowed" : "pointer"}}>Ret mine svar</button> :
             <div style={{marginTop:22,padding:24,borderRadius:14,background:"#273f35",color:"white",textAlign:"center"}}>
               <div style={{fontFamily:"Georgia,serif",fontSize:32,fontWeight:800}}>{score} / {questions.length}</div>
               <p>{allCorrect ? "Flot, alle rigtige. Du har styr på denne runde." : score >= Math.ceil(questions.length * .6) ? "Godt arbejde. Kig på forklaringerne, og prøv et nyt sæt, så du får trænet det, der drillede." : "Kig på forklaringerne og prøv et nyt sæt. Det er sådan træning virker."}</p>
