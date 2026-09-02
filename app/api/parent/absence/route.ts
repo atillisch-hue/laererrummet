@@ -36,6 +36,16 @@ async function allowedChildren(admin:SupabaseClient,userId:string):Promise<Child
 }
 const today=()=>new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Copenhagen"});
 const validDate=(s:string)=>/^\d{4}-\d{2}-\d{2}$/.test(s);
+const visibleAbsence=(a:Absence,userId:string)=>({
+ id:a.id,
+ student_id:a.student_id,
+ absence_date:a.absence_date,
+ status:a.status,
+ note:a.source==="parent"&&a.reported_by===userId?a.note:null,
+ source:a.source,
+ created_at:a.created_at,
+ can_manage:a.source==="parent"&&a.reported_by===userId&&a.absence_date>=today()
+});
 
 export async function GET(req:Request){
  try{
@@ -45,7 +55,7 @@ export async function GET(req:Request){
   const ids=children.map(c=>c.id);
   const{data,error}=await admin.from("student_absence").select("id,student_id,absence_date,status,note,source,reported_by,created_at").in("student_id",ids).order("absence_date",{ascending:false}).limit(200);
   if(error)return NextResponse.json({error:error.message},{status:400});
-  const absence=((data||[]) as Absence[]).map(a=>({...a,can_manage:a.source==="parent"&&a.reported_by===user.id&&a.absence_date>=today()}));
+  const absence=((data||[]) as Absence[]).map(a=>visibleAbsence(a,user.id));
   return NextResponse.json({children,absence});
  }catch{return NextResponse.json({error:"Fravær kunne ikke hentes."},{status:500})}
 }
@@ -61,7 +71,7 @@ export async function POST(req:Request){
   if(existing)return NextResponse.json({error:"Der er allerede registreret fravær denne dag."},{status:409});
   const{data:created,error}=await admin.from("student_absence").insert({student_id:studentId,absence_date:absenceDate,status:"sick",note:note||null,source:"parent",reported_by:user.id}).select("id,student_id,absence_date,status,note,source,reported_by,created_at").single();
   if(error)return NextResponse.json({error:error.message},{status:400});
-  return NextResponse.json({absence:created});
+  return NextResponse.json({absence:visibleAbsence(created as Absence,user.id)});
  }catch{return NextResponse.json({error:"Sygemeldingen kunne ikke gemmes."},{status:500})}
 }
 
@@ -79,7 +89,7 @@ export async function PATCH(req:Request){
   if(conflict)return NextResponse.json({error:"Der er allerede registreret fravær denne dag."},{status:409});
   const{data:updated,error}=await admin.from("student_absence").update({absence_date:absenceDate,note:note||null}).eq("id",id).select("id,student_id,absence_date,status,note,source,reported_by,created_at").single();
   if(error)return NextResponse.json({error:error.message},{status:400});
-  return NextResponse.json({absence:updated});
+  return NextResponse.json({absence:visibleAbsence(updated as Absence,user.id)});
  }catch{return NextResponse.json({error:"Fraværet kunne ikke opdateres."},{status:500})}
 }
 
