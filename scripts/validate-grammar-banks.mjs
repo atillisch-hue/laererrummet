@@ -138,7 +138,11 @@ const sources = [
   ["advanced-extra", "app/student-grammar/advanced-extra.ts", "advancedExtraLibrary"],
   ["interactive", "app/student-grammar/interactive-library.ts", "interactiveGrammarLibrary"],
   ["structure-extra", "app/student-grammar/structure-extra.ts", "structureExtraLibrary"],
-  ["core-base+structure", "app/student-grammar/core-library.ts", "coreGrammarLibrary"],
+  ["retskrivning-extra", "app/student-grammar/retskrivning-extra.ts", "retskrivningExtraLibrary"],
+  ["wordclasses-complete", "app/student-grammar/wordclasses-complete.ts", "completeWordClassesLibrary"],
+  ["inflection-syntax", "app/student-grammar/inflection-syntax-extra.ts", "inflectionSyntaxLibrary"],
+  ["morphology-text", "app/student-grammar/morphology-text-extra.ts", "morphologyTextLibrary"],
+  ["core-merged", "app/student-grammar/core-library.ts", "coreGrammarLibrary"],
   ["free-training", "lib/freeTrainingQuestions.ts", "freeTrainingQuestions"],
 ];
 
@@ -190,6 +194,7 @@ function freeTrainingAsAssignedGrammar(freeTrainingQuestions) {
 
 function validateGradeCoverage() {
   const progression = loadTypeScript("app/student-grammar/grade-progression.ts");
+  const catalog = loadTypeScript("app/grammar/grammar-catalog.ts");
   const foundation = loadTypeScript("app/student-grammar/foundation-library.ts").foundationGrammarLibrary;
   const foundationExtra = loadTypeScript("app/student-grammar/foundation-extra.ts").foundationExtraGrammarLibrary;
   const core = loadTypeScript("app/student-grammar/core-library.ts").coreGrammarLibrary;
@@ -212,6 +217,19 @@ function validateGradeCoverage() {
     progression.tagLibraryForGrades(freeTrainingAsAssignedGrammar(freeTraining), 5),
   );
 
+  const liveTopics = catalog.liveGrammarAreas.flatMap((area) => area.topics.map((topic) => ({ area: area.title, ...topic })));
+  for (const topic of liveTopics) {
+    const levels = library[topic.title];
+    if (!levels) {
+      errors.push(`catalog: live topic '${topic.title}' in '${topic.area}' has no question bank`);
+      continue;
+    }
+    for (const level of ["basis", "traening", "udfordring"]) {
+      const count = uniqueQuestions(levels[level] || []).length;
+      if (count < 5) errors.push(`catalog: live topic '${topic.title}' · ${level} has ${count} question(s); minimum is 5`);
+    }
+  }
+
   const gradeLevelChecks = [
     { grade: 1, levels: ["basis"] },
     { grade: 2, levels: ["basis", "traening"] },
@@ -227,22 +245,25 @@ function validateGradeCoverage() {
 
   const coverageRows = [];
   for (const { grade, levels } of gradeLevelChecks) {
-    for (const [topic, topicLevels] of Object.entries(library)) {
-      if (progression.minimumGradeForTopic(topic) > grade) continue;
+    for (const topic of liveTopics) {
+      if (topic.minGrade > grade) continue;
+      const topicLevels = library[topic.title];
+      if (!topicLevels) continue;
       for (const level of levels) {
         const filtered = progression.filterLevelsForGrade(topicLevels, grade, level);
         const directPool = uniqueQuestions(filtered[level] || []);
-        coverageRows.push({ grade, topic, level, count: directPool.length });
+        coverageRows.push({ grade, topic: topic.title, level, count: directPool.length });
         if (directPool.length < 5) {
-          errors.push(`coverage: ${grade}. klasse · ${topic} · ${level} has ${directPool.length} grade-appropriate question(s); minimum is 5`);
+          errors.push(`coverage: ${grade}. klasse · ${topic.title} · ${level} has ${directPool.length} grade-appropriate question(s); minimum is 5`);
         }
       }
     }
   }
 
-  if (!errors.some((error) => error.startsWith("coverage:"))) {
+  if (!errors.some((error) => error.startsWith("coverage:") || error.startsWith("catalog:"))) {
     const checked = coverageRows.length;
     const minimum = Math.min(...coverageRows.map((row) => row.count));
+    console.log(`Live catalog passed: ${liveTopics.length} active topics all have Basis, Træning and Udfordring.`);
     console.log(`Grade coverage passed: ${checked} grade/topic/level combinations checked; minimum pool size ${minimum}.`);
   }
 }
