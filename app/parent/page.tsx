@@ -7,7 +7,7 @@ import {hasRole} from "../../lib/roles";
 import {recurrenceLabel,scheduleOccursOn,type RecurrencePattern} from "../../lib/scheduleRecurrence";
 import RoleNoticeboard from "../RoleNoticeboard";
 
-type Assignment={id:number;title:string;type:string;class_subject_id:number|null;created_at:string};
+type Assignment={id:number;title:string;type:string;instructions:string|null;class_subject_id:number|null;subject_title:string|null;created_at:string};
 type ScheduleEntry={id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:"lesson"|"assembly"|"break";recurrence_pattern:RecurrencePattern};
 type Absence={id:number;absence_date:string;status:string;source:string;created_at:string};
 type Child={id:number;name:string;class_id:number|null;class_name:string|null;assignments:Assignment[];schedule:ScheduleEntry[];absence:Absence[]};
@@ -24,6 +24,7 @@ export default function ParentPage(){
  const[ready,setReady]=useState(false);
  const[children,setChildren]=useState<Child[]>([]);
  const[activeId,setActiveId]=useState<number|null>(null);
+ const[openAssignmentId,setOpenAssignmentId]=useState<number|null>(null);
  const[error,setError]=useState("");
 
  useEffect(()=>{(async()=>{
@@ -51,12 +52,12 @@ export default function ParentPage(){
   <section style={shell}>
    <p style={eyebrow}>FORÆLDREPORTAL</p>
    <h1 style={{fontFamily:"Georgia,serif",fontSize:42,margin:"7px 0 8px"}}>Dit barns skolehverdag</h1>
-   <p style={{maxWidth:740,fontSize:17,color:"#687068",lineHeight:1.55,margin:"0 0 24px"}}>Et roligt overblik over det, der er relevant for dig som forælder. Interne lærernoter og andre elevers oplysninger er ikke en del af denne visning.</p>
+   <p style={{maxWidth:740,fontSize:17,color:"#687068",lineHeight:1.55,margin:"0 0 24px"}}>Et roligt overblik over det, der er relevant for dig som forælder. Interne lærernoter, elevens kladder og andre elevers oplysninger er ikke en del af denne visning.</p>
    {error&&<div style={{padding:13,background:"#fff0ed",border:"1px solid #deb5ad",borderRadius:10,color:"#7b3b32",fontWeight:800,marginBottom:18}}>{error}</div>}
    <RoleNoticeboard audience="parent"/>
 
    {!children.length?<section style={{...card,marginTop:22}}>Skolen mangler at knytte et barn til din aktive forældrekonto.</section>:<>
-    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:24}}>{children.map(child=><button key={child.id} onClick={()=>setActiveId(child.id)} style={{padding:"10px 14px",borderRadius:9,border:active?.id===child.id?"1px solid #365044":"1px solid #d8d5cd",background:active?.id===child.id?"#365044":"white",color:active?.id===child.id?"white":"#27352d",fontWeight:850,cursor:"pointer"}}>{child.name}{child.class_name?` · ${child.class_name}`:""}</button>)}</div>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:24}}>{children.map(child=><button key={child.id} onClick={()=>{setActiveId(child.id);setOpenAssignmentId(null)}} style={{padding:"10px 14px",borderRadius:9,border:active?.id===child.id?"1px solid #365044":"1px solid #d8d5cd",background:active?.id===child.id?"#365044":"white",color:active?.id===child.id?"white":"#27352d",fontWeight:850,cursor:"pointer"}}>{child.name}{child.class_name?` · ${child.class_name}`:""}</button>)}</div>
 
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:14,flexWrap:"wrap",marginTop:28}}><div><p style={eyebrow}>DU SER NU</p><h2 style={{fontFamily:"Georgia,serif",fontSize:31,margin:"5px 0 0"}}>{active?.name}{active?.class_name?` · ${active.class_name}`:""}</h2></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><Link href="/parent/absence" style={secondary}>Meld syg / fravær →</Link><Link href="/parent/meetings" style={secondary}>Møder →</Link></div></div>
 
@@ -68,8 +69,8 @@ export default function ParentPage(){
      </section>
 
      <section id="assignments" style={card}>
-      <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><div><p style={eyebrow}>OPGAVER</p><h3 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"7px 0 0"}}>Aktuelle opgaver</h3></div><span style={countChip}>{active?.assignments.length||0}</span></div>
-      {recentAssignments.length===0?<p style={{color:"#687068",marginBottom:0}}>Der er ingen aktuelle opgaver, som er synlige for {active?.name}.</p>:<div style={{display:"grid",gap:8,marginTop:13}}>{recentAssignments.map(a=><article key={a.id} style={{padding:"10px 11px",border:"1px solid #e3dfd7",borderRadius:9,background:"#faf9f6"}}><strong>{a.title}</strong><small style={{display:"block",marginTop:3,color:"#727772"}}>{a.type||"Opgave"}</small></article>)}</div>}
+      <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><div><p style={eyebrow}>OPGAVER</p><h3 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"7px 0 0"}}>Opgaver</h3></div><span style={countChip}>{active?.assignments.length||0}</span></div>
+      {recentAssignments.length===0?<p style={{color:"#687068",marginBottom:0}}>Der er ingen opgaver, som er synlige for {active?.name}.</p>:<div style={{display:"grid",gap:8,marginTop:13}}>{recentAssignments.map(a=>{const open=openAssignmentId===a.id;return <article key={a.id} style={{border:"1px solid #e3dfd7",borderRadius:9,background:"#faf9f6",overflow:"hidden"}}><button type="button" onClick={()=>setOpenAssignmentId(open?null:a.id)} style={{width:"100%",border:0,background:"transparent",padding:"10px 11px",textAlign:"left",color:"inherit",cursor:"pointer"}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"start"}}><div><strong>{a.title}</strong><small style={{display:"block",marginTop:3,color:"#727772"}}>{a.subject_title?`${a.subject_title} · `:""}{a.type||"Opgave"}</small></div><strong style={{color:"#526b60",fontSize:12}}>{open?"Luk ↑":"Åbn ↓"}</strong></div></button>{open&&<div style={{padding:"0 11px 11px",borderTop:"1px solid #e5e1d9"}}><p style={{fontSize:10,fontWeight:900,letterSpacing:1.2,color:"#718077",margin:"10px 0 5px"}}>INSTRUKTION</p><div style={{whiteSpace:"pre-wrap",lineHeight:1.55,color:"#46534c"}}>{a.instructions?.trim()||"Læreren har ikke skrevet en særskilt instruktion til opgaven."}</div><small style={{display:"block",marginTop:10,color:"#777168"}}>Elevens kladde og besvarelse vises ikke i forældreportalen.</small></div>}</article>})}</div>}
      </section>
 
      <section id="absence" style={card}>
