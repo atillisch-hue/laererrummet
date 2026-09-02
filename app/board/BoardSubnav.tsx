@@ -5,7 +5,8 @@ import {usePathname} from "next/navigation";
 
 const items=[
  {href:"/board",label:"Oversigt",exact:true},
- {href:"/board/meetings",label:"Møder & beslutninger",exact:false}
+ {href:"/board/meetings",label:"Møder & beslutninger",exact:false},
+ {href:"/board/archive",label:"Dokumentarkiv",exact:false}
 ];
 
 export default function BoardSubnav(){
