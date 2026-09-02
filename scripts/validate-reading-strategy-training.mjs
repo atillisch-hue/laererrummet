@@ -9,6 +9,7 @@ function load(file){const absolute=path.resolve(root,file);if(cache.has(absolute
 
 const{READING_STRATEGIES}=load("app/student-reading-exam/reading-exam-bank.ts");
 const{strategyTrainingPassages,strategyTrainingAvailableCount,buildStrategyTrainingRound}=load("app/student-reading-training/strategy-training-bank.ts");
+const{classReadingStrategyAnalysis,classReadingFocus}=load("app/grammar/laeseproeve/class-reading-analysis.ts");
 const passages=strategyTrainingPassages(),errors=[];
 const expectedMinimum={6:6,7:7,8:8,9:9};
 const allIds=new Set();
@@ -39,5 +40,22 @@ for(const strategy of READING_STRATEGIES){
 }
 
 if(Object.keys(passages).length!==READING_STRATEGIES.length)errors.push(`Forventede ${READING_STRATEGIES.length} strategipassager, fandt ${Object.keys(passages).length}`);
+
+const fakeAnswers=(rows)=>Object.fromEntries(rows.map((row,index)=>[index,{strategy:row[0],correct:row[1]}]));
+const heatmap=classReadingStrategyAnalysis([
+ {student_id:1,student_name:"Elev A",submitted:true,answers:fakeAnswers([["Inferens",false],["Inferens",false],["Hovedindhold",true],["Hovedindhold",true]])},
+ {student_id:2,student_name:"Elev B",submitted:true,answers:fakeAnswers([["Inferens",false],["Inferens",true],["Hovedindhold",true],["Hovedindhold",true]])},
+ {student_id:3,student_name:"Elev C",submitted:false,answers:null},
+]);
+const inferens=heatmap.find(row=>row.strategy==="Inferens"),hovedindhold=heatmap.find(row=>row.strategy==="Hovedindhold"),focus=classReadingFocus(heatmap);
+if(!inferens||inferens.correct!==1||inferens.total!==4||inferens.status!=="focus")errors.push("Heatmap: inferens skulle være 1/4 og fælles fokus");
+if(!inferens||inferens.supportStudents.length!==2)errors.push("Heatmap: begge målte elever skulle være markeret til ekstra inferenstræning");
+if(!hovedindhold||hovedindhold.correct!==4||hovedindhold.total!==4||hovedindhold.status!=="secure")errors.push("Heatmap: hovedindhold skulle være 4/4 og sikkert");
+if(!focus||focus.strategy!=="Inferens")errors.push("Heatmap: fælles fokus skulle være Inferens");
+
+const singleQuestion=classReadingStrategyAnalysis([{student_id:4,student_name:"Elev D",submitted:true,answers:fakeAnswers([["Ord i kontekst",false]])}]);
+const one=singleQuestion.find(row=>row.strategy==="Ord i kontekst");
+if(!one||one.supportStudents.length!==0)errors.push("Heatmap: ét enkelt spørgsmål må ikke alene udløse individflag");
+
 if(errors.length){console.error(`Reading strategy training validation failed with ${errors.length} issue(s):`);for(const error of errors)console.error(`- ${error}`);process.exit(1)}
-console.log(`Reading strategy training validation passed: ${READING_STRATEGIES.length} strategies · ${allIds.size} questions · grade 6–9 progression · fresh retry coverage.`);
+console.log(`Reading strategy training validation passed: ${READING_STRATEGIES.length} strategies · ${allIds.size} questions · grade 6–9 progression · fresh retry coverage · class heatmap rules.`);
