@@ -35,6 +35,22 @@ const topicMinimumGrades: Record<string, number> = {
   "Sproglig effekt": 7,
 };
 
+const prerequisiteTopics: Record<string, string> = {
+  "Tillægsord": "Navneord",
+  "Stedord": "Navneord",
+  "Biord": "Tillægsord",
+  "Genstandsled": "Grundled og udsagnsled",
+  "Omsagnsled": "Grundled og udsagnsled",
+  "Hel- og ledsætninger": "Grundled og udsagnsled",
+  "Komma mellem helsætninger": "Grundled og udsagnsled",
+  "Komma ved ledsætninger": "Grundled og udsagnsled",
+  "Kommaøvelser": "Grundled og udsagnsled",
+  "Form → funktion → effekt": "Tillægsord",
+  "Præcise verber": "Udsagnsord",
+  "Variation i sætninger": "Grundled og udsagnsled",
+  "Sproglig effekt": "Tillægsord",
+};
+
 export function gradeBandLabel(grade: number | null | undefined) {
   if (grade === null || grade === undefined || Number.isNaN(Number(grade))) return "klassetrin ikke angivet";
   const value = Number(grade);
@@ -47,6 +63,13 @@ export function minimumGradeForTopic(topic: string) {
 
 export function challengeAllowance(level: string) {
   return level === "udfordring" ? 1 : 0;
+}
+
+export function prerequisiteTopicForGrade(topic: string, grade: number | null | undefined, level: string) {
+  if (grade === null || grade === undefined || Number.isNaN(Number(grade))) return null;
+  const effectiveGrade = Math.min(10, Number(grade) + challengeAllowance(level));
+  if (minimumGradeForTopic(topic) <= effectiveGrade) return null;
+  return prerequisiteTopics[topic] || null;
 }
 
 export function tagLibraryForGrades(
