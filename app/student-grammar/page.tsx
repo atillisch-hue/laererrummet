@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { freeTrainingQuestions } from "../../lib/freeTrainingQuestions";
 import { studentSupabase } from "../../lib/studentSupabase";
 import { clearStudentSession, getStudentSessionToken } from "../../lib/studentSession";
 import { extraLibrary as grammarLibraryExtra, type GrammarQuestion as Q } from "./grammar-library";
@@ -54,11 +55,29 @@ function mergeLibraries(...sources: GrammarLibrary[]): GrammarLibrary {
   return merged;
 }
 
+function freeTrainingAsAssignedGrammar(): GrammarLibrary {
+  const result: GrammarLibrary = {};
+  const subject = freeTrainingQuestions["dansk-grammatik"] || {};
+
+  for (const area of Object.values(subject)) {
+    for (const [topic, levels] of Object.entries(area)) {
+      result[topic] ||= {};
+      const basis = [...(levels.start || []), ...(levels.basis || [])];
+      if (basis.length) result[topic].basis = basis;
+      if (levels.traening?.length) result[topic].traening = levels.traening;
+      if (levels.udfordring?.length) result[topic].udfordring = levels.udfordring;
+    }
+  }
+
+  return result;
+}
+
 const library = mergeLibraries(
   coreGrammarLibrary,
   grammarLibraryExtra,
   expandedGrammarLibrary,
-  advancedLibrary
+  advancedLibrary,
+  freeTrainingAsAssignedGrammar()
 );
 
 function prepareRound(pool: Q[], excludedKeys: Set<string>) {
@@ -200,7 +219,7 @@ export default function StudentGrammar() {
       if (data?.error === "invalid_session") clearStudentSession();
       setSaveState("Resultatet kunne ikke gemmes");
     } else {
-      setSaveState("Resultatet er gemt ✓");
+      setSaveState(`Resultatet er gemt ✓${data.attempts ? ` · Forsøg ${data.attempts}` : ""}`);
     }
     setSaving(false);
   }
