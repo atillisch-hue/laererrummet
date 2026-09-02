@@ -18,6 +18,7 @@ const groups:AdminGroup[]=[
  ]},
  {id:"skolen",eyebrow:"SKOLEN",title:"Skolens struktur",text:"Klasser, elever og hvem der underviser hvor.",cards:[
   {title:"Klasser & elever",text:"Opret og redigér klasser og elever samt administrér elevernes adgangskoder.",href:"/admin/users",tag:"GRUNDSTRUKTUR"},
+  {title:"Elevklassetrin",text:"Angiv klassetrin pr. elev — også i blandede klasser. Bruges til trinpasset grammatik og differentiering.",href:"/admin/student-grade-levels",tag:"DIFFERENTIERING"},
   {title:"Lærere & klasser",text:"Tilknyt en eller flere lærere til de klasser, de faktisk arbejder med.",href:"/admin/teacher-classes",tag:"TILKNYTNING"}
  ]},
  {id:"drift",eyebrow:"KALENDER & DRIFT",title:"Det der får skoledagen til at hænge sammen",text:"Skema, fravær, vikarer og de ændringer, der påvirker dagens arbejde.",cards:[
