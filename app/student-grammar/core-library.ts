@@ -1,6 +1,9 @@
 import type { GrammarQuestion } from "./grammar-library";
+import { structureExtraLibrary } from "./structure-extra";
 
-export const coreGrammarLibrary: Record<string, Record<string, GrammarQuestion[]>> = {
+type GrammarBank = Record<string, Record<string, GrammarQuestion[]>>;
+
+const baseCoreGrammarLibrary: GrammarBank = {
   Udsagnsord: {
     basis: [
       {q:"Hvilket ord er udsagnsord? ‘Maja løber hjem.’",options:["Maja","løber","hjem","ingen"],answer:"løber",why:"‘Løber’ fortæller, hvad Maja gør."},
@@ -48,3 +51,18 @@ export const coreGrammarLibrary: Record<string, Record<string, GrammarQuestion[]
     ]
   }
 };
+
+function mergeBanks(...sources: GrammarBank[]): GrammarBank {
+  const result: GrammarBank = {};
+  for (const source of sources) {
+    for (const [topic, levels] of Object.entries(source)) {
+      result[topic] ||= {};
+      for (const [level, questions] of Object.entries(levels)) {
+        result[topic][level] = [...(result[topic][level] || []), ...questions];
+      }
+    }
+  }
+  return result;
+}
+
+export const coreGrammarLibrary: GrammarBank = mergeBanks(baseCoreGrammarLibrary, structureExtraLibrary);
