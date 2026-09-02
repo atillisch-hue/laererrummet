@@ -58,10 +58,27 @@ const sourceCounts = [];
 
 function validateQuestion(question, label) {
   totalQuestions += 1;
+  const written = question.kind === "text" || question.kind === "rewrite";
+
   if (typeof question.q !== "string" || !question.q.trim()) errors.push(`${label}: missing question text`);
-  if (!Array.isArray(question.options) || question.options.length < 2) errors.push(`${label}: needs at least two answer options`);
   if (typeof question.answer !== "string" || !question.answer.trim()) errors.push(`${label}: missing answer`);
   if (typeof question.why !== "string" || !question.why.trim()) errors.push(`${label}: missing explanation`);
+
+  if (written) {
+    if (!Array.isArray(question.options)) errors.push(`${label}: written task options must be an array`);
+    if (Array.isArray(question.options) && question.options.length !== 0) errors.push(`${label}: written task should not contain choice options`);
+    if (question.acceptedAnswers !== undefined) {
+      if (!Array.isArray(question.acceptedAnswers) || question.acceptedAnswers.length === 0) {
+        errors.push(`${label}: acceptedAnswers must contain at least one answer when provided`);
+      } else if (question.acceptedAnswers.some((answer) => typeof answer !== "string" || !answer.trim())) {
+        errors.push(`${label}: acceptedAnswers contains an empty or non-string answer`);
+      }
+    }
+    return;
+  }
+
+  if (question.kind && question.kind !== "choice") errors.push(`${label}: unknown question kind '${question.kind}'`);
+  if (!Array.isArray(question.options) || question.options.length < 2) errors.push(`${label}: needs at least two answer options`);
 
   if (Array.isArray(question.options)) {
     const unique = new Set(question.options);
@@ -107,6 +124,7 @@ const sources = [
   ["extraLibrary", "app/student-grammar/extraLibrary.ts", "extraLibrary"],
   ["grammar-advanced", "app/student-grammar/grammar-advanced.ts", "advancedLibrary"],
   ["advanced-extra", "app/student-grammar/advanced-extra.ts", "advancedExtraLibrary"],
+  ["interactive", "app/student-grammar/interactive-library.ts", "interactiveGrammarLibrary"],
   ["structure-extra", "app/student-grammar/structure-extra.ts", "structureExtraLibrary"],
   ["core-base+structure", "app/student-grammar/core-library.ts", "coreGrammarLibrary"],
   ["free-training", "lib/freeTrainingQuestions.ts", "freeTrainingQuestions"],
