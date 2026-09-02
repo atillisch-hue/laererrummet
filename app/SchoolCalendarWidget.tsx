@@ -3,10 +3,11 @@ import Link from "next/link";
 import {useEffect,useMemo,useState} from "react";
 import {usePathname} from "next/navigation";
 import {supabase} from "../lib/supabase";
+import {recurrenceLabel,scheduleOccursOn,type RecurrencePattern} from "../lib/scheduleRecurrence";
 
 type EntryKind="lesson"|"assembly"|"break"|"duty"|"other";
 type ClosedDay={date:string;label:string};
-type ScheduleEntry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:EntryKind};
+type ScheduleEntry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:EntryKind;recurrence_pattern:RecurrencePattern};
 type ScheduleTeacher={schedule_entry_id:number;teacher_id:string};
 type SubstituteAssignment={id:number;schedule_entry_id:number;assignment_date:string;absent_teacher_id:string;substitute_teacher_id:string;substitute_plan:string|null};
 type Task={id:number;title:string;due_date:string|null;completed:boolean;responsible_user_id:string|null};
@@ -61,7 +62,7 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
    if(!uid||!active)return;
    setUserId(uid);
    const[eRes,stRes,subRes,tRes,cRes,pRes]=await Promise.all([
-    supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room,entry_kind"),
+    supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room,entry_kind,recurrence_pattern"),
     supabase.from("schedule_teachers").select("schedule_entry_id,teacher_id").eq("teacher_id",uid),
     supabase.from("substitute_assignments").select("id,schedule_entry_id,assignment_date,absent_teacher_id,substitute_teacher_id,substitute_plan"),
     supabase.from("meeting_actions").select("id,title,due_date,completed,responsible_user_id").eq("responsible_user_id",uid).eq("completed",false),
@@ -107,7 +108,7 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
  const regularIds=new Set(scheduleTeachers.map(x=>x.schedule_entry_id));
  const daySubs=substitutions.filter(x=>x.assignment_date===activeDate&&(x.absent_teacher_id===userId||x.substitute_teacher_id===userId));
  const relevantIds=new Set<number>([...Array.from(regularIds),...daySubs.filter(x=>x.substitute_teacher_id===userId).map(x=>x.schedule_entry_id)]);
- const daySchedule=activeClosure?[]:schedule.filter(x=>x.weekday===weekday&&relevantIds.has(x.id)).sort((a,b)=>a.start_time.localeCompare(b.start_time));
+ const daySchedule=activeClosure?[]:schedule.filter(x=>x.weekday===weekday&&relevantIds.has(x.id)&&scheduleOccursOn(x.recurrence_pattern,activeDate)).sort((a,b)=>a.start_time.localeCompare(b.start_time));
  const dayLessons=daySchedule.filter(x=>x.entry_kind==="lesson");
  const dayBlocks=daySchedule.filter(x=>x.entry_kind!=="lesson");
  const dayTasks=tasks.filter(x=>x.due_date===activeDate);
@@ -153,11 +154,11 @@ export default function SchoolCalendarWidget({selectedDate,onSelectDate,markedDa
     {agendaItems.map(item=>{
      if(item.kind==="lesson"){
       const entry=item.entry,change=daySubs.find(x=>x.schedule_entry_id===entry.id),absent=change?.absent_teacher_id===userId,substitute=change?.substitute_teacher_id===userId,attendance=attendanceState(entry),prepared=isPrepared(entry);
-      return <Link key={`lesson-${entry.id}`} href={`/calendar/lesson/${entry.id}?date=${activeDate}`} style={{textDecoration:"none",color:"inherit",border:"1px solid #e2ded5",borderRadius:10,padding:"11px 12px",background:absent?"#f5eadc":substitute?"#e7eee9":"#faf9f6",display:"block"}}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><strong style={{fontSize:13}}>{entry.start_time.slice(0,5)}–{entry.end_time.slice(0,5)} · {entry.subject}</strong><div style={{display:"flex",gap:5,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>{prepared&&<small style={preparedTag}>FORBEREDT ✓</small>}<small style={kindTag}>LEKTION</small>{(absent||substitute)&&<small style={{fontWeight:900,color:"#6c5d43"}}>{absent?"FRAVÆR":"VIKAR"}</small>}</div></div><small style={{display:"block",color:"#717771",marginTop:3}}>{className(entry.class_id)}{entry.room?` · ${entry.room}`:""}</small><div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap",marginTop:7}}><span style={attendance.tone==="done"?attendanceDone:attendance.tone==="missing"?attendanceMissing:attendanceFuture}>{attendance.label}</span>{attendance.time&&<small style={{color:"#5c6f63",fontWeight:800}}>kl. {attendance.time}</small>}</div>{substitute&&change?.substitute_plan&&<small style={{display:"block",marginTop:6,color:"#52675a"}}>Vikarplan: {change.substitute_plan}</small>}{absent&&change&&<small style={{display:"block",marginTop:6,color:"#765f42"}}>Vikar: {staffName(change.substitute_teacher_id)}</small>}</Link>;
+      return <Link key={`lesson-${entry.id}`} href={`/calendar/lesson/${entry.id}?date=${activeDate}`} style={{textDecoration:"none",color:"inherit",border:"1px solid #e2ded5",borderRadius:10,padding:"11px 12px",background:absent?"#f5eadc":substitute?"#e7eee9":"#faf9f6",display:"block"}}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><strong style={{fontSize:13}}>{entry.start_time.slice(0,5)}–{entry.end_time.slice(0,5)} · {entry.subject}</strong><div style={{display:"flex",gap:5,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>{prepared&&<small style={preparedTag}>FORBEREDT ✓</small>}<small style={kindTag}>LEKTION</small>{entry.recurrence_pattern!=="weekly"&&<small style={kindTag}>{recurrenceLabel(entry.recurrence_pattern).toUpperCase()}</small>}{(absent||substitute)&&<small style={{fontWeight:900,color:"#6c5d43"}}>{absent?"FRAVÆR":"VIKAR"}</small>}</div></div><small style={{display:"block",color:"#717771",marginTop:3}}>{className(entry.class_id)}{entry.room?` · ${entry.room}`:""}</small><div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap",marginTop:7}}><span style={attendance.tone==="done"?attendanceDone:attendance.tone==="missing"?attendanceMissing:attendanceFuture}>{attendance.label}</span>{attendance.time&&<small style={{color:"#5c6f63",fontWeight:800}}>kl. {attendance.time}</small>}</div>{substitute&&change?.substitute_plan&&<small style={{display:"block",marginTop:6,color:"#52675a"}}>Vikarplan: {change.substitute_plan}</small>}{absent&&change&&<small style={{display:"block",marginTop:6,color:"#765f42"}}>Vikar: {staffName(change.substitute_teacher_id)}</small>}</Link>;
      }
      if(item.kind==="block"){
       const entry=item.entry,tone=blockTone(entry.entry_kind);
-      return <article key={`block-${entry.id}`} style={{border:`1px solid ${tone.border}`,borderRadius:10,padding:"11px 12px",background:tone.background,color:tone.color}}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><strong style={{fontSize:13}}>{entry.start_time.slice(0,5)}–{entry.end_time.slice(0,5)} · {entry.subject}</strong><small style={{...kindTag,background:"rgba(255,255,255,.55)",color:tone.color}}>{blockLabel(entry.entry_kind)}</small></div><small style={{display:"block",marginTop:3,opacity:.82}}>{className(entry.class_id)}{entry.room?` · ${entry.room}`:""}</small></article>;
+      return <article key={`block-${entry.id}`} style={{border:`1px solid ${tone.border}`,borderRadius:10,padding:"11px 12px",background:tone.background,color:tone.color}}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><strong style={{fontSize:13}}>{entry.start_time.slice(0,5)}–{entry.end_time.slice(0,5)} · {entry.subject}</strong><div style={{display:"flex",gap:5,flexWrap:"wrap",justifyContent:"flex-end"}}><small style={{...kindTag,background:"rgba(255,255,255,.55)",color:tone.color}}>{blockLabel(entry.entry_kind)}</small>{entry.recurrence_pattern!=="weekly"&&<small style={{...kindTag,background:"rgba(255,255,255,.55)",color:tone.color}}>{recurrenceLabel(entry.recurrence_pattern).toUpperCase()}</small>}</div></div><small style={{display:"block",marginTop:3,opacity:.82}}>{className(entry.class_id)}{entry.room?` · ${entry.room}`:""}</small></article>;
      }
      if(item.kind==="meeting"){
       const meeting=item.meeting,start=new Date(meeting.starts_at).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"}),end=meeting.ends_at?new Date(meeting.ends_at).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"}):null;
