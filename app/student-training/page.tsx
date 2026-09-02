@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../../lib/supabase";
+import { studentSupabase } from "../../lib/studentSupabase";
 import { trainingCatalog } from "../../lib/trainingCatalog";
 import { freeTrainingQuestions, type TrainingQuestion } from "../../lib/freeTrainingQuestions";
 import { clearStudentSession, getStudentSessionToken } from "../../lib/studentSession";
@@ -30,7 +30,7 @@ export default function StudentTraining() {
         return;
       }
 
-      const { data: studentData, error: studentError } = await supabase.rpc("student_session_data", { p_session_token: token });
+      const { data: studentData, error: studentError } = await studentSupabase.rpc("student_session_data", { p_session_token: token });
       if (studentError || !studentData?.ok || !studentData.student?.id) {
         clearStudentSession();
         window.location.href = "/?student=1";
@@ -48,7 +48,7 @@ export default function StudentTraining() {
         local = {};
       }
 
-      const { data: cloudRows } = await supabase.rpc("get_student_training_progress_session", { p_session_token: token });
+      const { data: cloudRows } = await studentSupabase.rpc("get_student_training_progress_session", { p_session_token: token });
       const cloud: Progress = {};
       ((cloudRows || []) as any[]).forEach((row) => {
         const key = [row.subject_id, row.area_id, row.skill_id, row.level_id].join("|");
@@ -137,7 +137,7 @@ export default function StudentTraining() {
       explanation: question.why
     }]));
 
-    const { data, error } = await supabase.rpc("save_student_training_attempt_session", {
+    const { data, error } = await studentSupabase.rpc("save_student_training_attempt_session", {
       p_session_token: sessionToken,
       p_subject_id: subjectId,
       p_area_id: areaId,
