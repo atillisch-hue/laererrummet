@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "validate:grammar": "node scripts/validate-grammar-banks.mjs",
+    "build": "npm run validate:grammar && next build",
     "start": "next start",
     "lint": "next lint"
   },
