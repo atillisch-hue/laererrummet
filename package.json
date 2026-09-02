@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "validate:grammar": "node scripts/validate-grammar-banks.mjs",
-    "build": "npm run validate:grammar && next build",
+    "validate:spelling-exam": "node scripts/validate-fp9-spelling-exam.mjs",
+    "build": "npm run validate:grammar && npm run validate:spelling-exam && next build",
     "start": "next start",
     "lint": "next lint"
   },
