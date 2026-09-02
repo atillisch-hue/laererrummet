@@ -3,6 +3,7 @@ import { structureExtraLibrary } from "./structure-extra";
 import { retskrivningExtraLibrary } from "./retskrivning-extra";
 import { completeWordClassesLibrary } from "./wordclasses-complete";
 import { inflectionSyntaxLibrary } from "./inflection-syntax-extra";
+import { morphologyTextLibrary } from "./morphology-text-extra";
 
 type GrammarBank = GradedGrammarLibrary;
 
@@ -68,4 +69,4 @@ function mergeBanks(...sources: GrammarBank[]): GrammarBank {
   return result;
 }
 
-export const coreGrammarLibrary: GrammarBank = mergeBanks(baseCoreGrammarLibrary, structureExtraLibrary, retskrivningExtraLibrary, completeWordClassesLibrary, inflectionSyntaxLibrary);
+export const coreGrammarLibrary: GrammarBank = mergeBanks(baseCoreGrammarLibrary, structureExtraLibrary, retskrivningExtraLibrary, completeWordClassesLibrary, inflectionSyntaxLibrary, morphologyTextLibrary);
