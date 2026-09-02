@@ -143,6 +143,7 @@ export default function HomeClient(){
 
    <section><p className="eyebrow">TRÆN SELV</p><h2 style={{fontFamily:"Georgia,serif",fontSize:28,margin:"7px 0"}}>Hvad vil du øve?</h2><p style={{color:"#707670",marginTop:0}}>Du må altid træne videre, også når læreren ikke har sendt en opgave.</p>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14,marginTop:18}}>
+     <button onClick={()=>window.location.href="/student-reading-training"} style={trainingCard}><span style={{fontSize:26}}>Læ</span><strong style={trainingTitle}>Læsestrategier</strong><small style={trainingDescription}>Træn skimning, informationssøgning, inferens, hovedindhold, ord i kontekst og andre strategier i små runder.</small><b style={trainingAction}>Vælg læsefokus →</b></button>
      {grammar&&<button onClick={()=>window.location.href="/student-training?subject=dansk-grammatik"} style={trainingCard}><span style={{fontSize:26}}>Aa</span><strong style={trainingTitle}>Grammatik</strong><small style={trainingDescription}>{grammar.description}</small><b style={trainingAction}>Vælg træning →</b></button>}
      {math&&<button onClick={()=>window.location.href="/student-training?subject=matematik"} style={trainingCard}><span style={{fontSize:26}}>∑</span><strong style={trainingTitle}>Matematik</strong><small style={trainingDescription}>{math.description}</small><b style={trainingAction}>Vælg træning →</b></button>}
     </div>
