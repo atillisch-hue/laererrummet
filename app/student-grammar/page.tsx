@@ -3,16 +3,85 @@
 import { useEffect, useMemo, useState } from "react";
 import { studentSupabase } from "../../lib/studentSupabase";
 import { clearStudentSession, getStudentSessionToken } from "../../lib/studentSession";
-import { extraLibrary, type GrammarQuestion as Q } from "./grammar-library";
+import { extraLibrary as grammarLibraryExtra, type GrammarQuestion as Q } from "./grammar-library";
 import { coreGrammarLibrary } from "./core-library";
+import { extraLibrary as expandedGrammarLibrary } from "./extraLibrary";
+import { advancedLibrary } from "./grammar-advanced";
 
-const library: Record<string, Record<string, Q[]>> = { ...coreGrammarLibrary, ...extraLibrary };
+type GrammarLibrary = Record<string, Record<string, Q[]>>;
+
+const ROUND_SIZE = 5;
+
+function questionKey(question: Q) {
+  return `${question.q}::${question.answer}`;
+}
+
+function shuffle<T>(items: T[]) {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function normalizeQuestion(question: Q): Q {
+  const options = Array.from(new Set(question.options));
+  if (!options.includes(question.answer)) {
+    if (options.length >= 4) options[options.length - 1] = question.answer;
+    else options.push(question.answer);
+  }
+  return { ...question, options };
+}
+
+function mergeLibraries(...sources: GrammarLibrary[]): GrammarLibrary {
+  const merged: GrammarLibrary = {};
+  for (const source of sources) {
+    for (const [topic, levels] of Object.entries(source)) {
+      merged[topic] ||= {};
+      for (const [level, questions] of Object.entries(levels)) {
+        const existing = merged[topic][level] || [];
+        const byKey = new Map(existing.map((question) => [questionKey(question), question]));
+        for (const raw of questions) {
+          const question = normalizeQuestion(raw);
+          byKey.set(questionKey(question), question);
+        }
+        merged[topic][level] = Array.from(byKey.values());
+      }
+    }
+  }
+  return merged;
+}
+
+const library = mergeLibraries(
+  coreGrammarLibrary,
+  grammarLibraryExtra,
+  expandedGrammarLibrary,
+  advancedLibrary
+);
+
+function prepareRound(pool: Q[], excludedKeys: Set<string>) {
+  const fresh = shuffle(pool.filter((question) => !excludedKeys.has(questionKey(question))));
+  const needed = Math.min(ROUND_SIZE, pool.length);
+  let selected = fresh.slice(0, needed);
+
+  if (selected.length < needed) {
+    const selectedKeys = new Set(selected.map(questionKey));
+    const fallback = shuffle(pool.filter((question) => !selectedKeys.has(questionKey(question))));
+    selected = [...selected, ...fallback.slice(0, needed - selected.length)];
+  }
+
+  return selected.map((question) => ({ ...question, options: shuffle(question.options) }));
+}
 
 export default function StudentGrammar() {
   const [loading, setLoading] = useState(true);
   const [sessionToken, setSessionToken] = useState("");
   const [assignment, setAssignment] = useState<any>(null);
   const [error, setError] = useState("");
+  const [questions, setQuestions] = useState<Q[]>([]);
+  const [seenQuestionKeys, setSeenQuestionKeys] = useState<string[]>([]);
+  const [roundNumber, setRoundNumber] = useState(1);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -49,8 +118,22 @@ export default function StudentGrammar() {
     })();
   }, []);
 
-  const questions = useMemo(() => assignment ? library[assignment.topic]?.[assignment.level] || [] : [], [assignment]);
+  const questionPool = useMemo(() => assignment ? library[assignment.topic]?.[assignment.level] || [] : [], [assignment]);
+
+  useEffect(() => {
+    if (!assignment || questionPool.length === 0) return;
+    const initial = prepareRound(questionPool, new Set());
+    setQuestions(initial);
+    setSeenQuestionKeys(initial.map(questionKey));
+    setRoundNumber(1);
+    setAnswers({});
+    setSubmitted(false);
+    setSaveState("");
+  }, [assignment, questionPool]);
+
   const score = questions.filter((question, index) => answers[index] === question.answer).length;
+  const allCorrect = questions.length > 0 && score === questions.length;
+  const unseenCount = questionPool.filter((question) => !seenQuestionKeys.includes(questionKey(question))).length;
 
   async function submit() {
     if (!assignment || !sessionToken || Object.keys(answers).length !== questions.length) return;
@@ -63,7 +146,8 @@ export default function StudentGrammar() {
       studentAnswer: answers[index],
       correctAnswer: question.answer,
       correct: answers[index] === question.answer,
-      explanation: question.why
+      explanation: question.why,
+      round: roundNumber
     }]));
 
     const { data, error: saveError } = await studentSupabase.rpc("save_student_grammar_attempt_session", {
@@ -83,6 +167,19 @@ export default function StudentGrammar() {
     setSaving(false);
   }
 
+  function retryWithFreshQuestions() {
+    const seen = new Set(seenQuestionKeys);
+    const next = prepareRound(questionPool, seen);
+    const nextKeys = next.map(questionKey);
+    setQuestions(next);
+    setSeenQuestionKeys((current) => Array.from(new Set([...current, ...nextKeys])));
+    setRoundNumber((current) => current + 1);
+    setAnswers({});
+    setSubmitted(false);
+    setSaveState("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   if (loading) return <main style={{padding:50}}>Åbner grammatikopgaven…</main>;
 
   return <main style={{minHeight:"100vh",background:"#f5f3ee",padding:"42px 24px 80px"}}>
@@ -93,11 +190,12 @@ export default function StudentGrammar() {
       </div> : <>
         <p style={{marginTop:38,fontSize:11,fontWeight:800,letterSpacing:1.7,color:"#718077"}}>GRAMMATIK · {assignment.area.toUpperCase()}</p>
         <h1 style={{fontFamily:"Georgia,serif",fontSize:42,margin:"8px 0"}}>{assignment.title}</h1>
-        <p style={{fontSize:18,color:"#707670",lineHeight:1.55}}>Arbejd dig gennem opgaverne. Når du retter, får du både svar og forklaring, så grammatik handler om mere end rigtigt og forkert.</p>
+        <p style={{fontSize:18,color:"#707670",lineHeight:1.55}}>Arbejd dig gennem opgaverne. Når du retter, får du både svar og forklaring. Hvis noget driller, får du et nyt sæt spørgsmål at træne videre med.</p>
+        {questionPool.length > questions.length && <p style={{fontSize:14,color:"#718077",fontWeight:700}}>Runde {roundNumber} · {questions.length} spørgsmål · {questionPool.length} forskellige spørgsmål i banken på dette niveau</p>}
 
         {questions.length === 0 ? <div style={{marginTop:30,background:"white",padding:28,borderRadius:14,border:"1px solid #ddd9d0"}}><h2>{assignment.topic}</h2><p>Opgaver til dette emne er på vej.</p></div> : <>
           <div style={{display:"grid",gap:16,marginTop:28}}>
-            {questions.map((question, index) => <article key={index} style={{background:"white",padding:24,borderRadius:14,border:"1px solid #ddd9d0"}}>
+            {questions.map((question, index) => <article key={`${roundNumber}-${questionKey(question)}`} style={{background:"white",padding:24,borderRadius:14,border:"1px solid #ddd9d0"}}>
               <div style={{fontSize:11,fontWeight:800,letterSpacing:1.4,color:"#718077"}}>OPGAVE {index + 1} AF {questions.length}</div>
               <h2 style={{fontFamily:"Georgia,serif",fontSize:22,lineHeight:1.35,margin:"10px 0 16px"}}>{question.q}</h2>
               <div style={{display:"grid",gap:8}}>
@@ -115,10 +213,11 @@ export default function StudentGrammar() {
           {!submitted ? <button disabled={Object.keys(answers).length !== questions.length || saving} onClick={submit} style={{marginTop:22,width:"100%",padding:"14px 18px",border:0,borderRadius:10,background:"#365044",color:"white",fontWeight:800,fontSize:16,opacity:Object.keys(answers).length !== questions.length ? .45 : 1,cursor:Object.keys(answers).length !== questions.length ? "not-allowed" : "pointer"}}>Ret mine svar</button> :
             <div style={{marginTop:22,padding:24,borderRadius:14,background:"#273f35",color:"white",textAlign:"center"}}>
               <div style={{fontFamily:"Georgia,serif",fontSize:32,fontWeight:800}}>{score} / {questions.length}</div>
-              <p>{score === questions.length ? "Flot, alle rigtige." : score >= Math.ceil(questions.length * .6) ? "Godt arbejde. Kig på forklaringerne til dem, der drillede." : "Kig på forklaringerne og prøv igen. Det er sådan træning virker."}</p>
+              <p>{allCorrect ? "Flot, alle rigtige. Du har styr på denne runde." : score >= Math.ceil(questions.length * .6) ? "Godt arbejde. Kig på forklaringerne, og prøv et nyt sæt, så du får trænet det, der drillede." : "Kig på forklaringerne og prøv et nyt sæt. Det er sådan træning virker."}</p>
               <small>{saveState}</small>
+              {!allCorrect && unseenCount > 0 && <p style={{fontSize:13,opacity:.8,marginBottom:0}}>{unseenCount} usete spørgsmål er klar i banken.</p>}
               <div style={{marginTop:14,display:"flex",gap:9,justifyContent:"center",flexWrap:"wrap"}}>
-                <button onClick={() => {setAnswers({});setSubmitted(false);setSaveState("");}} style={{padding:"9px 13px",borderRadius:9,border:"1px solid rgba(255,255,255,.35)",background:"transparent",color:"white",fontWeight:800}}>Prøv igen</button>
+                {!allCorrect && <button onClick={retryWithFreshQuestions} style={{padding:"9px 13px",borderRadius:9,border:"1px solid rgba(255,255,255,.35)",background:"transparent",color:"white",fontWeight:800}}>{unseenCount > 0 ? "Prøv igen med nye spørgsmål" : "Træn en ny blanding"}</button>}
                 <button onClick={() => window.location.href = "/?student=1"} style={{padding:"9px 13px",borderRadius:9,border:0,background:"white",color:"#273f35",fontWeight:800}}>Til mine opgaver</button>
               </div>
             </div>}
