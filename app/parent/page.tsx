@@ -1,8 +1,93 @@
 "use client";
-import {useEffect,useState} from "react";
+
+import Link from "next/link";
+import {useEffect,useMemo,useState} from "react";
 import {supabase} from "../../lib/supabase";
 import {hasRole} from "../../lib/roles";
+import {recurrenceLabel,scheduleOccursOn,type RecurrencePattern} from "../../lib/scheduleRecurrence";
 import RoleNoticeboard from "../RoleNoticeboard";
-type Child={id:number;name:string;class_id:number|null;class_name:string|null};
-export default function ParentPage(){const[ready,setReady]=useState(false),[email,setEmail]=useState(""),[children,setChildren]=useState<Child[]>([]),[activeId,setActiveId]=useState<number|null>(null),[canAdmin,setCanAdmin]=useState(false),[canTeacher,setCanTeacher]=useState(false),[canBoard,setCanBoard]=useState(false);useEffect(()=>{(async()=>{const{data}=await supabase.auth.getSession();const session=data.session,user=session?.user;if(!user||!session){location.replace("/");return}if(!hasRole(user,"parent")){location.replace("/");return}setEmail(user.email||"");setCanAdmin(hasRole(user,"admin"));setCanTeacher(hasRole(user,"teacher")||hasRole(user,"admin"));setCanBoard(hasRole(user,"board")||hasRole(user,"admin"));try{const res=await fetch("/api/parent/children",{headers:{Authorization:`Bearer ${session.access_token}`}}),body=await res.json(),list=(body.children||[]) as Child[];setChildren(list);setActiveId(list[0]?.id||null)}catch{}setReady(true)})()},[]);async function logout(){await supabase.auth.signOut();location.href="/"}if(!ready)return <main style={shell}>Henter forældreportalen…</main>;const active=children.find(c=>c.id===activeId)||children[0];const cards=[{icon:"▦",title:"Skema",text:"Se dit barns skema og dagens undervisning.",href:"#"},{icon:"✓",title:"Fravær",text:"Meld syg og få overblik over registreret fravær.",href:"/parent/absence"},{icon:"✎",title:"Opgaver",text:"Se aktuelle opgaver og afleveringer.",href:"#"},{icon:"◇",title:"Møder & referater",text:"Se officielle referater fra møder, du er inviteret til.",href:"/parent/meetings"},{icon:"✦",title:"Beskeder",text:"Information fra skolen og barnets lærere.",href:"#"}];return <main style={{minHeight:"100vh",background:"#f5f3ee",color:"#26342e"}}><header style={{background:"#243d33",color:"white",padding:"22px 32px"}}><div style={{maxWidth:1100,margin:"auto",display:"flex",justifyContent:"space-between",gap:18,alignItems:"center",flexWrap:"wrap"}}><div><strong style={{fontFamily:"Georgia,serif",fontSize:25}}>Klasseværelset · Forældre</strong><small style={{display:"block",opacity:.75,marginTop:3}}>{email}</small></div><div style={{display:"flex",gap:7}}>{canTeacher&&<button onClick={()=>location.href="/teacher-room"} style={roleButton}>✎ Lærer</button>}{canBoard&&<button onClick={()=>location.href="/board"} style={roleButton}>✦ Bestyrelse</button>}{canAdmin&&<button onClick={()=>location.href="/admin"} style={roleButton}>⚙ Admin</button>}<button onClick={logout} style={logoutButton}>Log ud</button></div></div></header><section style={shell}><p style={eyebrow}>FORÆLDREPORTAL</p><h1 style={{fontFamily:"Georgia,serif",fontSize:42,margin:"8px 0"}}>Velkommen</h1><p style={{maxWidth:720,fontSize:18,color:"#6d746f",lineHeight:1.55}}>Her får du ét roligt overblik over dit barns skolehverdag. Du ser kun oplysninger om de børn, din konto er knyttet til.</p><RoleNoticeboard audience="parent"/>{children.length?<><div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:28}}>{children.map(c=><button key={c.id} onClick={()=>setActiveId(c.id)} style={{padding:"11px 16px",borderRadius:9,border:active?.id===c.id?"1px solid #365044":"1px solid #d8d5cd",background:active?.id===c.id?"#365044":"white",color:active?.id===c.id?"white":"#27352d",fontWeight:800,cursor:"pointer"}}>{c.name}{c.class_name?` · ${c.class_name}`:""}</button>)}</div><p style={{...eyebrow,marginTop:26}}>DU SER NU</p><h2 style={{fontFamily:"Georgia,serif",fontSize:30,margin:"5px 0"}}>{active?.name}</h2></>:<div style={{marginTop:24,padding:18,background:"white",border:"1px solid #ddd9d0",borderRadius:10}}>Skolen mangler at knytte et barn til din forældrekonto.</div>}<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(230px,1fr))",gap:18,marginTop:30}}>{cards.map(c=><button key={c.title} disabled={!active} onClick={()=>{if(c.href!=="#")location.href=c.href}} style={{textAlign:"left",background:"white",border:"1px solid #ddd9d0",borderRadius:14,padding:24,minHeight:165,opacity:active?1:.55,cursor:active?"pointer":"default",color:"inherit"}}><div style={{fontSize:30}}>{c.icon}</div><h2 style={{fontFamily:"Georgia,serif",margin:"14px 0 8px"}}>{c.title}</h2><p style={{color:"#687068",lineHeight:1.5,marginBottom:0}}>{c.text}</p></button>)}</div></section></main>}
-const shell:React.CSSProperties={maxWidth:1100,margin:"auto",padding:"52px 24px"};const eyebrow:React.CSSProperties={fontSize:11,fontWeight:900,letterSpacing:1.4,color:"#718077",margin:0};const roleButton:React.CSSProperties={padding:"7px 10px",borderRadius:7,border:"1px solid white",background:"white",color:"#365044",fontWeight:800,fontSize:12,cursor:"pointer"};const logoutButton:React.CSSProperties={padding:"7px 10px",borderRadius:7,border:"1px solid rgba(255,255,255,.5)",background:"transparent",color:"white",fontSize:12,cursor:"pointer"};
+
+type Assignment={id:number;title:string;type:string;class_subject_id:number|null;created_at:string};
+type ScheduleEntry={id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:"lesson"|"assembly"|"break";recurrence_pattern:RecurrencePattern};
+type Absence={id:number;absence_date:string;status:string;source:string;created_at:string};
+type Child={id:number;name:string;class_id:number|null;class_name:string|null;assignments:Assignment[];schedule:ScheduleEntry[];absence:Absence[]};
+type ParentPayload={children?:Child[]};
+
+const shell:React.CSSProperties={maxWidth:1100,margin:"auto",padding:"42px 24px 80px"};
+const card:React.CSSProperties={background:"white",border:"1px solid #ddd9d0",borderRadius:14,padding:20};
+const eyebrow:React.CSSProperties={fontSize:10,fontWeight:900,letterSpacing:1.4,color:"#718077",margin:0};
+const dateOnly=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const kindLabel=(kind:ScheduleEntry["entry_kind"])=>kind==="assembly"?"Samling":kind==="break"?"Pause":"Undervisning";
+const absenceLabel=(status:string)=>({sick:"Syg",excused:"Godkendt fravær",unexcused:"Ikke godkendt",late:"Kom for sent",left_early:"Gået tidligt"}[status]||status);
+
+export default function ParentPage(){
+ const[ready,setReady]=useState(false);
+ const[children,setChildren]=useState<Child[]>([]);
+ const[activeId,setActiveId]=useState<number|null>(null);
+ const[error,setError]=useState("");
+
+ useEffect(()=>{(async()=>{
+  const{data}=await supabase.auth.getSession();
+  const user=data.session?.user;
+  if(!user){location.replace("/");return}
+  if(!hasRole(user,"parent")){location.replace("/noticeboard");return}
+  const{data:portal,error:portalError}=await supabase.rpc("parent_portal_data");
+  if(portalError){setError("Forældreoverblikket kunne ikke hentes.");setReady(true);return}
+  const list=Array.isArray((portal as ParentPayload|null)?.children)?((portal as ParentPayload).children||[]):[];
+  setChildren(list);
+  setActiveId(list[0]?.id||null);
+  setReady(true);
+ })()},[]);
+
+ const active=children.find(c=>c.id===activeId)||children[0]||null;
+ const today=dateOnly(new Date());
+ const weekday=new Date(today+"T12:00:00").getDay();
+ const todaySchedule=useMemo(()=>active?.schedule.filter(entry=>entry.weekday===weekday&&scheduleOccursOn(entry.recurrence_pattern,today)).sort((a,b)=>a.start_time.localeCompare(b.start_time))||[],[active,weekday,today]);
+ const recentAssignments=active?.assignments.slice(0,6)||[];
+ const recentAbsence=active?.absence.slice(0,5)||[];
+
+ if(!ready)return <main style={shell}>Henter forældreoverblikket…</main>;
+ return <main style={{minHeight:"100vh",background:"#f5f3ee",color:"#26342e"}}>
+  <section style={shell}>
+   <p style={eyebrow}>FORÆLDREPORTAL</p>
+   <h1 style={{fontFamily:"Georgia,serif",fontSize:42,margin:"7px 0 8px"}}>Dit barns skolehverdag</h1>
+   <p style={{maxWidth:740,fontSize:17,color:"#687068",lineHeight:1.55,margin:"0 0 24px"}}>Et roligt overblik over det, der er relevant for dig som forælder. Interne lærernoter og andre elevers oplysninger er ikke en del af denne visning.</p>
+   {error&&<div style={{padding:13,background:"#fff0ed",border:"1px solid #deb5ad",borderRadius:10,color:"#7b3b32",fontWeight:800,marginBottom:18}}>{error}</div>}
+   <RoleNoticeboard audience="parent"/>
+
+   {!children.length?<section style={{...card,marginTop:22}}>Skolen mangler at knytte et barn til din aktive forældrekonto.</section>:<>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:24}}>{children.map(child=><button key={child.id} onClick={()=>setActiveId(child.id)} style={{padding:"10px 14px",borderRadius:9,border:active?.id===child.id?"1px solid #365044":"1px solid #d8d5cd",background:active?.id===child.id?"#365044":"white",color:active?.id===child.id?"white":"#27352d",fontWeight:850,cursor:"pointer"}}>{child.name}{child.class_name?` · ${child.class_name}`:""}</button>)}</div>
+
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:14,flexWrap:"wrap",marginTop:28}}><div><p style={eyebrow}>DU SER NU</p><h2 style={{fontFamily:"Georgia,serif",fontSize:31,margin:"5px 0 0"}}>{active?.name}{active?.class_name?` · ${active.class_name}`:""}</h2></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><Link href="/parent/absence" style={secondary}>Meld syg / fravær →</Link><Link href="/parent/meetings" style={secondary}>Møder →</Link></div></div>
+
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(285px,1fr))",gap:16,marginTop:18,alignItems:"start"}}>
+     <section id="today" style={{...card,background:"#eef2ed"}}>
+      <p style={eyebrow}>I DAG · {new Date(today+"T12:00:00").toLocaleDateString("da-DK",{weekday:"long",day:"numeric",month:"long"}).toUpperCase()}</p>
+      <h3 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"7px 0 13px"}}>Skema</h3>
+      {todaySchedule.length===0?<p style={{color:"#687068",margin:0}}>Der er ingen almindelige skemabrikker for klassen i dag.</p>:<div style={{display:"grid",gap:8}}>{todaySchedule.map(entry=><article key={entry.id} style={{padding:"10px 11px",background:"white",border:"1px solid #d9e0da",borderRadius:9}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"start"}}><strong>{entry.start_time.slice(0,5)}–{entry.end_time.slice(0,5)} · {entry.subject}</strong><small style={{fontSize:9,fontWeight:900,color:"#627168"}}>{kindLabel(entry.entry_kind).toUpperCase()}</small></div><small style={{display:"block",marginTop:3,color:"#6d756f"}}>{entry.room||"Intet lokale angivet"}{entry.recurrence_pattern!=="weekly"?` · ${recurrenceLabel(entry.recurrence_pattern)}`:""}</small></article>)}</div>}
+     </section>
+
+     <section id="assignments" style={card}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><div><p style={eyebrow}>OPGAVER</p><h3 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"7px 0 0"}}>Aktuelle opgaver</h3></div><span style={countChip}>{active?.assignments.length||0}</span></div>
+      {recentAssignments.length===0?<p style={{color:"#687068",marginBottom:0}}>Der er ingen aktuelle opgaver, som er synlige for {active?.name}.</p>:<div style={{display:"grid",gap:8,marginTop:13}}>{recentAssignments.map(a=><article key={a.id} style={{padding:"10px 11px",border:"1px solid #e3dfd7",borderRadius:9,background:"#faf9f6"}}><strong>{a.title}</strong><small style={{display:"block",marginTop:3,color:"#727772"}}>{a.type||"Opgave"}</small></article>)}</div>}
+     </section>
+
+     <section id="absence" style={card}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><div><p style={eyebrow}>FRAVÆR</p><h3 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"7px 0 0"}}>Seneste registreringer</h3></div><span style={countChip}>{active?.absence.length||0}</span></div>
+      {recentAbsence.length===0?<p style={{color:"#687068",marginBottom:13}}>Der er ingen registreret fraværshistorik.</p>:<div style={{display:"grid",gap:8,marginTop:13}}>{recentAbsence.map(a=><article key={a.id} style={{padding:"9px 10px",border:"1px solid #e3dfd7",borderRadius:9,background:"#faf9f6"}}><strong>{new Date(a.absence_date+"T12:00:00").toLocaleDateString("da-DK",{day:"numeric",month:"short",year:"numeric"})}</strong><small style={{display:"block",marginTop:2,color:"#727772"}}>{absenceLabel(a.status)} · {a.source==="parent"?"meldt hjemmefra":"registreret af skolen"}</small></article>)}</div>}
+      <Link href="/parent/absence" style={{...secondary,display:"inline-block",marginTop:13}}>Se fravær og meld syg →</Link>
+     </section>
+
+     <section style={{...card,background:"#f8f3e7"}}>
+      <p style={eyebrow}>MØDER</p><h3 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"7px 0 7px"}}>Møder og officielle referater</h3><p style={{color:"#706956",lineHeight:1.5,margin:"0 0 13px"}}>Se de møder, du er inviteret til, og det indhold der er gjort tilgængeligt for dig som forælder.</p><Link href="/parent/meetings" style={secondary}>Åbn møder →</Link>
+     </section>
+    </div>
+
+    <section style={{...card,marginTop:16,borderStyle:"dashed"}}><p style={eyebrow}>KOMMUNIKATION</p><h3 style={{fontFamily:"Georgia,serif",fontSize:21,margin:"7px 0 5px"}}>Beskeder kommer i kommunikationsmodulet</h3><p style={{color:"#687068",lineHeight:1.5,margin:0}}>Vi viser ikke en tom beskedindbakke endnu. Når kommunikationsdelen bygges, kobles den på samme barn- og skolerettigheder som resten af portalen.</p></section>
+   </>}
+  </section>
+ </main>;
+}
+
+const secondary:React.CSSProperties={padding:"8px 11px",border:"1px solid #cfcac0",borderRadius:8,background:"white",color:"#486b59",fontWeight:850,fontSize:12,textDecoration:"none"};
+const countChip:React.CSSProperties={minWidth:28,height:28,borderRadius:999,display:"grid",placeItems:"center",background:"#edf1ec",color:"#486b59",fontWeight:900,fontSize:12};
