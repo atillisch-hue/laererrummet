@@ -1,66 +1,266 @@
 "use client";
 
-import {useEffect,useMemo,useState} from "react";
-import {supabase} from "../../../lib/supabase";
-import {readingStrategyScoresFromSnapshot,weakestReadingStrategy} from "../../student-reading-exam/strategy-feedback";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../../../lib/supabase";
+import {
+  READING_STRATEGY_COACHING,
+  readingStrategyScoresFromSnapshot,
+  weakestReadingStrategy,
+} from "../../student-reading-exam/strategy-feedback";
+import { classReadingFocus, classReadingStrategyAnalysis } from "./class-reading-analysis";
 
-type ClassRow={id:number;name:string};
-type Student={id:number;name:string;class_id:number|string|null;grade_level:number|null};
-type ExamAssignment={id:number;title:string;time_limit_minutes:number|null;question_count:number;target_grade:number;created_at:string;recipient_count:number;started_count:number;submitted_count:number;locked:boolean};
-type ExamResult={student_id:number;student_name:string;started:boolean;started_at:string|null;submitted:boolean;submitted_at:string|null;score:number|null;max_score:number|null;elapsed_seconds:number|null;timed_out:boolean;answers?:Record<string,any>|null};
+type ClassRow = { id: number; name: string };
+type Student = { id: number; name: string; class_id: number | string | null; grade_level: number | null };
+type ExamAssignment = {
+  id: number;
+  title: string;
+  time_limit_minutes: number | null;
+  question_count: number;
+  target_grade: number;
+  created_at: string;
+  recipient_count: number;
+  started_count: number;
+  submitted_count: number;
+  locked: boolean;
+};
+type ExamResult = {
+  student_id: number;
+  student_name: string;
+  started: boolean;
+  started_at: string | null;
+  submitted: boolean;
+  submitted_at: string | null;
+  score: number | null;
+  max_score: number | null;
+  elapsed_seconds: number | null;
+  timed_out: boolean;
+  answers?: Record<string, any> | null;
+};
 
-const LEVELS={
-  6:{title:"6. klasse · Strategitræning",count:30,text:"Kortere og tydeligere tekster. Fokus på at lære strategierne og finde sikre tekstspor."},
-  7:{title:"7. klasse · Begyndende prøveformat",count:35,text:"Længere tekster og begyndende krav om at kombinere oplysninger."},
-  8:{title:"8. klasse · Prøveforberedelse",count:40,text:"Mere komplekse tekster, inferens og større krav til tempo og overblik."},
-  9:{title:"9. klasse · FP9-lignende niveau",count:50,text:"Den mest krævende version med 50 delspørgsmål og nuanceret tekstforståelse."},
+const LEVELS = {
+  6: {
+    title: "6. klasse · Strategitræning",
+    count: 30,
+    text: "Kortere og tydeligere tekster. Fokus på at lære strategierne og finde sikre tekstspor.",
+  },
+  7: {
+    title: "7. klasse · Begyndende prøveformat",
+    count: 35,
+    text: "Længere tekster og begyndende krav om at kombinere oplysninger.",
+  },
+  8: {
+    title: "8. klasse · Prøveforberedelse",
+    count: 40,
+    text: "Mere komplekse tekster, inferens og større krav til tempo og overblik.",
+  },
+  9: {
+    title: "9. klasse · FP9-lignende niveau",
+    count: 50,
+    text: "Den mest krævende version med 50 delspørgsmål og nuanceret tekstforståelse.",
+  },
 } as const;
 
-function formatTime(seconds:number|null){if(seconds===null)return "—";const m=Math.floor(seconds/60),s=seconds%60;return `${m} min ${s?`${s} sek`:""}`.trim()}
-function strategySummary(answers:Record<string,any>|null|undefined){const totals=new Map<string,{correct:number;total:number}>();for(const value of Object.values(answers||{})){const strategy=String(value?.strategy||"Andet"),row=totals.get(strategy)||{correct:0,total:0};row.total++;if(value?.correct)row.correct++;totals.set(strategy,row)}return [...totals.entries()]}
-
-export default function ReadingExamTeacher(){
- const[ready,setReady]=useState(false),[classes,setClasses]=useState<ClassRow[]>([]),[students,setStudents]=useState<Student[]>([]),[classId,setClassId]=useState<number|"">("");
- const[mode,setMode]=useState<"class"|"students">("class"),[selected,setSelected]=useState<number[]>([]),[timed,setTimed]=useState(true),[minutes,setMinutes]=useState(30),[targetGrade,setTargetGrade]=useState<6|7|8|9>(9),[title,setTitle]=useState("Træn læseprøven");
- const[assignments,setAssignments]=useState<ExamAssignment[]>([]),[message,setMessage]=useState(""),[saving,setSaving]=useState(false),[open,setOpen]=useState<number|null>(null),[results,setResults]=useState<ExamResult[]>([]),[loadingResults,setLoadingResults]=useState(false);
- const classStudents=useMemo(()=>students.filter(s=>Number(s.class_id)===Number(classId)),[students,classId]);
- const chosen=mode==="class"?classStudents:classStudents.filter(s=>selected.includes(s.id));
- const missingGrades=chosen.filter(s=>s.grade_level===null),belowLevel=chosen.filter(s=>s.grade_level!==null&&Number(s.grade_level)<targetGrade);
-
- async function loadAssignments(id:number){const{data,error}=await supabase.rpc("teacher_reading_exam_assignments",{p_class_id:id});if(error||!data?.ok){setAssignments([]);if(error)setMessage(error.message);return}setAssignments(data.assignments||[])}
- useEffect(()=>{(async()=>{const{data:s}=await supabase.auth.getSession();if(!s.session){window.location.href="/?teacher=1";return}const[c,st]=await Promise.all([supabase.from("classes").select("id,name").order("id"),supabase.from("students").select("id,name,class_id,grade_level").order("name")]);const rows=(c.data||[]) as ClassRow[];setClasses(rows);setStudents((st.data||[]) as Student[]);const requested=Number(new URLSearchParams(window.location.search).get("class")),initial=rows.find(x=>x.id===requested)?.id||rows[0]?.id;if(initial){setClassId(initial);await loadAssignments(initial)}setReady(true)})()},[]);
- async function changeClass(id:number){setClassId(id);setSelected([]);setOpen(null);setResults([]);setMessage("");await loadAssignments(id)}
- function toggleStudent(id:number){setSelected(v=>v.includes(id)?v.filter(x=>x!==id):[...v,id])}
- async function create(){if(!classId||(mode==="students"&&!selected.length)||saving)return;setSaving(true);setMessage("");const{data,error}=await supabase.rpc("create_reading_exam_assignment",{p_class_id:Number(classId),p_title:title.trim()||"Træn læseprøven",p_time_limit_minutes:timed?minutes:null,p_student_ids:mode==="students"?selected:null,p_target_grade:targetGrade});if(error||!data?.ok)setMessage(`Kunne ikke tildele: ${error?.message||data?.error||"ukendt fejl"}`);else{setMessage(`✓ Læseprøven på ${targetGrade}.-klasseniveau er tildelt ${mode==="class"?"hele klassen":`${selected.length} elev${selected.length===1?"":"er"}`}.`);await loadAssignments(Number(classId))}setSaving(false)}
- async function remove(a:ExamAssignment){if(a.locked){setMessage("Prøven er startet af mindst én elev og er derfor låst som historik.");return}if(!confirm("Vil du slette denne læseprøvetræning?"))return;const{data,error}=await supabase.rpc("delete_reading_exam_assignment",{p_assignment_id:a.id});if(error||!data?.ok)setMessage(error?.message||data?.error||"Kunne ikke slette");else{if(open===a.id){setOpen(null);setResults([])}await loadAssignments(Number(classId))}}
- async function showResults(id:number){if(open===id){setOpen(null);setResults([]);return}setOpen(id);setLoadingResults(true);const{data,error}=await supabase.rpc("teacher_reading_exam_results",{p_assignment_id:id});setResults(error||!data?.ok?[]:data.results||[]);setLoadingResults(false)}
-
- if(!ready)return <main style={{padding:50}}>Åbner læseprøvetræning…</main>;
- return <main style={{minHeight:"100vh",background:"#f5f3ee",padding:"30px 24px 80px",color:"#26342e"}}><section style={{maxWidth:1080,margin:"auto"}}>
-  <a href="/grammar" style={{color:"#526b60",fontWeight:850,textDecoration:"none"}}>← Til Grammatik & sprog</a>
-  <p style={{...eyebrow,marginTop:24}}>6.–9. KLASSE · LÆSNING</p><h1 style={{fontFamily:"Georgia,serif",fontSize:39,margin:"6px 0"}}>Træn læseprøven</h1><p style={{fontSize:17,lineHeight:1.55,color:"#68716c",maxWidth:820}}>Træn prøveformen og læsestrategierne på det niveau, der passer til eleven. Niveauet på tildelingen behøver ikke være det samme som elevens registrerede klassetrin.</p>
-
-  <div style={panel}><h2 style={h2}>Ny læseprøvetræning</h2><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:12}}><label style={label}>Titel<input value={title} onChange={e=>setTitle(e.target.value)} style={field}/></label><label style={label}>Klasse<select value={classId} onChange={e=>changeClass(Number(e.target.value))} style={field}>{classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label></div>
-   <div style={{marginTop:18}}><strong>1. Vælg træningsniveau</strong><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:8,marginTop:10}}>{([6,7,8,9] as const).map(g=><button key={g} onClick={()=>setTargetGrade(g)} style={{...levelCard,border:targetGrade===g?"2px solid #526b60":"1px solid #d8d5cd",background:targetGrade===g?"#edf1ec":"white"}}><strong>{LEVELS[g].title}</strong><small>{LEVELS[g].count} delspørgsmål</small><span>{LEVELS[g].text}</span></button>)}</div></div>
-   <div style={{marginTop:19,paddingTop:18,borderTop:"1px solid #ebe7de"}}><strong>2. Hvem skal have den?</strong><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:9}}><button onClick={()=>{setMode("class");setSelected([])}} style={choiceButton(mode==="class")}>Hele klassen</button><button onClick={()=>setMode("students")} style={choiceButton(mode==="students")}>Udvalgte elever</button></div>{mode==="students"&&<div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:10}}>{classStudents.map(s=><button key={s.id} onClick={()=>toggleStudent(s.id)} style={{...smallButton,background:selected.includes(s.id)?"#edf1ec":"white",border:selected.includes(s.id)?"2px solid #526b60":"1px solid #d8d5cd"}}>{selected.includes(s.id)?"✓ ":""}{s.name}{s.grade_level!==null?` · ${s.grade_level}. kl.`:" · trin?"}</button>)}</div>}</div>
-   <div style={{marginTop:19,paddingTop:18,borderTop:"1px solid #ebe7de"}}><strong>3. Tid</strong><div style={{display:"flex",gap:8,alignItems:"end",flexWrap:"wrap",marginTop:9}}><button onClick={()=>setTimed(true)} style={choiceButton(timed)}>Med tid</button><button onClick={()=>setTimed(false)} style={choiceButton(!timed)}>Uden tid</button>{timed&&<label style={{...label,minWidth:170}}>Minutter<select value={minutes} onChange={e=>setMinutes(Number(e.target.value))} style={field}>{[20,25,30,35,40,45,60].map(m=><option key={m} value={m}>{m} min{m===30?" · FP9-tid":""}</option>)}</select></label>}</div><p style={{fontSize:12,color:"#777",margin:"8px 0 0"}}>30 minutter svarer til FP9-tidsrammen. Til strategiindlæring i 6.–7. klasse kan du med fordel vælge uden tid eller give mere tid.</p></div>
-   {missingGrades.length>0&&<div style={warning}>⚠ {missingGrades.length} valgt{missingGrades.length===1?" elev mangler":"e elever mangler"} klassetrin. Det forhindrer ikke denne tildeling, fordi prøven har sit eget niveau.</div>}{belowLevel.length>0&&<div style={warning}>Bemærk: {belowLevel.length} valgt{belowLevel.length===1?" elev har":"e elever har"} et registreret klassetrin under prøvens niveau. Det kan være helt bevidst — prøven bruger det niveau, du har valgt her.</div>}
-   <button onClick={create} disabled={saving||(mode==="students"&&!selected.length)} style={{...primary,opacity:saving||(mode==="students"&&!selected.length)?.55:1}}>{saving?"Tildeler…":`Tildel ${targetGrade}.-klassesæt · ${timed?`${minutes} min`:"uden tid"} →`}</button>
-  </div>
-  {message&&<div style={{...panel,padding:13,background:message.startsWith("✓")?"#e7eee9":"#fff3cd",fontWeight:800}}>{message}</div>}
-
-  <div style={{...panel,marginTop:22}}><p style={eyebrow}>OPFØLGNING</p><h2 style={h2}>Tildelte læseprøver</h2>{assignments.length===0?<p style={{color:"#777"}}>Ingen læseprøver tildelt endnu.</p>:<div style={{display:"grid",gap:9}}>{assignments.map(a=><article key={a.id} style={{border:"1px solid #e3dfd7",borderRadius:10,padding:13,background:open===a.id?"#edf1ec":"#faf9f6"}}><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><button onClick={()=>showResults(a.id)} style={{border:0,background:"transparent",padding:0,textAlign:"left",cursor:"pointer",color:"inherit",flex:"1 1 360px"}}><strong style={{display:"block"}}>{a.title}</strong><span style={{fontSize:12,color:"#737873"}}>{a.target_grade}. kl. · {a.question_count} delspørgsmål · {a.time_limit_minutes?`${a.time_limit_minutes} min`:`uden tid`} · {a.submitted_count}/{a.recipient_count} afleveret</span></button><div style={{display:"flex",gap:7}}>{!a.locked&&<button onClick={()=>remove(a)} style={{...smallButton,color:"#8a3c34"}}>Slet</button>}<button onClick={()=>showResults(a.id)} style={smallButton}>{open===a.id?"Luk ↑":"Se status →"}</button></div></div>{open===a.id&&<div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #d9ddd8"}}>{loadingResults?<p>Henter resultater…</p>:<div style={{display:"grid",gap:8}}>{results.map(r=>{const percent=r.submitted&&r.max_score?Math.round((Number(r.score||0)/r.max_score)*100):null;const focus=r.submitted&&r.answers?weakestReadingStrategy(readingStrategyScoresFromSnapshot(r.answers)):null;return <div key={r.student_id} style={{background:"white",border:"1px solid #e2ded6",borderRadius:9,padding:11}}><div style={{display:"flex",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}><strong>{r.student_name}</strong><span style={{fontWeight:850,color:r.submitted?"#42614f":r.started?"#8a6e42":"#777"}}>{r.submitted?`${r.score}/${r.max_score} · ${percent}% · ${formatTime(r.elapsed_seconds)}`:r.started?`I gang · ${formatTime(r.elapsed_seconds)}`:"Ikke startet"}{r.timed_out?" · tiden udløb":""}</span></div>{r.submitted&&r.answers&&<><div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>{strategySummary(r.answers).map(([strategy,row])=><span key={strategy} style={chip}>{strategy}: {row.correct}/{row.total}</span>)}</div><div style={{marginTop:9,padding:"8px 10px",borderRadius:8,background:focus?"#fff7e8":"#edf5ef",fontSize:13,fontWeight:800,color:focus?"#6b572f":"#42614f"}}>{focus?<>Næste fokus: <strong>{focus.strategy}</strong> · {focus.correct}/{focus.total}</>:<>Alle målte strategier sikre ✓</>}</div></>}</div>})}</div>}</div>}</article>)}</div>}</div>
- </section></main>;
+function formatTime(seconds: number | null) {
+  if (seconds === null) return "—";
+  const m = Math.floor(seconds / 60), s = seconds % 60;
+  return `${m} min ${s ? `${s} sek` : ""}`.trim();
 }
 
-const panel:React.CSSProperties={marginTop:16,background:"white",border:"1px solid #dfdcd4",borderRadius:13,padding:20};
-const eyebrow:React.CSSProperties={fontSize:11,fontWeight:900,letterSpacing:1.5,color:"#718077",margin:0};
-const h2:React.CSSProperties={fontFamily:"Georgia,serif",fontSize:25,margin:"5px 0 16px"};
-const label:React.CSSProperties={fontWeight:850,fontSize:12};
-const field:React.CSSProperties={display:"block",width:"100%",boxSizing:"border-box",marginTop:6,padding:"10px 11px",border:"1px solid #d8d5cd",borderRadius:8,background:"white"};
-const smallButton:React.CSSProperties={padding:"7px 10px",border:"1px solid #d4d0c7",borderRadius:8,background:"white",fontWeight:800,cursor:"pointer"};
-const choiceButton=(active:boolean):React.CSSProperties=>({...smallButton,border:active?"2px solid #526b60":"1px solid #d8d5cd",background:active?"#edf1ec":"white",color:"#26342e"});
-const levelCard:React.CSSProperties={padding:13,borderRadius:10,textAlign:"left",cursor:"pointer",color:"#26342e",display:"grid",gap:5};
-const primary:React.CSSProperties={marginTop:18,padding:"12px 18px",border:0,borderRadius:9,background:"#365044",color:"white",fontWeight:900,cursor:"pointer"};
-const warning:React.CSSProperties={marginTop:12,padding:"10px 12px",background:"#fff7e8",border:"1px solid #ead8ad",borderRadius:8,color:"#6d572e",fontWeight:750,fontSize:13};
-const chip:React.CSSProperties={padding:"5px 8px",borderRadius:999,background:"#edf1ec",fontSize:11,fontWeight:800,color:"#526b60"};
+function strategySummary(answers: Record<string, any> | null | undefined) {
+  const totals = new Map<string, { correct: number; total: number }>();
+  for (const value of Object.values(answers || {})) {
+    const strategy = String(value?.strategy || "Andet"), row = totals.get(strategy) || { correct: 0, total: 0 };
+    row.total++;
+    if (value?.correct) row.correct++;
+    totals.set(strategy, row);
+  }
+  return [...totals.entries()];
+}
+
+function heatStatus(status: "focus" | "watch" | "secure") {
+  if (status === "focus") return { label: "Fælles fokus", symbol: "●", background: "#fff0ed", border: "#e2b4ad", color: "#8c443b" };
+  if (status === "watch") return { label: "Hold øje", symbol: "●", background: "#fff7e8", border: "#ead8ad", color: "#7a6031" };
+  return { label: "Sikker", symbol: "●", background: "#edf5ef", border: "#cadfce", color: "#42614f" };
+}
+
+export default function ReadingExamTeacher() {
+  const [ready, setReady] = useState(false), [classes, setClasses] = useState<ClassRow[]>([]), [students, setStudents] = useState<Student[]>([]), [classId, setClassId] = useState<number | "">("");
+  const [mode, setMode] = useState<"class" | "students">("class"), [selected, setSelected] = useState<number[]>([]), [timed, setTimed] = useState(true), [minutes, setMinutes] = useState(30), [targetGrade, setTargetGrade] = useState<6 | 7 | 8 | 9>(9), [title, setTitle] = useState("Træn læseprøven");
+  const [assignments, setAssignments] = useState<ExamAssignment[]>([]), [message, setMessage] = useState(""), [saving, setSaving] = useState(false), [open, setOpen] = useState<number | null>(null), [results, setResults] = useState<ExamResult[]>([]), [loadingResults, setLoadingResults] = useState(false);
+
+  const classStudents = useMemo(() => students.filter((s) => Number(s.class_id) === Number(classId)), [students, classId]);
+  const chosen = mode === "class" ? classStudents : classStudents.filter((s) => selected.includes(s.id));
+  const missingGrades = chosen.filter((s) => s.grade_level === null), belowLevel = chosen.filter((s) => s.grade_level !== null && Number(s.grade_level) < targetGrade);
+  const classStrategyRows = useMemo(() => classReadingStrategyAnalysis(results), [results]);
+  const sharedFocus = useMemo(() => classReadingFocus(classStrategyRows), [classStrategyRows]);
+  const submittedResults = results.filter((result) => result.submitted && result.answers);
+
+  async function loadAssignments(id: number) {
+    const { data, error } = await supabase.rpc("teacher_reading_exam_assignments", { p_class_id: id });
+    if (error || !data?.ok) {
+      setAssignments([]);
+      if (error) setMessage(error.message);
+      return;
+    }
+    setAssignments(data.assignments || []);
+  }
+
+  useEffect(() => {
+    (async () => {
+      const { data: s } = await supabase.auth.getSession();
+      if (!s.session) {
+        window.location.href = "/?teacher=1";
+        return;
+      }
+      const [c, st] = await Promise.all([
+        supabase.from("classes").select("id,name").order("id"),
+        supabase.from("students").select("id,name,class_id,grade_level").order("name"),
+      ]);
+      const rows = (c.data || []) as ClassRow[];
+      setClasses(rows);
+      setStudents((st.data || []) as Student[]);
+      const requested = Number(new URLSearchParams(window.location.search).get("class")), initial = rows.find((x) => x.id === requested)?.id || rows[0]?.id;
+      if (initial) {
+        setClassId(initial);
+        await loadAssignments(initial);
+      }
+      setReady(true);
+    })();
+  }, []);
+
+  async function changeClass(id: number) {
+    setClassId(id); setSelected([]); setOpen(null); setResults([]); setMessage("");
+    await loadAssignments(id);
+  }
+
+  function toggleStudent(id: number) {
+    setSelected((v) => v.includes(id) ? v.filter((x) => x !== id) : [...v, id]);
+  }
+
+  async function create() {
+    if (!classId || (mode === "students" && !selected.length) || saving) return;
+    setSaving(true); setMessage("");
+    const { data, error } = await supabase.rpc("create_reading_exam_assignment", {
+      p_class_id: Number(classId),
+      p_title: title.trim() || "Træn læseprøven",
+      p_time_limit_minutes: timed ? minutes : null,
+      p_student_ids: mode === "students" ? selected : null,
+      p_target_grade: targetGrade,
+    });
+    if (error || !data?.ok) setMessage(`Kunne ikke tildele: ${error?.message || data?.error || "ukendt fejl"}`);
+    else {
+      setMessage(`✓ Læseprøven på ${targetGrade}.-klasseniveau er tildelt ${mode === "class" ? "hele klassen" : `${selected.length} elev${selected.length === 1 ? "" : "er"}`}.`);
+      await loadAssignments(Number(classId));
+    }
+    setSaving(false);
+  }
+
+  async function remove(a: ExamAssignment) {
+    if (a.locked) {
+      setMessage("Prøven er startet af mindst én elev og er derfor låst som historik.");
+      return;
+    }
+    if (!confirm("Vil du slette denne læseprøvetræning?")) return;
+    const { data, error } = await supabase.rpc("delete_reading_exam_assignment", { p_assignment_id: a.id });
+    if (error || !data?.ok) setMessage(error?.message || data?.error || "Kunne ikke slette");
+    else {
+      if (open === a.id) { setOpen(null); setResults([]); }
+      await loadAssignments(Number(classId));
+    }
+  }
+
+  async function showResults(id: number) {
+    if (open === id) { setOpen(null); setResults([]); return; }
+    setOpen(id); setLoadingResults(true);
+    const { data, error } = await supabase.rpc("teacher_reading_exam_results", { p_assignment_id: id });
+    setResults(error || !data?.ok ? [] : data.results || []);
+    setLoadingResults(false);
+  }
+
+  if (!ready) return <main style={{ padding: 50 }}>Åbner læseprøvetræning…</main>;
+
+  return <main style={{ minHeight: "100vh", background: "#f5f3ee", padding: "30px 24px 80px", color: "#26342e" }}><section style={{ maxWidth: 1080, margin: "auto" }}>
+    <a href="/grammar" style={{ color: "#526b60", fontWeight: 850, textDecoration: "none" }}>← Til Grammatik & sprog</a>
+    <p style={{ ...eyebrow, marginTop: 24 }}>6.–9. KLASSE · LÆSNING</p>
+    <h1 style={{ fontFamily: "Georgia,serif", fontSize: 39, margin: "6px 0" }}>Træn læseprøven</h1>
+    <p style={{ fontSize: 17, lineHeight: 1.55, color: "#68716c", maxWidth: 820 }}>Træn prøveformen og læsestrategierne på det niveau, der passer til eleven. Niveauet på tildelingen behøver ikke være det samme som elevens registrerede klassetrin.</p>
+
+    <div style={panel}>
+      <h2 style={h2}>Ny læseprøvetræning</h2>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 12 }}>
+        <label style={label}>Titel<input value={title} onChange={(e) => setTitle(e.target.value)} style={field} /></label>
+        <label style={label}>Klasse<select value={classId} onChange={(e) => changeClass(Number(e.target.value))} style={field}>{classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+      </div>
+      <div style={{ marginTop: 18 }}><strong>1. Vælg træningsniveau</strong><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 8, marginTop: 10 }}>{([6, 7, 8, 9] as const).map((g) => <button key={g} onClick={() => setTargetGrade(g)} style={{ ...levelCard, border: targetGrade === g ? "2px solid #526b60" : "1px solid #d8d5cd", background: targetGrade === g ? "#edf1ec" : "white" }}><strong>{LEVELS[g].title}</strong><small>{LEVELS[g].count} delspørgsmål</small><span>{LEVELS[g].text}</span></button>)}</div></div>
+      <div style={{ marginTop: 19, paddingTop: 18, borderTop: "1px solid #ebe7de" }}><strong>2. Hvem skal have den?</strong><div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}><button onClick={() => { setMode("class"); setSelected([]); }} style={choiceButton(mode === "class")}>Hele klassen</button><button onClick={() => setMode("students")} style={choiceButton(mode === "students")}>Udvalgte elever</button></div>{mode === "students" && <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>{classStudents.map((s) => <button key={s.id} onClick={() => toggleStudent(s.id)} style={{ ...smallButton, background: selected.includes(s.id) ? "#edf1ec" : "white", border: selected.includes(s.id) ? "2px solid #526b60" : "1px solid #d8d5cd" }}>{selected.includes(s.id) ? "✓ " : ""}{s.name}{s.grade_level !== null ? ` · ${s.grade_level}. kl.` : " · trin?"}</button>)}</div>}</div>
+      <div style={{ marginTop: 19, paddingTop: 18, borderTop: "1px solid #ebe7de" }}><strong>3. Tid</strong><div style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap", marginTop: 9 }}><button onClick={() => setTimed(true)} style={choiceButton(timed)}>Med tid</button><button onClick={() => setTimed(false)} style={choiceButton(!timed)}>Uden tid</button>{timed && <label style={{ ...label, minWidth: 170 }}>Minutter<select value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} style={field}>{[20, 25, 30, 35, 40, 45, 60].map((m) => <option key={m} value={m}>{m} min{m === 30 ? " · FP9-tid" : ""}</option>)}</select></label>}</div><p style={{ fontSize: 12, color: "#777", margin: "8px 0 0" }}>30 minutter svarer til FP9-tidsrammen. Til strategiindlæring i 6.–7. klasse kan du med fordel vælge uden tid eller give mere tid.</p></div>
+      {missingGrades.length > 0 && <div style={warning}>⚠ {missingGrades.length} valgt{missingGrades.length === 1 ? " elev mangler" : "e elever mangler"} klassetrin. Det forhindrer ikke denne tildeling, fordi prøven har sit eget niveau.</div>}
+      {belowLevel.length > 0 && <div style={warning}>Bemærk: {belowLevel.length} valgt{belowLevel.length === 1 ? " elev har" : "e elever har"} et registreret klassetrin under prøvens niveau. Det kan være helt bevidst — prøven bruger det niveau, du har valgt her.</div>}
+      <button onClick={create} disabled={saving || (mode === "students" && !selected.length)} style={{ ...primary, opacity: saving || (mode === "students" && !selected.length) ? .55 : 1 }}>{saving ? "Tildeler…" : `Tildel ${targetGrade}.-klassesæt · ${timed ? `${minutes} min` : "uden tid"} →`}</button>
+    </div>
+
+    {message && <div style={{ ...panel, padding: 13, background: message.startsWith("✓") ? "#e7eee9" : "#fff3cd", fontWeight: 800 }}>{message}</div>}
+
+    <div style={{ ...panel, marginTop: 22 }}>
+      <p style={eyebrow}>OPFØLGNING</p><h2 style={h2}>Tildelte læseprøver</h2>
+      {assignments.length === 0 ? <p style={{ color: "#777" }}>Ingen læseprøver tildelt endnu.</p> : <div style={{ display: "grid", gap: 9 }}>{assignments.map((a) => <article key={a.id} style={{ border: "1px solid #e3dfd7", borderRadius: 10, padding: 13, background: open === a.id ? "#edf1ec" : "#faf9f6" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <button onClick={() => showResults(a.id)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", color: "inherit", flex: "1 1 360px" }}><strong style={{ display: "block" }}>{a.title}</strong><span style={{ fontSize: 12, color: "#737873" }}>{a.target_grade}. kl. · {a.question_count} delspørgsmål · {a.time_limit_minutes ? `${a.time_limit_minutes} min` : "uden tid"} · {a.submitted_count}/{a.recipient_count} afleveret</span></button>
+          <div style={{ display: "flex", gap: 7 }}>{!a.locked && <button onClick={() => remove(a)} style={{ ...smallButton, color: "#8a3c34" }}>Slet</button>}<button onClick={() => showResults(a.id)} style={smallButton}>{open === a.id ? "Luk ↑" : "Se status →"}</button></div>
+        </div>
+
+        {open === a.id && <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #d9ddd8" }}>
+          {loadingResults ? <p>Henter resultater…</p> : <div style={{ display: "grid", gap: 12 }}>
+            {submittedResults.length > 0 && <section style={{ background: "white", border: "1px solid #d8d5cd", borderRadius: 12, padding: 15 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "start" }}>
+                <div><p style={eyebrow}>KLASSENS LÆSEPROFIL</p><h3 style={{ fontFamily: "Georgia,serif", fontSize: 24, margin: "5px 0" }}>Hvad skal vi arbejde med sammen?</h3></div>
+                <span style={chip}>{a.submitted_count}/{a.recipient_count} afleveret</span>
+              </div>
+              {a.submitted_count < Math.max(2, Math.ceil(a.recipient_count / 2)) && <div style={{ ...warning, marginTop: 10 }}>Foreløbig profil: kun {a.submitted_count} af {a.recipient_count} elever har afleveret. Brug mønstret som et fingerpeg, ikke som en endelig klassekonklusion.</div>}
+
+              {sharedFocus ? <div style={{ marginTop: 12, padding: 14, borderRadius: 10, background: "#fff7e8", border: "1px solid #ead8ad" }}>
+                <p style={{ ...eyebrow, color: "#7a6031" }}>ANBEFALET FÆLLES UNDERVISNINGSFOKUS</p>
+                <strong style={{ display: "block", fontFamily: "Georgia,serif", fontSize: 22, marginTop: 5 }}>{sharedFocus.strategy}</strong>
+                <p style={{ margin: "6px 0", lineHeight: 1.5 }}>{READING_STRATEGY_COACHING[sharedFocus.strategy].title}. {READING_STRATEGY_COACHING[sharedFocus.strategy].explanation}</p>
+                <p style={{ margin: "6px 0 0", fontWeight: 850 }}>Forslag til næste undervisningsgreb: {READING_STRATEGY_COACHING[sharedFocus.strategy].move}</p>
+              </div> : <div style={{ marginTop: 12, padding: 13, borderRadius: 10, background: "#edf5ef", border: "1px solid #cadfce", color: "#42614f", fontWeight: 850 }}>Klassen ligger på mindst 80 % i alle målte strategier. Der er ikke ét tydeligt fælles problemområde ✓</div>}
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 9, marginTop: 13 }}>
+                {classStrategyRows.filter((row) => row.total > 0).map((row) => {
+                  const state = heatStatus(row.status), percent = Math.round(row.accuracy * 100);
+                  return <article key={row.strategy} style={{ border: `1px solid ${state.border}`, background: state.background, borderRadius: 10, padding: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "start" }}><strong>{row.strategy}</strong><span style={{ fontSize: 11, fontWeight: 900, color: state.color, whiteSpace: "nowrap" }}>{state.symbol} {state.label}</span></div>
+                    <div style={{ fontFamily: "Georgia,serif", fontSize: 26, fontWeight: 900, marginTop: 8, color: state.color }}>{percent}%</div>
+                    <div style={{ fontSize: 12, color: "#66706a" }}>{row.correct}/{row.total} svar · {row.measuredStudents} elev{row.measuredStudents === 1 ? "" : "er"} målt</div>
+                    {row.supportStudents.length > 0 && <details style={{ marginTop: 9 }}><summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 850, color: state.color }}>{row.supportStudents.length} elev{row.supportStudents.length === 1 ? "" : "er"} under 70 %</summary><div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 7 }}>{row.supportStudents.map((student) => <span key={student.id} style={{ ...chip, background: "white" }}>{student.name}: {student.correct}/{student.total}</span>)}</div></details>}
+                  </article>;
+                })}
+              </div>
+            </section>}
+
+            <div style={{ display: "grid", gap: 8 }}>{results.map((r) => {
+              const percent = r.submitted && r.max_score ? Math.round((Number(r.score || 0) / r.max_score) * 100) : null;
+              const focus = r.submitted && r.answers ? weakestReadingStrategy(readingStrategyScoresFromSnapshot(r.answers)) : null;
+              return <div key={r.student_id} style={{ background: "white", border: "1px solid #e2ded6", borderRadius: 9, padding: 11 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}><strong>{r.student_name}</strong><span style={{ fontWeight: 850, color: r.submitted ? "#42614f" : r.started ? "#8a6e42" : "#777" }}>{r.submitted ? `${r.score}/${r.max_score} · ${percent}% · ${formatTime(r.elapsed_seconds)}` : r.started ? `I gang · ${formatTime(r.elapsed_seconds)}` : "Ikke startet"}{r.timed_out ? " · tiden udløb" : ""}</span></div>
+                {r.submitted && r.answers && <><div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>{strategySummary(r.answers).map(([strategy, row]) => <span key={strategy} style={chip}>{strategy}: {row.correct}/{row.total}</span>)}</div><div style={{ marginTop: 9, padding: "8px 10px", borderRadius: 8, background: focus ? "#fff7e8" : "#edf5ef", fontSize: 13, fontWeight: 800, color: focus ? "#6b572f" : "#42614f" }}>{focus ? <>Næste fokus: <strong>{focus.strategy}</strong> · {focus.correct}/{focus.total}</> : <>Alle målte strategier sikre ✓</>}</div></>}
+              </div>;
+            })}</div>
+          </div>}
+        </div>}
+      </article>)}</div>}
+    </div>
+  </section></main>;
+}
+
+const panel: React.CSSProperties = { marginTop: 16, background: "white", border: "1px solid #dfdcd4", borderRadius: 13, padding: 20 };
+const eyebrow: React.CSSProperties = { fontSize: 11, fontWeight: 900, letterSpacing: 1.5, color: "#718077", margin: 0 };
+const h2: React.CSSProperties = { fontFamily: "Georgia,serif", fontSize: 25, margin: "5px 0 16px" };
+const label: React.CSSProperties = { fontWeight: 850, fontSize: 12 };
+const field: React.CSSProperties = { display: "block", width: "100%", boxSizing: "border-box", marginTop: 6, padding: "10px 11px", border: "1px solid #d8d5cd", borderRadius: 8, background: "white" };
+const smallButton: React.CSSProperties = { padding: "7px 10px", border: "1px solid #d4d0c7", borderRadius: 8, background: "white", fontWeight: 800, cursor: "pointer" };
+const choiceButton = (active: boolean): React.CSSProperties => ({ ...smallButton, border: active ? "2px solid #526b60" : "1px solid #d8d5cd", background: active ? "#edf1ec" : "white", color: "#26342e" });
+const levelCard: React.CSSProperties = { padding: 13, borderRadius: 10, textAlign: "left", cursor: "pointer", color: "#26342e", display: "grid", gap: 5 };
+const primary: React.CSSProperties = { marginTop: 18, padding: "12px 18px", border: 0, borderRadius: 9, background: "#365044", color: "white", fontWeight: 900, cursor: "pointer" };
+const warning: React.CSSProperties = { marginTop: 12, padding: "10px 12px", background: "#fff7e8", border: "1px solid #ead8ad", borderRadius: 8, color: "#6d572e", fontWeight: 750, fontSize: 13 };
+const chip: React.CSSProperties = { padding: "5px 8px", borderRadius: 999, background: "#edf1ec", fontSize: 11, fontWeight: 800, color: "#526b60" };
