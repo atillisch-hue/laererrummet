@@ -9,6 +9,7 @@ function load(file){const absolute=path.resolve(root,file);if(cache.has(absolute
 
 const{buildSpellingExamSet,FP9_EXAM_SECTIONS}=load("app/student-grammar/fp9-spelling-exam-bank.ts");
 const{spellingTrapsLibrary}=load("app/student-grammar/spelling-traps-extra.ts");
+const{classSpellingSectionAnalysis,classSpellingTopicAnalysis,spellingFollowupTopics}=load("app/grammar/retskrivningsproeve/spelling-diagnostics.ts");
 const errors=[];
 
 for(const[topic,levels]of Object.entries(spellingTrapsLibrary))for(const[level,questions]of Object.entries(levels)){
@@ -32,5 +33,22 @@ for(const grade of [6,7,8,9])for(let seed=1;seed<=40;seed++){
  }
 }
 
+const diagnosticResults=[
+ {student_id:1,student_name:"Elev A",submitted:true,answers:{
+  0:{section:"Ord og bøjning",sourceTopic:"Nutids-r",correct:false},1:{section:"Ord og bøjning",sourceTopic:"Nutids-r",correct:false},2:{section:"Ord og bøjning",sourceTopic:"Navneords bøjning",correct:true},3:{section:"Ord og bøjning",sourceTopic:"Tillægsords bøjning",correct:true},4:{section:"Ord og bøjning",sourceTopic:"Udsagnsords tider",correct:false},
+  5:{section:"Stavning i kontekst",sourceTopic:"Stumme bogstaver",correct:false},6:{section:"Stavning i kontekst",sourceTopic:"Stumme bogstaver",correct:false}
+ }},
+ {student_id:2,student_name:"Elev B",submitted:true,answers:{
+  0:{section:"Ord og bøjning",sourceTopic:"Nutids-r",correct:false},1:{section:"Ord og bøjning",sourceTopic:"Navneords bøjning",correct:true},2:{section:"Ord og bøjning",sourceTopic:"Tillægsords bøjning",correct:false},3:{section:"Ord og bøjning",sourceTopic:"Udsagnsords tider",correct:true},4:{section:"Ord og bøjning",sourceTopic:"Nutids-r",correct:true},
+  5:{section:"Stavning i kontekst",sourceTopic:"Stumme bogstaver",correct:false}
+ }}
+];
+const sectionRows=classSpellingSectionAnalysis(diagnosticResults),wordInflection=sectionRows.find(row=>row.section==="Ord og bøjning");
+if(!wordInflection||wordInflection.status!=="focus")errors.push("diagnostics: expected Ord og bøjning to be common focus");
+if(!wordInflection||wordInflection.supportStudents.length!==2)errors.push("diagnostics: expected both synthetic students below 70% in Ord og bøjning");
+const topicRows=classSpellingTopicAnalysis(diagnosticResults),followups=spellingFollowupTopics(topicRows,10);
+if(!followups.some(row=>row.topic==="Nutids-r"))errors.push("diagnostics: live Nutids-r error pattern should be actionable");
+if(followups.some(row=>row.topic==="Stumme bogstaver"))errors.push("diagnostics: non-live grammar topic must not be one-click actionable");
+
 if(errors.length){console.error(`Spelling exam validation failed with ${errors.length} issue(s):`);for(const error of errors)console.error(`- ${error}`);process.exit(1)}
-console.log(`Spelling exam validation passed: grades 6–9 × 40 deterministic 30-question sets, 6 sections × 5 questions.`);
+console.log(`Spelling exam validation passed: grades 6–9 × 40 deterministic 30-question sets, 6 sections × 5 questions · diagnostic heatmap and targeted follow-up rules.`);
