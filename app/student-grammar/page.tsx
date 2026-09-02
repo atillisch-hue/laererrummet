@@ -11,6 +11,7 @@ import { advancedLibrary } from "./grammar-advanced";
 import { advancedExtraLibrary } from "./advanced-extra";
 import { interactiveGrammarLibrary, type InteractiveGrammarQuestion } from "./interactive-library";
 import { foundationGrammarLibrary } from "./foundation-library";
+import { foundationExtraGrammarLibrary } from "./foundation-extra";
 import {
   filterLevelsForGrade,
   gradeBandLabel,
@@ -106,6 +107,7 @@ function freeTrainingAsAssignedGrammar(): Record<string, Record<string, Interact
 
 const library = mergeLibraries(
   foundationGrammarLibrary,
+  foundationExtraGrammarLibrary,
   tagLibraryForGrades(coreGrammarLibrary, 5),
   tagLibraryForGrades(grammarLibraryExtra, 5),
   tagLibraryForGrades(expandedGrammarLibrary, 5),
