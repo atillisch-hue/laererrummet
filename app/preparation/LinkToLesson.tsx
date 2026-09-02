@@ -63,7 +63,10 @@ export default function LinkToLesson(){
 
  useEffect(()=>{
   if(!requestedLesson||lessons.length===0)return;
-  if(lessons.some(l=>`${l.scheduleId}:${l.date}`===requestedLesson))setSelectedKey(requestedLesson);
+  if(lessons.some(l=>`${l.scheduleId}:${l.date}`===requestedLesson)){
+   setSelectedKey(requestedLesson);
+   requestAnimationFrame(()=>document.getElementById("concrete-lesson-preparation")?.scrollIntoView({behavior:"smooth",block:"start"}));
+  }
  },[requestedLesson,lessons]);
 
  useEffect(()=>{
@@ -120,7 +123,7 @@ export default function LinkToLesson(){
 
  const lessonLabel=(l:Upcoming)=>`${new Date(l.date+"T12:00:00").toLocaleDateString("da-DK",{weekday:"short",day:"numeric",month:"short"})} · ${l.start.slice(0,5)} · ${l.className} · ${l.subject}`;
 
- return <section style={{marginTop:18,background:"#eef2ed",border:"1px solid #d4ddd6",borderRadius:14,padding:20}}>
+ return <section id="concrete-lesson-preparation" style={{scrollMarginTop:24,marginTop:18,background:"#eef2ed",border:"1px solid #d4ddd6",borderRadius:14,padding:20}}>
   <p style={{fontSize:11,fontWeight:900,letterSpacing:1.3,color:"#65766d",margin:"0 0 5px"}}>FORBEREDELSE → KONKRET LEKTION</p>
   <h2 style={{fontFamily:"Georgia,serif",fontSize:25,margin:"0 0 6px"}}>Forbered en kommende time</h2>
   <p style={{color:"#687068",margin:"0 0 16px",lineHeight:1.5}}>Vælg en kommende lektion. Plan og læringsmål gemmes direkte på timen, mens materialer og opgaver kobles uden at blive kopieret.</p>
