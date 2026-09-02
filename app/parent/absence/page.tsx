@@ -6,7 +6,7 @@ import {supabase} from "../../../lib/supabase";
 
 type Child={id:number;name:string;class_id:number|null;class_name:string|null;school_id:number};
 type Absence={id:number;student_id:number;absence_date:string;status:string;note:string|null;source:string;created_at:string;can_manage:boolean};
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Copenhagen"});
 
 export default function ParentAbsencePage(){
  const[ready,setReady]=useState(false),[children,setChildren]=useState<Child[]>([]),[absence,setAbsence]=useState<Absence[]>([]),[activeId,setActiveId]=useState<number|null>(null),[date,setDate]=useState(today()),[note,setNote]=useState(""),[message,setMessage]=useState(""),[saving,setSaving]=useState(false),[editing,setEditing]=useState<number|null>(null),[editDate,setEditDate]=useState(""),[editNote,setEditNote]=useState("");
