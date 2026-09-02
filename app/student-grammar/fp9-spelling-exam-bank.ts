@@ -1,4 +1,5 @@
 import type { GradedGrammarLibrary, GradedGrammarQuestion } from "./grade-progression";
+import { minimumGradeForTopic } from "./grade-progression";
 import { retskrivningExtraLibrary } from "./retskrivning-extra";
 import { spellingTrapsLibrary } from "./spelling-traps-extra";
 import { advancedExtraLibrary } from "./advanced-extra";
@@ -18,6 +19,13 @@ export const FP9_EXAM_SECTIONS = [
   "Korrektur",
   "Tegnsætning",
 ] as const;
+
+export const SPELLING_EXAM_LEVELS = {
+  6: { title: "6. klasse · Strategitræning", description: "Velkendte retskrivningsregler og tydelig kontekst. Fokus på at lære at undersøge ord og sætninger systematisk." },
+  7: { title: "7. klasse · Begyndende prøveformat", description: "Flere regelkombinationer, korrektur og sprogfælder, men stadig uden de sværeste udskolingskrav." },
+  8: { title: "8. klasse · Prøveforberedelse", description: "Bred retskrivning med mere kompleks korrektur, tegnsætning og sprogbrug." },
+  9: { title: "9. klasse · FP9-lignende niveau", description: "Den fulde bank med de mest krævende retskrivnings-, korrektur- og tegnsætningsopgaver." },
+} as const;
 
 const sources: GradedGrammarLibrary[] = [
   retskrivningExtraLibrary,
@@ -110,7 +118,13 @@ function allTopicQuestions(topic: string) {
   return [...unique.values()];
 }
 
-function poolForSection(section: (typeof FP9_EXAM_SECTIONS)[number]) {
+function questionFitsGrade(question: GradedGrammarQuestion, topic: string, targetGrade: number) {
+  const minimum = question.minGrade ?? minimumGradeForTopic(topic);
+  const maximum = question.maxGrade ?? 10;
+  return minimum <= targetGrade && maximum >= targetGrade;
+}
+
+function poolForSection(section: (typeof FP9_EXAM_SECTIONS)[number], targetGrade: number) {
   if (section === "Korrektur") {
     const result: Array<{ question: GradedGrammarQuestion; topic: string }> = [];
     const relevantTopics = [
@@ -123,14 +137,16 @@ function poolForSection(section: (typeof FP9_EXAM_SECTIONS)[number]) {
     ];
     for (const topic of relevantTopics) {
       for (const question of allTopicQuestions(topic)) {
-        if (question.kind === "rewrite") result.push({ question, topic });
+        if (question.kind === "rewrite" && questionFitsGrade(question, topic, targetGrade)) result.push({ question, topic });
       }
     }
     return result;
   }
 
   return sectionTopics[section].flatMap((topic) =>
-    allTopicQuestions(topic).map((question) => ({ question, topic }))
+    allTopicQuestions(topic)
+      .filter((question) => questionFitsGrade(question, topic, targetGrade))
+      .map((question) => ({ question, topic }))
   );
 }
 
@@ -146,7 +162,8 @@ function prepareQuestion(
   return { ...question, options, examSection: section, sourceTopic: topic };
 }
 
-export function buildSpellingExamSet(seed: number, questionCount = 30): SpellingExamQuestion[] {
+export function buildSpellingExamSet(seed: number, questionCount = 30, targetGrade = 9): SpellingExamQuestion[] {
+  const grade = Math.max(6, Math.min(9, Math.round(targetGrade)));
   const random = mulberry32(Number.isFinite(seed) ? seed : 1);
   const sections = [...FP9_EXAM_SECTIONS];
   const basePerSection = Math.floor(questionCount / sections.length);
@@ -156,7 +173,7 @@ export function buildSpellingExamSet(seed: number, questionCount = 30): Spelling
 
   for (const section of sections) {
     const wanted = basePerSection + (remainder-- > 0 ? 1 : 0);
-    const pool = shuffled(poolForSection(section), random);
+    const pool = shuffled(poolForSection(section, grade), random);
     let added = 0;
     for (const entry of pool) {
       const key = questionKey(entry.question);
@@ -166,7 +183,7 @@ export function buildSpellingExamSet(seed: number, questionCount = 30): Spelling
       added += 1;
       if (added >= wanted) break;
     }
-    if (added < wanted) throw new Error(`FP9 bank mangler opgaver i sektionen: ${section}`);
+    if (added < wanted) throw new Error(`Retskrivningsbanken mangler opgaver i ${section} på ${grade}.-klasseniveau (${added}/${wanted})`);
   }
 
   return shuffled(selected, random);
