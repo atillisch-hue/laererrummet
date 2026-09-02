@@ -4,11 +4,12 @@ import Link from "next/link";
 import {useEffect,useState} from "react";
 import {supabase} from "../../../../lib/supabase";
 import {hasRole} from "../../../../lib/roles";
+import {scheduleOccursOn,type RecurrencePattern} from "../../../../lib/scheduleRecurrence";
 
 type EntryKind="lesson"|"assembly"|"break"|"duty"|"other";
 type Staff={user_id:string;display_name:string|null;initials:string|null;email:string|null};
 type StaffAbs={id:number;user_id:string;absence_date:string;status:string;note:string|null};
-type Entry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:EntryKind};
+type Entry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:EntryKind;recurrence_pattern:RecurrencePattern};
 type LinkRow={schedule_entry_id:number;teacher_id:string};
 type Klass={id:number;name:string;school_id?:number};
 type Assignment={id:number;schedule_entry_id:number;assignment_date:string;absent_teacher_id:string;substitute_teacher_id:string;school_id:number};
@@ -49,7 +50,7 @@ export default function StaffAbsence(){
    supabase.rpc("admin_user_directory"),
    supabase.from("user_profiles").select("user_id,display_name,initials"),
    supabase.from("staff_absence").select("id,user_id,absence_date,status,note").order("absence_date",{ascending:false}).limit(100),
-   supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room,entry_kind"),
+   supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room,entry_kind,recurrence_pattern"),
    supabase.from("schedule_teachers").select("schedule_entry_id,teacher_id"),
    supabase.from("classes").select("id,name,school_id"),
    supabase.from("substitute_assignments").select("id,schedule_entry_id,assignment_date,absent_teacher_id,substitute_teacher_id,school_id")
@@ -74,11 +75,11 @@ export default function StaffAbsence(){
  const weekdayFor=(targetDate:string)=>{const d=new Date(targetDate+"T12:00:00").getDay();return d===0?7:d};
  const selectedPeople=staff.filter(s=>selected[s.user_id]);
  const affected=(teacherId:string,targetDate:string)=>entries
-  .filter(e=>e.entry_kind==="lesson"&&e.weekday===weekdayFor(targetDate)&&links.some(l=>l.schedule_entry_id===e.id&&l.teacher_id===teacherId))
+  .filter(e=>e.entry_kind==="lesson"&&e.weekday===weekdayFor(targetDate)&&scheduleOccursOn(e.recurrence_pattern,targetDate)&&links.some(l=>l.schedule_entry_id===e.id&&l.teacher_id===teacherId))
   .sort((a,b)=>a.start_time.localeCompare(b.start_time));
  const overlaps=(a:Entry,b:Entry)=>a.start_time<b.end_time&&a.end_time>b.start_time;
  const absentOnDate=(teacherId:string,targetDate:string)=>rows.some(r=>r.user_id===teacherId&&r.absence_date===targetDate)||(targetDate===date&&!!selected[teacherId]);
- const unavailable=(teacherId:string,lesson:Entry,targetDate:string)=>absentOnDate(teacherId,targetDate)||entries.some(e=>e.entry_kind==="lesson"&&e.weekday===weekdayFor(targetDate)&&overlaps(e,lesson)&&links.some(l=>l.schedule_entry_id===e.id&&l.teacher_id===teacherId));
+ const unavailable=(teacherId:string,lesson:Entry,targetDate:string)=>absentOnDate(teacherId,targetDate)||entries.some(e=>e.entry_kind==="lesson"&&e.weekday===weekdayFor(targetDate)&&scheduleOccursOn(e.recurrence_pattern,targetDate)&&overlaps(e,lesson)&&links.some(l=>l.schedule_entry_id===e.id&&l.teacher_id===teacherId));
  const substitutes=(lesson:Entry,absentId:string,targetDate:string)=>staff.filter(s=>s.user_id!==absentId&&!unavailable(s.user_id,lesson,targetDate));
  const className=(id:number)=>classes.find(c=>c.id===id)?.name||`Klasse ${id}`;
  const name=(id:string)=>{const p=staff.find(x=>x.user_id===id);return p?staffName(p):"Medarbejder"};
@@ -138,13 +139,13 @@ export default function StaffAbsence(){
   <header style={{background:"#486b59",color:"white",padding:"18px 6vw"}}><div style={{maxWidth:1100,margin:"auto",display:"flex",justifyContent:"space-between"}}><strong style={{fontSize:22}}>Administration · Fravær</strong><Link href="/admin" style={{color:"white"}}>← Administration</Link></div></header>
   <section style={{maxWidth:1100,margin:"auto",padding:"42px 24px"}}>
    <nav style={{display:"flex",gap:8,marginBottom:28,flexWrap:"wrap"}}><Link href="/admin/absence" style={tab}>Elevfravær</Link><Link href="/admin/absence/staff" style={activeTab}>Personalefravær</Link><Link href="/admin/absence/statistics" style={tab}>Statistik</Link></nav>
-   <p className="eyebrow">FRAVÆR · PERSONALE</p><h1 style={{fontFamily:"Georgia,serif",fontSize:40}}>Før personalefravær</h1><p style={{color:"#687068"}}>Registrér fravær, og redigér bagefter både selve fraværet og vikardækningen. Kun rigtige undervisningslektioner foreslås til vikar.</p>
+   <p className="eyebrow">FRAVÆR · PERSONALE</p><h1 style={{fontFamily:"Georgia,serif",fontSize:40}}>Før personalefravær</h1><p style={{color:"#687068"}}>Registrér fravær, og redigér bagefter både selve fraværet og vikardækningen. Kun undervisningslektioner, der faktisk ligger på den valgte dato og uge-rytme, foreslås til vikar.</p>
    {msg&&<div style={{padding:12,background:"#e7eee9",borderRadius:9,margin:"18px 0"}}>{msg}</div>}
    <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{padding:10,marginBottom:18}}/>
 
    <section style={card}><h2 style={{fontFamily:"Georgia,serif",marginTop:0}}>Personale · {staff.length}</h2>{staff.map(s=><div key={s.user_id} style={{display:"grid",gridTemplateColumns:"minmax(180px,1.4fr) minmax(190px,1fr) minmax(220px,1.5fr)",gap:12,alignItems:"center",borderTop:"1px solid #eee",padding:"12px 0"}}><label style={{display:"flex",gap:10,alignItems:"center",fontWeight:600}}><input type="checkbox" checked={!!selected[s.user_id]} onChange={e=>setSelected(v=>({...v,[s.user_id]:e.target.checked}))}/>{staffName(s)}</label><select disabled={!selected[s.user_id]} value={types[s.user_id]||"sick"} onChange={e=>setTypes(v=>({...v,[s.user_id]:e.target.value}))} style={field}>{TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select><input disabled={!selected[s.user_id]} value={notes[s.user_id]||""} onChange={e=>setNotes(v=>({...v,[s.user_id]:e.target.value}))} placeholder="Note (valgfri)" style={field}/></div>)}<button onClick={save} style={{marginTop:18,padding:"10px 18px",fontWeight:800}}>✓ Gem personalefravær</button></section>
 
-   {selectedPeople.map(s=>{const provisional:StaffAbs={id:-1,user_id:s.user_id,absence_date:date,status:types[s.user_id]||"sick",note:notes[s.user_id]||null};const lessons=affected(s.user_id,date);return <section key={s.user_id} style={{...card,marginTop:20}}><p className="eyebrow">VIKARDÆKNING · KLADDE</p><h2 style={{fontFamily:"Georgia,serif",marginTop:3}}>{staffName(s)} · {date}</h2><p style={{color:"#687068"}}>Du kan se behovet nu. Gem fraværet først, før vikaren tildeles permanent.</p>{lessons.length===0?<p style={{color:"#687068"}}>Ingen undervisningslektioner kræver vikar.</p>:lessons.map(l=><div key={l.id} style={{padding:"8px 0",borderTop:"1px solid #eee"}}><strong>{l.start_time.slice(0,5)}–{l.end_time.slice(0,5)} · {l.subject}</strong> · {className(l.class_id)}</div>)}</section>})}
+   {selectedPeople.map(s=>{const lessons=affected(s.user_id,date);return <section key={s.user_id} style={{...card,marginTop:20}}><p className="eyebrow">VIKARDÆKNING · KLADDE</p><h2 style={{fontFamily:"Georgia,serif",marginTop:3}}>{staffName(s)} · {date}</h2><p style={{color:"#687068"}}>Du kan se behovet nu. Gem fraværet først, før vikaren tildeles permanent.</p>{lessons.length===0?<p style={{color:"#687068"}}>Ingen undervisningslektioner kræver vikar.</p>:lessons.map(l=><div key={l.id} style={{padding:"8px 0",borderTop:"1px solid #eee"}}><strong>{l.start_time.slice(0,5)}–{l.end_time.slice(0,5)} · {l.subject}</strong> · {className(l.class_id)}</div>)}</section>})}
 
    <section style={{...card,marginTop:24}}><h2 style={{fontFamily:"Georgia,serif"}}>Seneste registreringer</h2>{rows.map(r=>{const cover=absenceAssignments(r),isEditing=editing===r.id,isCoverage=coverageAbsenceId===r.id;return <div key={r.id} style={{borderTop:"1px solid #eee",padding:"15px 0"}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"start",flexWrap:"wrap"}}><div style={{flex:"1 1 320px"}}><strong>{name(r.user_id)} · {label(r.status)}</strong><small style={{display:"block",color:"#777"}}>{r.absence_date}</small>{r.note&&<div style={{marginTop:5,color:"#59645e"}}>Note: {r.note}</div>}{cover.length>0&&<div style={{marginTop:10,padding:"10px 12px",background:"#f2f6f3",borderRadius:8}}><strong style={{fontSize:13}}>Vikardækning · {cover.length}</strong>{cover.map(({a,lesson})=><div key={a.id} style={{marginTop:5,fontSize:14,display:"flex",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}><span>{lesson!.start_time.slice(0,5)}–{lesson!.end_time.slice(0,5)} · {lesson!.subject} · {className(lesson!.class_id)} → <strong>{name(a.substitute_teacher_id)}</strong></span><button onClick={()=>removeSubstitute(a.id)} style={{...smallButton,color:"#8a3c34",padding:"4px 7px"}}>Fjern vikar</button></div>)}</div>}</div><div style={{display:"flex",gap:7,flexWrap:"wrap",justifyContent:"end"}}><button onClick={()=>startEdit(r)} style={smallButton}>Redigér fravær</button><button onClick={()=>setCoverageAbsenceId(isCoverage?null:r.id)} style={smallButton}>{isCoverage?"Luk dækning":"Redigér vikardækning"}</button><button onClick={()=>removeAbsence(r.id)} style={{...smallButton,color:"#8a3c34"}}>Slet fravær</button></div></div>
