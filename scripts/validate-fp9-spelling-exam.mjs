@@ -19,14 +19,18 @@ for(const[topic,levels]of Object.entries(spellingTrapsLibrary))for(const[level,q
  }
 }
 
-for(let seed=1;seed<=40;seed++){
+for(const grade of [6,7,8,9])for(let seed=1;seed<=40;seed++){
  let exam;
- try{exam=buildSpellingExamSet(seed,30)}catch(error){errors.push(`seed ${seed}: ${error.message}`);continue}
- if(exam.length!==30)errors.push(`seed ${seed}: expected 30 questions, got ${exam.length}`);
- const keys=new Set(exam.map(q=>`${q.q}::${q.answer}`));if(keys.size!==exam.length)errors.push(`seed ${seed}: duplicate questions`);
- for(const section of FP9_EXAM_SECTIONS){const count=exam.filter(q=>q.examSection===section).length;if(count!==5)errors.push(`seed ${seed}: ${section} has ${count}, expected 5`)}
- for(const[index,q]of exam.entries())if(q.kind!=="text"&&q.kind!=="rewrite"&&!q.options.includes(q.answer))errors.push(`seed ${seed}, question ${index+1}: shuffled options lost correct answer`);
+ try{exam=buildSpellingExamSet(seed,30,grade)}catch(error){errors.push(`${grade}. klasse seed ${seed}: ${error.message}`);continue}
+ if(exam.length!==30)errors.push(`${grade}. klasse seed ${seed}: expected 30 questions, got ${exam.length}`);
+ const keys=new Set(exam.map(q=>`${q.q}::${q.answer}`));if(keys.size!==exam.length)errors.push(`${grade}. klasse seed ${seed}: duplicate questions`);
+ for(const section of FP9_EXAM_SECTIONS){const count=exam.filter(q=>q.examSection===section).length;if(count!==5)errors.push(`${grade}. klasse seed ${seed}: ${section} has ${count}, expected 5`)}
+ for(const[index,q]of exam.entries()){
+  const minimum=q.minGrade??1,maximum=q.maxGrade??10;
+  if(minimum>grade||maximum<grade)errors.push(`${grade}. klasse seed ${seed}, question ${index+1}: question grade ${minimum}-${maximum} leaked into set`);
+  if(q.kind!=="text"&&q.kind!=="rewrite"&&!q.options.includes(q.answer))errors.push(`${grade}. klasse seed ${seed}, question ${index+1}: shuffled options lost correct answer`);
+ }
 }
 
-if(errors.length){console.error(`FP9 spelling exam validation failed with ${errors.length} issue(s):`);for(const error of errors)console.error(`- ${error}`);process.exit(1)}
-console.log(`FP9 spelling exam validation passed: 40 deterministic 30-question sets, 6 sections × 5 questions.`);
+if(errors.length){console.error(`Spelling exam validation failed with ${errors.length} issue(s):`);for(const error of errors)console.error(`- ${error}`);process.exit(1)}
+console.log(`Spelling exam validation passed: grades 6–9 × 40 deterministic 30-question sets, 6 sections × 5 questions.`);
