@@ -1,0 +1,2 @@
+create index if not exists reading_strategy_assignments_created_by_idx
+on public.reading_strategy_assignments(created_by);
