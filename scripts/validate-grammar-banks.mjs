@@ -153,6 +153,99 @@ for (const [name, file, exportName] of sources) {
   sourceCounts.push([name, totalQuestions - before]);
 }
 
+function uniqueQuestions(questions) {
+  const byKey = new Map();
+  for (const question of questions) byKey.set(`${question.q}::${question.answer}`, question);
+  return Array.from(byKey.values());
+}
+
+function mergeLibraries(...libraries) {
+  const result = {};
+  for (const library of libraries) {
+    for (const [topic, levels] of Object.entries(library)) {
+      result[topic] ||= {};
+      for (const [level, questions] of Object.entries(levels)) {
+        result[topic][level] = uniqueQuestions([...(result[topic][level] || []), ...questions]);
+      }
+    }
+  }
+  return result;
+}
+
+function freeTrainingAsAssignedGrammar(freeTrainingQuestions) {
+  const result = {};
+  const subject = freeTrainingQuestions["dansk-grammatik"] || {};
+  for (const area of Object.values(subject)) {
+    for (const [topic, levels] of Object.entries(area)) {
+      result[topic] ||= {};
+      const basis = [...(levels.start || []), ...(levels.basis || [])];
+      if (basis.length) result[topic].basis = basis;
+      if (levels.traening?.length) result[topic].traening = levels.traening;
+      if (levels.udfordring?.length) result[topic].udfordring = levels.udfordring;
+    }
+  }
+  return result;
+}
+
+function validateGradeCoverage() {
+  const progression = loadTypeScript("app/student-grammar/grade-progression.ts");
+  const foundation = loadTypeScript("app/student-grammar/foundation-library.ts").foundationGrammarLibrary;
+  const core = loadTypeScript("app/student-grammar/core-library.ts").coreGrammarLibrary;
+  const grammarLibrary = loadTypeScript("app/student-grammar/grammar-library.ts").extraLibrary;
+  const expanded = loadTypeScript("app/student-grammar/extraLibrary.ts").extraLibrary;
+  const advanced = loadTypeScript("app/student-grammar/grammar-advanced.ts").advancedLibrary;
+  const advancedExtra = loadTypeScript("app/student-grammar/advanced-extra.ts").advancedExtraLibrary;
+  const interactive = loadTypeScript("app/student-grammar/interactive-library.ts").interactiveGrammarLibrary;
+  const freeTraining = loadTypeScript("lib/freeTrainingQuestions.ts").freeTrainingQuestions;
+
+  const library = mergeLibraries(
+    foundation,
+    progression.tagLibraryForGrades(core, 5),
+    progression.tagLibraryForGrades(grammarLibrary, 5),
+    progression.tagLibraryForGrades(expanded, 5),
+    progression.tagLibraryForGrades(advanced, 7),
+    progression.tagLibraryForGrades(advancedExtra, 5),
+    progression.tagLibraryForGrades(interactive, 5),
+    progression.tagLibraryForGrades(freeTrainingAsAssignedGrammar(freeTraining), 5),
+  );
+
+  const gradeLevelChecks = [
+    { grade: 1, levels: ["basis"] },
+    { grade: 2, levels: ["basis", "traening"] },
+    { grade: 3, levels: ["basis", "traening", "udfordring"] },
+    { grade: 4, levels: ["basis", "traening", "udfordring"] },
+    { grade: 5, levels: ["basis", "traening", "udfordring"] },
+    { grade: 6, levels: ["basis", "traening", "udfordring"] },
+    { grade: 7, levels: ["basis", "traening", "udfordring"] },
+    { grade: 8, levels: ["basis", "traening", "udfordring"] },
+    { grade: 9, levels: ["basis", "traening", "udfordring"] },
+    { grade: 10, levels: ["basis", "traening", "udfordring"] },
+  ];
+
+  const coverageRows = [];
+  for (const { grade, levels } of gradeLevelChecks) {
+    for (const [topic, topicLevels] of Object.entries(library)) {
+      if (progression.minimumGradeForTopic(topic) > grade) continue;
+      for (const level of levels) {
+        const filtered = progression.filterLevelsForGrade(topicLevels, grade, level);
+        const directPool = uniqueQuestions(filtered[level] || []);
+        coverageRows.push({ grade, topic, level, count: directPool.length });
+        if (directPool.length < 5) {
+          errors.push(`coverage: ${grade}. klasse · ${topic} · ${level} has ${directPool.length} grade-appropriate question(s); minimum is 5`);
+        }
+      }
+    }
+  }
+
+  if (!errors.some((error) => error.startsWith("coverage:"))) {
+    const checked = coverageRows.length;
+    const minimum = Math.min(...coverageRows.map((row) => row.count));
+    console.log(`Grade coverage passed: ${checked} grade/topic/level combinations checked; minimum pool size ${minimum}.`);
+  }
+}
+
+validateGradeCoverage();
+
 if (errors.length) {
   console.error(`Grammar validation failed with ${errors.length} issue(s):`);
   for (const error of errors) console.error(`- ${error}`);
