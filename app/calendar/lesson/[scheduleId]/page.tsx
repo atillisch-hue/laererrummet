@@ -14,6 +14,7 @@ type Lesson={id:number;schedule_entry_id:number;lesson_date:string;learning_goal
 type CarryFrom={lesson_date:string;carry_forward_note:string|null};
 type ClosedDay={date:string;label?:string};
 type LessonOverride=Partial<Pick<Lesson,"status"|"started_at"|"ended_at"|"carry_forward_to"|"carry_forward_note">>;
+type LessonResourceLink={subject_room_item_id:number|null;assignment_id:number|null;position:number};
 
 const input:React.CSSProperties={width:"100%",boxSizing:"border-box",padding:"12px 13px",border:"1px solid #d8d5cd",borderRadius:9,font:"inherit",background:"white",color:"#26342e"};
 const card:React.CSSProperties={background:"white",border:"1px solid #ddd9d0",borderRadius:15,padding:22};
@@ -39,6 +40,7 @@ export default function LessonWorkRoom(){
  const[carryNote,setCarryNote]=useState("");
  const[carriedTo,setCarriedTo]=useState<string|null>(null);
  const[carryFrom,setCarryFrom]=useState<CarryFrom|null>(null);
+ const[carryResources,setCarryResources]=useState(true);
  const[closedDates,setClosedDates]=useState<string[]>([]);
  const[canEdit,setCanEdit]=useState(false);
  const[message,setMessage]=useState("");
@@ -119,8 +121,8 @@ export default function LessonWorkRoom(){
   return()=>{active=false};
  },[scheduleId,lessonDate,validDate]);
 
- const persist=async(overrides?:LessonOverride)=>{
-  if(!entry||!canEdit)return false;
+ const persist=async(overrides?:LessonOverride):Promise<number|null>=>{
+  if(!entry||!canEdit)return null;
   setSaving(true);setMessage("");
   const nextStatus=overrides?.status??status;
   const nextStarted=overrides?.started_at===undefined?startedAt:overrides.started_at;
@@ -132,25 +134,62 @@ export default function LessonWorkRoom(){
   const result=lessonId
    ?await supabase.from("lesson_instances").update(payload).eq("id",lessonId).select("id,status,started_at,ended_at,carry_forward_to,carry_forward_note").single()
    :await supabase.from("lesson_instances").insert(payload).select("id,status,started_at,ended_at,carry_forward_to,carry_forward_note").single();
-  if(result.error){setMessage(`Kunne ikke gemme lektionen: ${result.error.message}`);setSaving(false);return false}
+  if(result.error){setMessage(`Kunne ikke gemme lektionen: ${result.error.message}`);setSaving(false);return null}
   setLessonId(result.data.id);
   setStatus(result.data.status as Lesson["status"]);
   setStartedAt(result.data.started_at);
   setEndedAt(result.data.ended_at);
   setCarriedTo(result.data.carry_forward_to);
   setCarryNote(result.data.carry_forward_note||"");
-  setMessage("Gemt ✓");setSaving(false);return true;
+  setMessage("Gemt ✓");setSaving(false);return Number(result.data.id);
  };
 
  const startLesson=async()=>{const now=startedAt||new Date().toISOString();await persist({status:"active",started_at:now,ended_at:null})};
  const finishLesson=async()=>{const now=new Date().toISOString();await persist({status:"completed",started_at:startedAt||now,ended_at:now})};
  const moveForward=async()=>{
   const note=carryNote.trim();
+  if(!entry)return;
   if(!note){setMessage("Skriv først kort, hvad I ikke nåede.");return}
-  const ok=await persist({carry_forward_to:nextLessonDate,carry_forward_note:note});
-  if(ok)setMessage(`Flyttet videre til ${shortDate(nextLessonDate)} ✓`);
+  const sourceLessonId=await persist({carry_forward_to:nextLessonDate,carry_forward_note:note});
+  if(!sourceLessonId)return;
+
+  let copied=0;
+  let sourceCount=0;
+  if(carryResources){
+   setSaving(true);
+   const sourceResult=await supabase.from("lesson_resource_links").select("subject_room_item_id,assignment_id,position").eq("lesson_instance_id",sourceLessonId);
+   if(sourceResult.error){setSaving(false);setMessage(`Noten er flyttet til ${shortDate(nextLessonDate)}, men materialerne kunne ikke hentes.`);return}
+   const sourceLinks=(sourceResult.data||[]) as LessonResourceLink[];
+   sourceCount=sourceLinks.length;
+
+   if(sourceLinks.length>0){
+    const nextResult=await supabase.from("lesson_instances").select("id").eq("schedule_entry_id",entry.id).eq("lesson_date",nextLessonDate).maybeSingle();
+    if(nextResult.error){setSaving(false);setMessage(`Noten er flyttet til ${shortDate(nextLessonDate)}, men næste lektion kunne ikke åbnes.`);return}
+    let nextLessonId=Number(nextResult.data?.id||0);
+    if(!nextLessonId){
+     const created=await supabase.from("lesson_instances").insert({schedule_entry_id:entry.id,lesson_date:nextLessonDate}).select("id").single();
+     if(created.error){setSaving(false);setMessage(`Noten er flyttet til ${shortDate(nextLessonDate)}, men næste lektion kunne ikke oprettes.`);return}
+     nextLessonId=Number(created.data.id);
+    }
+
+    const existingResult=await supabase.from("lesson_resource_links").select("subject_room_item_id,assignment_id").eq("lesson_instance_id",nextLessonId);
+    if(existingResult.error){setSaving(false);setMessage(`Noten er flyttet til ${shortDate(nextLessonDate)}, men eksisterende materialer kunne ikke kontrolleres.`);return}
+    const existingItems=new Set((existingResult.data||[]).map(x=>x.subject_room_item_id).filter((x):x is number=>typeof x==="number"));
+    const existingAssignments=new Set((existingResult.data||[]).map(x=>x.assignment_id).filter((x):x is number=>typeof x==="number"));
+    const rows=sourceLinks.filter(link=>(typeof link.subject_room_item_id==="number"&&!existingItems.has(link.subject_room_item_id))||(typeof link.assignment_id==="number"&&!existingAssignments.has(link.assignment_id))).map(link=>({lesson_instance_id:nextLessonId,subject_room_item_id:link.subject_room_item_id,assignment_id:link.assignment_id,position:link.position}));
+    if(rows.length>0){
+     const copiedResult=await supabase.from("lesson_resource_links").insert(rows);
+     if(copiedResult.error){setSaving(false);setMessage(`Noten er flyttet til ${shortDate(nextLessonDate)}, men materialerne kunne ikke kobles videre.`);return}
+     copied=rows.length;
+    }
+   }
+   setSaving(false);
+  }
+
+  if(carryResources&&sourceCount>0)setMessage(copied>0?`Flyttet til ${shortDate(nextLessonDate)} · ${copied} materiale${copied===1?"":"r"}/opgave${copied===1?"":"r"} fulgte med ✓`:`Flyttet til ${shortDate(nextLessonDate)} · materialerne var allerede koblet på ✓`);
+  else setMessage(`Flyttet videre til ${shortDate(nextLessonDate)} ✓`);
  };
- const clearCarry=async()=>{const ok=await persist({carry_forward_to:null,carry_forward_note:null});if(ok)setMessage("Videreførsel fjernet ✓")};
+ const clearCarry=async()=>{const saved=await persist({carry_forward_to:null,carry_forward_note:null});if(saved)setMessage("Videreførsel fjernet ✓")};
 
  if(!ready)return <main style={{padding:50}}>Åbner lektionen…</main>;
  if(!entry)return <main style={{minHeight:"100vh",background:"#f5f3ee",padding:"60px 24px",color:"#26342e"}}><section style={{...card,maxWidth:720,margin:"0 auto"}}><h1>Lektionen kunne ikke åbnes</h1><p>{message}</p><Link href="/calendar">← Til kalenderen</Link></section></main>;
@@ -166,8 +205,8 @@ export default function LessonWorkRoom(){
     <section style={card}><label style={{fontWeight:900,display:"block"}}>Plan for lektionen</label><p style={{fontSize:13,color:"#747b75",margin:"5px 0 10px"}}>Skriv den plan, du selv eller en vikar skal kunne arbejde videre fra.</p><textarea disabled={!canEdit} value={plan} onChange={e=>setPlan(e.target.value)} rows={10} style={input} placeholder={'Fx:\n08.00 – intro\n08.10 – fælles læsning\n08.30 – makkeropgave…'}/></section>
     <section style={card}><label style={{fontWeight:900,display:"block"}}>Hurtige materialer og links</label><p style={{fontSize:13,color:"#747b75",margin:"5px 0 10px"}}>Til frie noter: ét link eller materialenavn pr. linje. Genbrugeligt fagindhold kobles nedenfor uden at blive kopieret.</p><textarea disabled={!canEdit} value={materialsText} onChange={e=>setMaterialsText(e.target.value)} rows={5} style={input} placeholder={'Jeg er Henry – kap. 4\nhttps://…\nArbejdsark: Argumenter'}/></section>
     <LessonResources lessonId={lessonId} classId={entry.class_id} classSubjectId={entry.class_subject_id} canEdit={canEdit}/>
-    {canEdit&&<section style={{...card,background:"#f8f3e7"}}><label style={{fontWeight:900,display:"block"}}>Nåede I ikke det hele?</label><p style={{fontSize:13,color:"#746c5a",margin:"5px 0 10px"}}>Skriv det, der skal fortsætte. Det vises automatisk, når du åbner næste skoledag med samme skemabrik — uden at kopiere planen.</p><textarea value={carryNote} onChange={e=>setCarryNote(e.target.value)} rows={4} style={input} placeholder="Fx: Vi nåede ikke den fælles opsamling. Start næste gang med gruppernes sidste argument."/><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:11}}><button disabled={saving||!carryNote.trim()} onClick={moveForward} style={{...action,background:"#8b7652",opacity:saving||!carryNote.trim()?0.5:1}}>Flyt til {shortDate(nextLessonDate)} →</button>{carriedTo&&<button disabled={saving} onClick={clearCarry} style={{border:"1px solid #cfc5b2",borderRadius:9,padding:"10px 12px",fontWeight:800,background:"white",color:"#6d604b",cursor:"pointer"}}>Fjern videreførsel</button>}</div>{skippedClosures>0&&<small style={{display:"block",marginTop:9,color:"#786a51"}}>Springer {skippedClosures} lukket skoleuge{skippedClosures===1?"":"r"} over.</small>}{carriedTo&&<small style={{display:"block",marginTop:7,color:"#786a51",fontWeight:800}}>Markeret til {shortDate(carriedTo)}</small>}</section>}
-    {canEdit&&<div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}><button disabled={saving} onClick={()=>persist()} style={{...action,opacity:saving?0.6:1}}>{saving?"Gemmer…":"Gem lektion"}</button>{message&&<strong style={{color:message.startsWith("Kunne")?"#8b342e":"#4f6d59"}}>{message}</strong>}</div>}
+    {canEdit&&<section style={{...card,background:"#f8f3e7"}}><label style={{fontWeight:900,display:"block"}}>Nåede I ikke det hele?</label><p style={{fontSize:13,color:"#746c5a",margin:"5px 0 10px"}}>Skriv det, der skal fortsætte. Det vises automatisk, når du åbner næste skoledag med samme skemabrik — uden at kopiere planen.</p><textarea value={carryNote} onChange={e=>setCarryNote(e.target.value)} rows={4} style={input} placeholder="Fx: Vi nåede ikke den fælles opsamling. Start næste gang med gruppernes sidste argument."/><label style={{display:"flex",gap:9,alignItems:"flex-start",marginTop:11,fontSize:13,color:"#665d4d",fontWeight:800}}><input type="checkbox" checked={carryResources} onChange={e=>setCarryResources(e.target.checked)} style={{marginTop:2}}/><span>Tag koblede materialer og opgaver med til næste time<small style={{display:"block",fontWeight:500,marginTop:2}}>Kun koblingen flyttes videre. Originalindholdet bliver liggende i faglokalet.</small></span></label><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:11}}><button disabled={saving||!carryNote.trim()} onClick={moveForward} style={{...action,background:"#8b7652",opacity:saving||!carryNote.trim()?0.5:1}}>Flyt til {shortDate(nextLessonDate)} →</button>{carriedTo&&<button disabled={saving} onClick={clearCarry} style={{border:"1px solid #cfc5b2",borderRadius:9,padding:"10px 12px",fontWeight:800,background:"white",color:"#6d604b",cursor:"pointer"}}>Fjern videreførsel</button>}</div>{skippedClosures>0&&<small style={{display:"block",marginTop:9,color:"#786a51"}}>Springer {skippedClosures} lukket skoleuge{skippedClosures===1?"":"r"} over.</small>}{carriedTo&&<small style={{display:"block",marginTop:7,color:"#786a51",fontWeight:800}}>Markeret til {shortDate(carriedTo)}</small>}</section>}
+    {canEdit&&<div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}><button disabled={saving} onClick={()=>persist()} style={{...action,opacity:saving?0.6:1}}>{saving?"Gemmer…":"Gem lektion"}</button>{message&&<strong style={{color:message.startsWith("Kunne")||message.includes("men")?"#8b342e":"#4f6d59"}}>{message}</strong>}</div>}
    </div>
    <aside style={{display:"grid",gap:14,minWidth:0}}>
     <section style={card}><p style={{fontSize:10,fontWeight:900,letterSpacing:1.4,color:"#718077",margin:0}}>STATUS</p><h2 style={{fontFamily:"Georgia,serif",fontSize:22,margin:"7px 0 12px"}}>{status==="active"?"I gang":status==="completed"?"Afsluttet":status==="cancelled"?"Aflyst":"Planlagt"}</h2>{startedAt&&<small style={{display:"block",color:"#707670"}}>Startet {new Date(startedAt).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"})}</small>}{endedAt&&<small style={{display:"block",color:"#707670",marginTop:4}}>Afsluttet {new Date(endedAt).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"})}</small>}{canEdit&&<div style={{display:"grid",gap:8,marginTop:16}}>{status!=="active"&&status!=="completed"&&<button onClick={startLesson} disabled={saving} style={action}>▶ Start lektion</button>}{status!=="completed"&&<button onClick={finishLesson} disabled={saving} style={{...action,background:"#6c755f"}}>✓ Afslut lektion</button>}</div>}</section>
