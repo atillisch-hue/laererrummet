@@ -5,6 +5,7 @@ import {studentSupabase} from "../../lib/studentSupabase";
 import {trainingCatalog} from "../../lib/trainingCatalog";
 import {freeTrainingQuestions,type TrainingQuestion} from "../../lib/freeTrainingQuestions";
 import {mathExtraQuestions} from "../../lib/mathExtraQuestions";
+import {mathGapQuestions} from "../../lib/mathGapQuestions";
 import {mathGradeBandLabel,mathTrainingAllowed} from "../../lib/mathProgression";
 import {clearStudentSession,getStudentSessionToken} from "../../lib/studentSession";
 import {gradeBandLabel,minimumGradeForTopic} from "../student-grammar/grade-progression";
@@ -30,8 +31,9 @@ function skillBank(subjectId:string,areaId:string|null,skill:string|null):LevelB
  const core=(freeTrainingQuestions[subjectId]?.[areaId]?.[skill]??{}) as LevelBank;
  if(subjectId!=="matematik")return core;
  const extra=mathExtraQuestions[areaId]?.[skill]??{};
- const levels=new Set([...Object.keys(core),...Object.keys(extra)]);
- return Object.fromEntries([...levels].map(level=>[level,[...(core[level]??[]),...(extra[level]??[])]]));
+ const gaps=mathGapQuestions[areaId]?.[skill]??{};
+ const levels=new Set([...Object.keys(core),...Object.keys(extra),...Object.keys(gaps)]);
+ return Object.fromEntries([...levels].map(level=>[level,[...(core[level]??[]),...(extra[level]??[]),...(gaps[level]??[])]]));
 }
 
 function roundFromPool(pool:TrainingQuestion[],seed:number,size=5){
