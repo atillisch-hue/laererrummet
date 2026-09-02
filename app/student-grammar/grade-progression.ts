@@ -1,4 +1,5 @@
 import type { InteractiveGrammarQuestion } from "./interactive-library";
+import { grammarTopicMeta } from "../grammar/grammar-catalog";
 
 export type GradedGrammarQuestion = InteractiveGrammarQuestion & {
   minGrade?: number;
@@ -16,35 +17,25 @@ export const gradeBands = [
   { min: 10, max: 10, label: "10. klasse" },
 ] as const;
 
-const topicMinimumGrades: Record<string, number> = {
-  "Navneord": 1,
-  "Udsagnsord": 1,
-  "Tillægsord": 2,
-  "Stedord": 3,
-  "Biord": 5,
-  "Grundled og udsagnsled": 3,
-  "Genstandsled": 5,
-  "Omsagnsled": 7,
-  "Hel- og ledsætninger": 5,
-  "Komma mellem helsætninger": 5,
-  "Komma ved ledsætninger": 6,
-  "Kommaøvelser": 5,
-  "Form → funktion → effekt": 7,
-  "Præcise verber": 5,
-  "Variation i sætninger": 5,
-  "Sproglig effekt": 7,
-};
-
 const prerequisiteTopics: Record<string, string> = {
   "Tillægsord": "Navneord",
   "Stedord": "Navneord",
   "Biord": "Tillægsord",
+  "Nutids-r": "Udsagnsord",
+  "Sammensatte ord": "Navneord",
+  "Store og små bogstaver": "Navneord",
   "Genstandsled": "Grundled og udsagnsled",
   "Omsagnsled": "Grundled og udsagnsled",
   "Hel- og ledsætninger": "Grundled og udsagnsled",
+  "Punktum og spørgsmålstegn": "Grundled og udsagnsled",
   "Komma mellem helsætninger": "Grundled og udsagnsled",
   "Komma ved ledsætninger": "Grundled og udsagnsled",
   "Kommaøvelser": "Grundled og udsagnsled",
+  "Direkte tale": "Punktum og spørgsmålstegn",
+  "Kolon, semikolon og tankestreg": "Punktum og spørgsmålstegn",
+  "Sin, sit, sine eller hans/hendes": "Stedord",
+  "Nogen eller nogle": "Stedord",
+  "Ligge eller lægge": "Udsagnsord",
   "Form → funktion → effekt": "Tillægsord",
   "Præcise verber": "Udsagnsord",
   "Variation i sætninger": "Grundled og udsagnsled",
@@ -58,7 +49,7 @@ export function gradeBandLabel(grade: number | null | undefined) {
 }
 
 export function minimumGradeForTopic(topic: string) {
-  return topicMinimumGrades[topic] ?? 5;
+  return grammarTopicMeta(topic)?.minGrade ?? 5;
 }
 
 export function challengeAllowance(level: string) {
@@ -121,8 +112,7 @@ export function filterLevelsForGrade(
 export function topicGradeHint(topic: string) {
   const min = minimumGradeForTopic(topic);
   if (min <= 1) return "fra indskolingen";
-  if (min <= 3) return "fra 3. klasse";
-  if (min <= 5) return "fra 5. klasse";
-  if (min === 6) return "fra 6. klasse";
+  if (min <= 3) return `fra ${min}. klasse`;
+  if (min <= 6) return `fra ${min}. klasse`;
   return "primært udskoling";
 }
