@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../../lib/supabase";
+import { studentSupabase } from "../../lib/studentSupabase";
 import { clearStudentSession, getStudentSessionToken } from "../../lib/studentSession";
 import { extraLibrary, type GrammarQuestion as Q } from "./grammar-library";
 import { coreGrammarLibrary } from "./core-library";
@@ -28,7 +28,7 @@ export default function StudentGrammar() {
         return;
       }
 
-      const { data, error: loadError } = await supabase.rpc("student_session_grammar_assignments", { p_session_token: token });
+      const { data, error: loadError } = await studentSupabase.rpc("student_session_grammar_assignments", { p_session_token: token });
       if (loadError || !data?.ok) {
         clearStudentSession();
         setError("Din elevsession er udløbet. Log ind igen fra elevsiden.");
@@ -66,7 +66,7 @@ export default function StudentGrammar() {
       explanation: question.why
     }]));
 
-    const { data, error: saveError } = await supabase.rpc("save_student_grammar_attempt_session", {
+    const { data, error: saveError } = await studentSupabase.rpc("save_student_grammar_attempt_session", {
       p_session_token: sessionToken,
       p_assignment_id: assignment.id,
       p_answers: answerSnapshot,
