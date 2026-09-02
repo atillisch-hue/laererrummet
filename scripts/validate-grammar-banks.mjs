@@ -64,6 +64,16 @@ function validateQuestion(question, label) {
   if (typeof question.answer !== "string" || !question.answer.trim()) errors.push(`${label}: missing answer`);
   if (typeof question.why !== "string" || !question.why.trim()) errors.push(`${label}: missing explanation`);
 
+  if (question.minGrade !== undefined && (!Number.isInteger(question.minGrade) || question.minGrade < 0 || question.minGrade > 10)) {
+    errors.push(`${label}: minGrade must be an integer from 0 to 10`);
+  }
+  if (question.maxGrade !== undefined && (!Number.isInteger(question.maxGrade) || question.maxGrade < 0 || question.maxGrade > 10)) {
+    errors.push(`${label}: maxGrade must be an integer from 0 to 10`);
+  }
+  if (question.minGrade !== undefined && question.maxGrade !== undefined && question.minGrade > question.maxGrade) {
+    errors.push(`${label}: minGrade cannot be higher than maxGrade`);
+  }
+
   if (written) {
     if (!Array.isArray(question.options)) errors.push(`${label}: written task options must be an array`);
     if (Array.isArray(question.options) && question.options.length !== 0) errors.push(`${label}: written task should not contain choice options`);
@@ -120,6 +130,7 @@ function walk(value, label) {
 }
 
 const sources = [
+  ["foundation", "app/student-grammar/foundation-library.ts", "foundationGrammarLibrary"],
   ["grammar-library", "app/student-grammar/grammar-library.ts", "extraLibrary"],
   ["extraLibrary", "app/student-grammar/extraLibrary.ts", "extraLibrary"],
   ["grammar-advanced", "app/student-grammar/grammar-advanced.ts", "advancedLibrary"],
