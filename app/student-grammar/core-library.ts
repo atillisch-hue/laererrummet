@@ -1,7 +1,8 @@
-import type { GrammarQuestion } from "./grammar-library";
+import type { GradedGrammarLibrary } from "./grade-progression";
 import { structureExtraLibrary } from "./structure-extra";
+import { retskrivningExtraLibrary } from "./retskrivning-extra";
 
-type GrammarBank = Record<string, Record<string, GrammarQuestion[]>>;
+type GrammarBank = GradedGrammarLibrary;
 
 const baseCoreGrammarLibrary: GrammarBank = {
   Udsagnsord: {
@@ -65,4 +66,4 @@ function mergeBanks(...sources: GrammarBank[]): GrammarBank {
   return result;
 }
 
-export const coreGrammarLibrary: GrammarBank = mergeBanks(baseCoreGrammarLibrary, structureExtraLibrary);
+export const coreGrammarLibrary: GrammarBank = mergeBanks(baseCoreGrammarLibrary, structureExtraLibrary, retskrivningExtraLibrary);
