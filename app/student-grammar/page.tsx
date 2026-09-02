@@ -109,15 +109,31 @@ function prepareQuestionForRound(question: IQ): IQ {
   return isWrittenQuestion(question) ? question : { ...question, options: shuffle(question.options) };
 }
 
-function prepareRound(pool: IQ[], excludedKeys: Set<string>) {
-  const fresh = shuffle(pool.filter((question) => !excludedKeys.has(questionKey(question))));
-  const needed = Math.min(ROUND_SIZE, pool.length);
-  let selected = fresh.slice(0, needed);
+function balancedSelection(candidates: IQ[], needed: number) {
+  if (needed <= 0 || candidates.length === 0) return [];
+  const written = shuffle(candidates.filter(isWrittenQuestion));
+  const choices = shuffle(candidates.filter((question) => !isWrittenQuestion(question)));
+  const targetWritten = written.length > 0 ? Math.min(2, written.length, Math.max(1, needed - 1)) : 0;
+  const selected = [...written.slice(0, targetWritten), ...choices.slice(0, Math.max(0, needed - targetWritten))];
 
   if (selected.length < needed) {
     const selectedKeys = new Set(selected.map(questionKey));
-    const fallback = shuffle(pool.filter((question) => !selectedKeys.has(questionKey(question))));
-    selected = [...selected, ...fallback.slice(0, needed - selected.length)];
+    const remaining = shuffle(candidates.filter((question) => !selectedKeys.has(questionKey(question))));
+    selected.push(...remaining.slice(0, needed - selected.length));
+  }
+
+  return shuffle(selected.slice(0, needed));
+}
+
+function prepareRound(pool: IQ[], excludedKeys: Set<string>) {
+  const fresh = pool.filter((question) => !excludedKeys.has(questionKey(question)));
+  const needed = Math.min(ROUND_SIZE, pool.length);
+  let selected = balancedSelection(fresh, needed);
+
+  if (selected.length < needed) {
+    const selectedKeys = new Set(selected.map(questionKey));
+    const fallback = pool.filter((question) => !selectedKeys.has(questionKey(question)));
+    selected = [...selected, ...balancedSelection(fallback, needed - selected.length)];
   }
 
   return selected.map(prepareQuestionForRound);
@@ -129,8 +145,8 @@ function prepareAdaptiveRetry(primaryPool: IQ[], topicLevels: Record<string, IQ[
 
   const addFreshFrom = (pool: IQ[]) => {
     const alreadySelected = new Set(selected.map(questionKey));
-    const candidates = shuffle(pool.filter((question) => !excludedKeys.has(questionKey(question)) && !alreadySelected.has(questionKey(question))));
-    selected.push(...candidates.slice(0, Math.max(0, needed - selected.length)));
+    const candidates = pool.filter((question) => !excludedKeys.has(questionKey(question)) && !alreadySelected.has(questionKey(question)));
+    selected.push(...balancedSelection(candidates, Math.max(0, needed - selected.length)));
   };
 
   addFreshFrom(primaryPool);
@@ -151,8 +167,8 @@ function prepareAdaptiveRetry(primaryPool: IQ[], topicLevels: Record<string, IQ[
   if (selected.length < needed) {
     const allTopicQuestions = uniqueQuestions(Object.values(topicLevels).flat());
     const selectedKeys = new Set(selected.map(questionKey));
-    const repeatFallback = shuffle(allTopicQuestions.filter((question) => !selectedKeys.has(questionKey(question))));
-    selected.push(...repeatFallback.slice(0, needed - selected.length));
+    const repeatFallback = allTopicQuestions.filter((question) => !selectedKeys.has(questionKey(question)));
+    selected.push(...balancedSelection(repeatFallback, needed - selected.length));
   }
 
   return selected.map(prepareQuestionForRound);
