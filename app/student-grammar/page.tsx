@@ -181,14 +181,21 @@ export default function StudentGrammar() {
 
   useEffect(() => {
     if (!assignment || questionPool.length === 0) return;
-    const initial = prepareRound(questionPool, new Set());
+
+    const persistedSeen = new Set<string>(Array.isArray(assignment.seen_question_keys) ? assignment.seen_question_keys : []);
+    const previousAttempts = Number(assignment.attempts || 0);
+    const previousScore = Number(assignment.score || 0);
+    const initial = persistedSeen.size > 0
+      ? prepareAdaptiveRetry(questionPool, topicLevels, assignment.level, previousScore, persistedSeen)
+      : prepareRound(questionPool, persistedSeen);
+
     setQuestions(initial);
-    setSeenQuestionKeys(initial.map(questionKey));
-    setRoundNumber(1);
+    setSeenQuestionKeys(Array.from(new Set([...persistedSeen, ...initial.map(questionKey)])));
+    setRoundNumber(Math.max(1, previousAttempts + 1));
     setAnswers({});
     setSubmitted(false);
     setSaveState("");
-  }, [assignment, questionPool]);
+  }, [assignment, questionPool, topicLevels]);
 
   const score = questions.filter((question, index) => answers[index] === question.answer).length;
   const allCorrect = questions.length > 0 && score === questions.length;
@@ -221,6 +228,9 @@ export default function StudentGrammar() {
       if (data?.error === "invalid_session") clearStudentSession();
       setSaveState("Resultatet kunne ikke gemmes");
     } else {
+      if (Array.isArray(data.seen_question_keys)) {
+        setSeenQuestionKeys((current) => Array.from(new Set([...current, ...data.seen_question_keys])));
+      }
       setSaveState(`Resultatet er gemt ✓${data.attempts ? ` · Forsøg ${data.attempts}` : ""}`);
     }
     setSaving(false);
