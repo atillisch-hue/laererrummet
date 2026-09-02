@@ -131,6 +131,7 @@ function walk(value, label) {
 
 const sources = [
   ["foundation", "app/student-grammar/foundation-library.ts", "foundationGrammarLibrary"],
+  ["foundation-extra", "app/student-grammar/foundation-extra.ts", "foundationExtraGrammarLibrary"],
   ["grammar-library", "app/student-grammar/grammar-library.ts", "extraLibrary"],
   ["extraLibrary", "app/student-grammar/extraLibrary.ts", "extraLibrary"],
   ["grammar-advanced", "app/student-grammar/grammar-advanced.ts", "advancedLibrary"],
@@ -190,6 +191,7 @@ function freeTrainingAsAssignedGrammar(freeTrainingQuestions) {
 function validateGradeCoverage() {
   const progression = loadTypeScript("app/student-grammar/grade-progression.ts");
   const foundation = loadTypeScript("app/student-grammar/foundation-library.ts").foundationGrammarLibrary;
+  const foundationExtra = loadTypeScript("app/student-grammar/foundation-extra.ts").foundationExtraGrammarLibrary;
   const core = loadTypeScript("app/student-grammar/core-library.ts").coreGrammarLibrary;
   const grammarLibrary = loadTypeScript("app/student-grammar/grammar-library.ts").extraLibrary;
   const expanded = loadTypeScript("app/student-grammar/extraLibrary.ts").extraLibrary;
@@ -200,6 +202,7 @@ function validateGradeCoverage() {
 
   const library = mergeLibraries(
     foundation,
+    foundationExtra,
     progression.tagLibraryForGrades(core, 5),
     progression.tagLibraryForGrades(grammarLibrary, 5),
     progression.tagLibraryForGrades(expanded, 5),
