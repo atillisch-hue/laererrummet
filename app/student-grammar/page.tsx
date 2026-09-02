@@ -8,6 +8,7 @@ import { extraLibrary as grammarLibraryExtra, type GrammarQuestion as Q } from "
 import { coreGrammarLibrary } from "./core-library";
 import { extraLibrary as expandedGrammarLibrary } from "./extraLibrary";
 import { advancedLibrary } from "./grammar-advanced";
+import { advancedExtraLibrary } from "./advanced-extra";
 
 type GrammarLibrary = Record<string, Record<string, Q[]>>;
 
@@ -77,6 +78,7 @@ const library = mergeLibraries(
   grammarLibraryExtra,
   expandedGrammarLibrary,
   advancedLibrary,
+  advancedExtraLibrary,
   freeTrainingAsAssignedGrammar()
 );
 
