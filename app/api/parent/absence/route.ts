@@ -34,7 +34,7 @@ async function allowedChildren(admin:SupabaseClient,userId:string):Promise<Child
   return[{id:Number(s.id),name:String(s.name),class_id:s.class_id===null?null:Number(s.class_id),class_name:String(c.name),school_id:Number(c.school_id)}];
  });
 }
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Copenhagen"});
 const validDate=(s:string)=>/^\d{4}-\d{2}-\d{2}$/.test(s);
 
 export async function GET(req:Request){
