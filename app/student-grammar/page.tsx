@@ -4,15 +4,23 @@ import { useEffect, useMemo, useState } from "react";
 import { freeTrainingQuestions } from "../../lib/freeTrainingQuestions";
 import { studentSupabase } from "../../lib/studentSupabase";
 import { clearStudentSession, getStudentSessionToken } from "../../lib/studentSession";
-import { extraLibrary as grammarLibraryExtra, type GrammarQuestion as Q } from "./grammar-library";
+import { extraLibrary as grammarLibraryExtra } from "./grammar-library";
 import { coreGrammarLibrary } from "./core-library";
 import { extraLibrary as expandedGrammarLibrary } from "./extraLibrary";
 import { advancedLibrary } from "./grammar-advanced";
 import { advancedExtraLibrary } from "./advanced-extra";
 import { interactiveGrammarLibrary, type InteractiveGrammarQuestion } from "./interactive-library";
+import { foundationGrammarLibrary } from "./foundation-library";
+import {
+  filterLevelsForGrade,
+  gradeBandLabel,
+  tagLibraryForGrades,
+  type GradedGrammarLibrary,
+  type GradedGrammarQuestion,
+} from "./grade-progression";
 
-type IQ = Q & Partial<Pick<InteractiveGrammarQuestion, "kind" | "acceptedAnswers" | "placeholder">>;
-type GrammarLibrary = Record<string, Record<string, IQ[]>>;
+type IQ = GradedGrammarQuestion;
+type GrammarLibrary = GradedGrammarLibrary;
 
 const ROUND_SIZE = 5;
 
@@ -78,8 +86,8 @@ function mergeLibraries(...sources: GrammarLibrary[]): GrammarLibrary {
   return merged;
 }
 
-function freeTrainingAsAssignedGrammar(): GrammarLibrary {
-  const result: GrammarLibrary = {};
+function freeTrainingAsAssignedGrammar(): Record<string, Record<string, InteractiveGrammarQuestion[]>> {
+  const result: Record<string, Record<string, InteractiveGrammarQuestion[]>> = {};
   const subject = freeTrainingQuestions["dansk-grammatik"] || {};
 
   for (const area of Object.values(subject)) {
@@ -96,14 +104,25 @@ function freeTrainingAsAssignedGrammar(): GrammarLibrary {
 }
 
 const library = mergeLibraries(
-  coreGrammarLibrary,
-  grammarLibraryExtra,
-  expandedGrammarLibrary,
-  advancedLibrary,
-  advancedExtraLibrary,
-  interactiveGrammarLibrary,
-  freeTrainingAsAssignedGrammar()
+  foundationGrammarLibrary,
+  tagLibraryForGrades(coreGrammarLibrary, 5),
+  tagLibraryForGrades(grammarLibraryExtra, 5),
+  tagLibraryForGrades(expandedGrammarLibrary, 5),
+  tagLibraryForGrades(advancedLibrary, 7),
+  tagLibraryForGrades(advancedExtraLibrary, 5),
+  tagLibraryForGrades(interactiveGrammarLibrary, 5),
+  tagLibraryForGrades(freeTrainingAsAssignedGrammar(), 5)
 );
+
+function chooseLevelPool(levels: Record<string, IQ[]>, assignedLevel: string) {
+  if (levels[assignedLevel]?.length) return levels[assignedLevel];
+  const order = assignedLevel === "basis"
+    ? ["traening", "udfordring"]
+    : assignedLevel === "udfordring"
+      ? ["traening", "basis"]
+      : ["basis", "udfordring"];
+  return order.map((level) => levels[level] || []).find((pool) => pool.length > 0) || [];
+}
 
 function prepareQuestionForRound(question: IQ): IQ {
   return isWrittenQuestion(question) ? question : { ...question, options: shuffle(question.options) };
@@ -218,8 +237,12 @@ export default function StudentGrammar() {
     })();
   }, []);
 
-  const topicLevels = useMemo<Record<string, IQ[]>>(() => assignment ? library[assignment.topic] || {} : {}, [assignment]);
-  const questionPool = useMemo(() => assignment ? topicLevels[assignment.level] || [] : [], [assignment, topicLevels]);
+  const rawTopicLevels = useMemo<Record<string, IQ[]>>(() => assignment ? library[assignment.topic] || {} : {}, [assignment]);
+  const topicLevels = useMemo<Record<string, IQ[]>>(
+    () => assignment ? filterLevelsForGrade(rawTopicLevels, assignment.grade_level, assignment.level) : {},
+    [assignment, rawTopicLevels]
+  );
+  const questionPool = useMemo(() => assignment ? chooseLevelPool(topicLevels, assignment.level) : [], [assignment, topicLevels]);
   const topicPool = useMemo(() => uniqueQuestions(Object.values(topicLevels).flat()), [topicLevels]);
 
   useEffect(() => {
@@ -305,10 +328,11 @@ export default function StudentGrammar() {
       </div> : <>
         <p style={{marginTop:38,fontSize:11,fontWeight:800,letterSpacing:1.7,color:"#718077"}}>GRAMMATIK · {assignment.area.toUpperCase()}</p>
         <h1 style={{fontFamily:"Georgia,serif",fontSize:42,margin:"8px 0"}}>{assignment.title}</h1>
-        <p style={{fontSize:18,color:"#707670",lineHeight:1.55}}>Arbejd dig gennem opgaverne. Nogle løses ved at vælge, andre ved at skrive eller rette selv. Når du retter, får du både svar og forklaring. Hvis noget driller, får du et nyt sæt fra samme emne.</p>
-        {topicPool.length > questions.length && <p style={{fontSize:14,color:"#718077",fontWeight:700}}>Runde {roundNumber} · {questions.length} spørgsmål · {questionPool.length} på dit niveau · {topicPool.length} i emnebanken</p>}
+        <p style={{fontSize:18,color:"#707670",lineHeight:1.55}}>Arbejd dig gennem opgaverne. Nogle løses ved at vælge, andre ved at skrive eller rette selv. Opgaverne er valgt til dit klassetrin, og Udfordring kan løfte dig lidt videre.</p>
+        {assignment.grade_level !== null && assignment.grade_level !== undefined && <span style={{display:"inline-block",marginTop:4,padding:"6px 10px",borderRadius:999,background:"#e7eee9",color:"#486b59",fontSize:12,fontWeight:900}}>TILPASSET · {gradeBandLabel(Number(assignment.grade_level))}</span>}
+        {topicPool.length > questions.length && <p style={{fontSize:14,color:"#718077",fontWeight:700}}>Runde {roundNumber} · {questions.length} spørgsmål · {topicPool.length} passende spørgsmål i emnebanken</p>}
 
-        {questions.length === 0 ? <div style={{marginTop:30,background:"white",padding:28,borderRadius:14,border:"1px solid #ddd9d0"}}><h2>{assignment.topic}</h2><p>Opgaver til dette emne er på vej.</p></div> : <>
+        {questions.length === 0 ? <div style={{marginTop:30,background:"white",padding:28,borderRadius:14,border:"1px solid #ddd9d0"}}><h2>{assignment.topic}</h2><p>{assignment.grade_level === null || assignment.grade_level === undefined ? "Opgaver til dette emne er på vej." : "Dette emne ligger over den normale progression for dit klassetrin. Din lærer kan vælge et forberedende emne eller tildele en særlig udfordring."}</p></div> : <>
           <div style={{display:"grid",gap:16,marginTop:28}}>
             {questions.map((question, index) => {
               const correctNow = submitted && answerIsCorrect(question, answers[index]);
@@ -345,7 +369,7 @@ export default function StudentGrammar() {
               <div style={{fontFamily:"Georgia,serif",fontSize:32,fontWeight:800}}>{score} / {questions.length}</div>
               <p>{allCorrect ? "Flot, alle rigtige. Du har styr på denne runde." : score >= Math.ceil(questions.length * .6) ? "Godt arbejde. Kig på forklaringerne, og prøv et nyt sæt, så du får trænet det, der drillede." : "Kig på forklaringerne og prøv et nyt sæt. Det er sådan træning virker."}</p>
               <small>{saveState}</small>
-              {!allCorrect && unseenCount > 0 && <p style={{fontSize:13,opacity:.8,marginBottom:0}}>{unseenCount} usete spørgsmål er klar i emnet.</p>}
+              {!allCorrect && unseenCount > 0 && <p style={{fontSize:13,opacity:.8,marginBottom:0}}>{unseenCount} usete, passende spørgsmål er klar i emnet.</p>}
               <div style={{marginTop:14,display:"flex",gap:9,justifyContent:"center",flexWrap:"wrap"}}>
                 {!allCorrect && <button onClick={retryWithFreshQuestions} style={{padding:"9px 13px",borderRadius:9,border:"1px solid rgba(255,255,255,.35)",background:"transparent",color:"white",fontWeight:800}}>{unseenCount > 0 ? "Prøv igen med nye spørgsmål" : "Træn en ny blanding"}</button>}
                 <button onClick={() => window.location.href = "/?student=1"} style={{padding:"9px 13px",borderRadius:9,border:0,background:"white",color:"#273f35",fontWeight:800}}>Til mine opgaver</button>
