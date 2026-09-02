@@ -21,7 +21,7 @@ export default function SubjectRoomLayout({children}:{children:ReactNode}){
  const isDanish=(subject?.name||"").trim().toLowerCase()==="dansk";
  return <>
   <style>{`a[href="/grammar?mode=assign"]{display:none!important}`}</style>
-  {room&&<div style={{background:"#edf1ec",borderBottom:"1px solid #d5ddd6"}}><div style={{maxWidth:1050,margin:"auto",padding:"9px 24px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><strong style={{fontSize:12,color:"#65766d",marginRight:3}}>Fagets værktøjer</strong><Link href={`/teacher-overview?class=${room.class_id}`} style={tool}>Opgaver & besvarelser</Link>{isDanish&&<Link href={`/grammar?mode=assign&class=${room.class_id}&room=${room.id}`} style={tool}>Grammatik</Link>}<Link href={`/create-assignment?class=${room.class_id}&subject=${room.id}`} style={tool}>+ Ny opgave</Link></div></div>}
+  {room&&<div style={{background:"#edf1ec",borderBottom:"1px solid #d5ddd6"}}><div style={{maxWidth:1050,margin:"auto",padding:"9px 24px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><strong style={{fontSize:12,color:"#65766d",marginRight:3}}>Fagets værktøjer</strong><Link href={`/teacher-overview?class=${room.class_id}&subject=${room.id}`} style={tool}>Opgaver & besvarelser</Link>{isDanish&&<Link href={`/grammar?mode=assign&class=${room.class_id}&room=${room.id}`} style={tool}>Grammatik</Link>}<Link href={`/create-assignment?class=${room.class_id}&subject=${room.id}`} style={tool}>+ Ny opgave</Link></div></div>}
   {children}
  </>;
 }
