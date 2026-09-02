@@ -3,7 +3,7 @@
 import Link from "next/link";
 import {useEffect,useState} from "react";
 import {useParams} from "next/navigation";
-import {supabase} from "../../../lib/supabase";
+import {studentSupabase} from "../../../lib/studentSupabase";
 import {getStudentSessionToken} from "../../../lib/studentSession";
 import {danishGenreByName,type DanishGenre} from "../../../lib/danishGenreCatalog";
 
@@ -32,7 +32,7 @@ export default function StudentAssignmentPage(){
    if(!token){window.location.replace("/?student=1");return}
    setSessionToken(token);
    if(!Number.isFinite(assignmentId)||assignmentId<=0){setMessage("Opgaven kunne ikke åbnes.");setReady(true);return}
-   const{data,error}=await supabase.rpc("student_session_data",{p_session_token:token});
+   const{data,error}=await studentSupabase.rpc("student_session_data",{p_session_token:token});
    if(!active)return;
    const payload=data as StudentData|null;
    if(error||!payload?.ok){window.location.replace("/?student=1");return}
@@ -49,7 +49,7 @@ export default function StudentAssignmentPage(){
  async function update(index:number,value:string){
   if(!assignment||!sessionToken)return;
   const next=[...content];next[index]=value;setContent(next);setSaving(true);setMessage("");
-  const{data,error}=await supabase.rpc("save_student_draft_session",{p_session_token:sessionToken,p_assignment_id:assignment.id,p_content:next});
+  const{data,error}=await studentSupabase.rpc("save_student_draft_session",{p_session_token:sessionToken,p_assignment_id:assignment.id,p_content:next});
   setSaving(false);
   if(error||!data?.ok)setMessage("Kunne ikke gemme lige nu.");
  }
