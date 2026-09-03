@@ -9,6 +9,7 @@ function load(file){const absolute=path.resolve(root,file);if(cache.has(absolute
 
 const{danishGenres}=load("lib/danishGenreCatalog.ts");
 const{danishWritingSupport}=load("lib/danishGenreProgression.ts");
+const{danishAnalysisTemplates,danishAnalysisByName,danishAnalysisSupport}=load("lib/danishAnalysisCatalog.ts");
 const{danishCompetencyAreas,danishSkillsForGrade}=load("lib/danishCompetencyCatalog.ts");
 const errors=[];
 
@@ -29,13 +30,13 @@ for(const area of danishCompetencyAreas){
  }
 }
 
-let checks=0;
+let writingChecks=0;
 for(const genre of danishGenres){
  if(!genre.id?.trim()||!genre.name?.trim()||!genre.purpose?.trim()||!genre.audience?.trim())errors.push(`genre ${genre.id||"unknown"}: missing core metadata`);
  if(!Array.isArray(genre.structure)||genre.structure.length===0)errors.push(`genre ${genre.id}: no structure`);
  if(!Array.isArray(genre.checklist)||genre.checklist.length===0)errors.push(`genre ${genre.id}: no checklist`);
  for(let grade=1;grade<=10;grade++){
-  const support=danishWritingSupport(genre,grade);checks++;
+  const support=danishWritingSupport(genre,grade);writingChecks++;
   if(!support.band?.trim()||!support.coach?.trim())errors.push(`${genre.id} grade ${grade}: missing band/coach`);
   if(!Array.isArray(support.structure)||support.structure.length===0||support.structure.some(x=>!x?.trim()))errors.push(`${genre.id} grade ${grade}: invalid structure`);
   if(!Array.isArray(support.checklist)||support.checklist.length<3||support.checklist.some(x=>!x?.trim()))errors.push(`${genre.id} grade ${grade}: invalid checklist`);
@@ -43,5 +44,25 @@ for(const genre of danishGenres){
  }
 }
 
+const analysisIds=new Set();let analysisChecks=0;
+for(const template of danishAnalysisTemplates){
+ if(analysisIds.has(template.id))errors.push(`analysis: duplicate id ${template.id}`);analysisIds.add(template.id);
+ if(!template.id?.trim()||!template.name?.trim()||!template.description?.trim())errors.push(`analysis ${template.id||"unknown"}: missing core metadata`);
+ if(!Number.isInteger(template.minGrade)||template.minGrade<1||template.minGrade>10)errors.push(`analysis ${template.id}: invalid minGrade`);
+ if(!Array.isArray(template.prompts)||template.prompts.length<3||template.prompts.some(x=>!x?.trim()))errors.push(`analysis ${template.id}: needs at least 3 prompts`);
+ if(!Array.isArray(template.checklist)||template.checklist.length<3||template.checklist.some(x=>!x?.trim()))errors.push(`analysis ${template.id}: needs at least 3 checklist items`);
+ if(danishAnalysisByName(template.id)?.id!==template.id||danishAnalysisByName(template.name)?.id!==template.id)errors.push(`analysis ${template.id}: lookup failed for id or name`);
+ for(let grade=1;grade<=10;grade++){
+  const support=danishAnalysisSupport(template,grade);analysisChecks++;
+  if(!support.band?.trim()||!support.coach?.trim())errors.push(`analysis ${template.id} grade ${grade}: missing band/coach`);
+  if(!Array.isArray(support.prompts)||support.prompts.length<3||support.prompts.some(x=>!x?.trim()))errors.push(`analysis ${template.id} grade ${grade}: invalid prompts`);
+  if(!Array.isArray(support.checklist)||support.checklist.length<3||support.checklist.some(x=>!x?.trim()))errors.push(`analysis ${template.id} grade ${grade}: invalid checklist`);
+ }
+}
+
+const interpretation=danishCompetencyAreas.find(a=>a.id==="interpretation");
+if(!interpretation)errors.push("competencies: missing interpretation area");
+else if(interpretation.skills.some(skill=>skill.status!=="live"))errors.push("competencies: interpretation tools should all be active after analysis rollout");
+
 if(errors.length){console.error(`Danish learning validation failed with ${errors.length} issue(s):`);for(const error of errors.slice(0,80))console.error(`- ${error}`);process.exit(1)}
-console.log(`Danish learning validation passed: ${danishCompetencyAreas.length} competency areas · ${skillIds.size} skills · ${danishGenres.length} genres · ${checks} grade-aware writing scaffolds checked.`);
+console.log(`Danish learning validation passed: ${danishCompetencyAreas.length} competency areas · ${skillIds.size} skills · ${danishGenres.length} genres · ${writingChecks} grade-aware writing scaffolds · ${danishAnalysisTemplates.length} analysis focuses · ${analysisChecks} grade-aware analysis scaffolds checked.`);
