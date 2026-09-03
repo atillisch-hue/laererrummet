@@ -5,6 +5,7 @@ import {useEffect,useMemo,useState} from "react";
 import {supabase} from "../../lib/supabase";
 import {scheduleOccursOn,type RecurrencePattern} from "../../lib/scheduleRecurrence";
 import WeekScheduleView from "./WeekScheduleView";
+import WorkTimePanel from "./WorkTimePanel";
 
 type Meeting={id:number;title:string;meeting_type:string;starts_at:string;ends_at:string|null;location:string|null;student_id:number|null};
 type DirectoryUser={user_id:string;display_name:string;role:string};
@@ -55,6 +56,7 @@ export default function CalendarPage(){
  const[scheduleTeachers,setScheduleTeachers]=useState<ScheduleTeacher[]>([]);
  const[freeSlots,setFreeSlots]=useState<FreeSlot[]>([]);
  const[availabilityLoading,setAvailabilityLoading]=useState(false);
+ const[workRefresh,setWorkRefresh]=useState(0);
 
  async function load(){
   const[meetingResult,staffResult,studentResult,roomResult,entryResult,teacherResult]=await Promise.all([
@@ -143,7 +145,7 @@ export default function CalendarPage(){
  if(!ready)return <main style={{padding:50}}>Åbner kalenderen…</main>;
 
  return <main style={{minHeight:"100vh",background:"#f5f3ee",color:"#26342e"}}>
-  <header style={{background:"#243d33",color:"white",padding:"24px 32px"}}><div style={{maxWidth:1200,margin:"auto"}}><small style={{opacity:.7,fontWeight:800}}>ARBEJDSUGE</small><h1 style={{fontFamily:"Georgia,serif",margin:"4px 0",fontSize:36}}>Kalender</h1><p style={{margin:"6px 0 0",opacity:.78}}>Skema, møder, kolleger og arbejdsdag samlet ét sted.</p></div></header>
+  <header style={{background:"#243d33",color:"white",padding:"24px 32px"}}><div style={{maxWidth:1200,margin:"auto"}}><small style={{opacity:.7,fontWeight:800}}>ARBEJDSUGE</small><h1 style={{fontFamily:"Georgia,serif",margin:"4px 0",fontSize:36}}>Kalender</h1><p style={{margin:"6px 0 0",opacity:.78}}>Skema, møder, kolleger og arbejdstid samlet ét sted.</p></div></header>
 
   <section style={{maxWidth:1200,margin:"auto",padding:"24px 24px 70px"}}>
    <div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:14,flexWrap:"wrap",marginBottom:14}}>
@@ -156,7 +158,8 @@ export default function CalendarPage(){
    </div>
 
    {formError&&<div style={warning}>{formError}</div>}
-   <WeekScheduleView selectedDate={date} onSelectDate={setDate} viewedUserId={viewedUserId} currentUserId={currentUserId} viewedName={viewedName} meetings={meetings}/>
+   <WeekScheduleView selectedDate={date} onSelectDate={setDate} viewedUserId={viewedUserId} currentUserId={currentUserId} viewedName={viewedName} meetings={meetings} refreshKey={workRefresh}/>
+   <WorkTimePanel selectedDate={date} viewedUserId={viewedUserId} currentUserId={currentUserId} viewedName={viewedName} isAdmin={isAdmin} onChanged={()=>setWorkRefresh(v=>v+1)}/>
 
    {open&&<section style={{...card,marginTop:16}}>
     <p style={eyebrow}>NYT MØDE · {selectedDateLabel.toUpperCase()}</p>
