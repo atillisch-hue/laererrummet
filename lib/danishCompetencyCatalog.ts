@@ -36,12 +36,12 @@ export const danishCompetencyAreas:DanishCompetencyArea[]=[
   id:"interpretation",title:"Fortolkning & analyse",shortTitle:"Fortolk",icon:"◇",
   description:"Gå fra tekstnære iagttagelser til analyse, fortolkning og perspektivering.",
   skills:[
-   {id:"close-reading",title:"Tekstnære spor",description:"Finde ord, billeder, handlinger og detaljer, som kan bruges som belæg.",minGrade:3,status:"developing"},
-   {id:"character",title:"Personer, miljø og relationer",description:"Undersøge hvordan mennesker og miljø fremstilles og udvikler sig.",minGrade:4,status:"developing"},
-   {id:"narrative",title:"Fortæller og synsvinkel",description:"Se hvem der fortæller, hvad læseren får adgang til, og hvilken virkning det har.",minGrade:5,status:"developing"},
+   {id:"close-reading",title:"Tekstnære spor",description:"Finde ord, billeder, handlinger og detaljer, som kan bruges som belæg.",minGrade:3,status:"live",href:"/danish"},
+   {id:"character",title:"Personer, miljø og relationer",description:"Undersøge hvordan mennesker og miljø fremstilles og udvikler sig.",minGrade:4,status:"live",href:"/danish"},
+   {id:"narrative",title:"Fortæller og synsvinkel",description:"Se hvem der fortæller, hvad læseren får adgang til, og hvilken virkning det har.",minGrade:5,status:"live",href:"/danish"},
    {id:"language-effect",title:"Sprog, form og virkning",description:"Forbinde sproglige valg med funktion og effekt i teksten.",minGrade:6,status:"live",href:"/grammar?mode=assign"},
-   {id:"interpretation",title:"Fortolkning",description:"Samle tekstens spor til en begrundet forståelse af tema, konflikt og betydning.",minGrade:6,status:"developing"},
-   {id:"perspective",title:"Perspektivering",description:"Sætte teksten i forbindelse med andre tekster, temaer, tid og samfund.",minGrade:7,status:"developing"}
+   {id:"interpretation",title:"Fortolkning",description:"Samle tekstens spor til en begrundet forståelse af tema, konflikt og betydning.",minGrade:6,status:"live",href:"/danish"},
+   {id:"perspective",title:"Perspektivering",description:"Sætte teksten i forbindelse med andre tekster, temaer, tid og samfund.",minGrade:7,status:"live",href:"/danish"}
   ]
  },
  {
@@ -63,7 +63,7 @@ export const danishCompetencyAreas:DanishCompetencyArea[]=[
    {id:"oral",title:"Mundtlig formidling",description:"Planlægge og gennemføre en tydelig mundtlig fremstilling.",minGrade:2,status:"developing"},
    {id:"dialogue",title:"Samtale og respons",description:"Lytte, bygge videre, stille spørgsmål og give brugbar respons.",minGrade:2,status:"developing"},
    {id:"presentation",title:"Præsentation",description:"Strukturere stof, bruge eksempler og støtte publikums forståelse.",minGrade:4,status:"developing"},
-   {id:"media",title:"Medier og multimodalitet",description:"Kombinere tekst, lyd, billede og andre udtryksformer bevidst.",minGrade:5,status:"live"},
+   {id:"media",title:"Medier og multimodalitet",description:"Kombinere tekst, lyd, billede og andre udtryksformer bevidst.",minGrade:5,status:"live",href:"/danish"},
    {id:"rhetoric",title:"Retorik og appel",description:"Vurdere og bruge argumentation, appelformer og sproglige virkemidler.",minGrade:7,status:"developing"}
   ]
  },
