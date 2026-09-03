@@ -7,16 +7,21 @@ import {studentSupabase} from "../../../lib/studentSupabase";
 import {getStudentSessionToken} from "../../../lib/studentSession";
 import {danishGenreByName,type DanishGenre} from "../../../lib/danishGenreCatalog";
 import {danishWritingSupport,type DanishWritingSupport} from "../../../lib/danishGenreProgression";
+import {danishAnalysisByName,danishAnalysisSupport,type DanishAnalysisTemplate,type DanishAnalysisSupport} from "../../../lib/danishAnalysisCatalog";
 import {genericAssignmentTemplates,mathAssignmentTemplates,templateForAssignment,type AssignmentKind,type AssignmentTemplate} from "../../../lib/subjectAssignmentCatalog";
 
 type Assignment={id:number;title:string;type:string;instructions?:string;assignment_kind?:AssignmentKind;subject_name?:string|null;subject_slug?:string|null;subject_id?:number|null;class_subject_id?:number|null};
 type StudentData={ok?:boolean;student?:{id:number;name:string;grade_level?:number|null};assignments?:Assignment[];drafts?:{assignment_id:number;content:string[]}[]};
-type Workspace={structure:string[];checklist:string[];coach:string;genre?:DanishGenre;writingSupport?:DanishWritingSupport;template?:AssignmentTemplate};
+type Workspace={structure:string[];checklist:string[];coach:string;genre?:DanishGenre;writingSupport?:DanishWritingSupport;analysisTemplate?:DanishAnalysisTemplate;analysisSupport?:DanishAnalysisSupport;template?:AssignmentTemplate};
 
 const card:React.CSSProperties={background:"white",border:"1px solid #d8d5cd",borderRadius:14,padding:20};
 const resolveGenre=(name:string)=>name==="Artikel"?danishGenreByName("Artikel")||danishGenreByName("Nyhedsartikel"):name==="Fortælling"?danishGenreByName("Novelle"):danishGenreByName(name);
 
 function workspaceFor(assignment:Assignment,gradeLevel:number|null):Workspace{
+ if(assignment.assignment_kind==="danish_analysis"){
+  const analysisTemplate=danishAnalysisByName(assignment.type);
+  if(analysisTemplate){const support=danishAnalysisSupport(analysisTemplate,gradeLevel);return{structure:support.prompts,checklist:support.checklist,coach:support.coach,analysisTemplate,analysisSupport:support}}
+ }
  if(assignment.assignment_kind==="danish_writing"||assignment.subject_slug==="dansk"){
   const genre=resolveGenre(assignment.type);
   if(genre){const support=danishWritingSupport(genre,gradeLevel);return{structure:support.structure,checklist:support.checklist,coach:support.coach,genre,writingSupport:support}}
@@ -64,7 +69,7 @@ export default function StudentAssignmentPage(){
  if(!assignment||!workspace)return <main className="studentShell"><section className="studentContent"><div style={card}><h1>Opgaven kunne ikke åbnes</h1><p>{message}</p><Link href="/?student=1">← Mit Klasseværelse</Link></div></section></main>;
 
  const saveStatus=message||(saving?"Gemmer…":"Din kladde gemmes automatisk.");
- const isDanish=Boolean(workspace.genre),isMath=assignment.assignment_kind==="math_task"||assignment.subject_slug==="matematik";
+ const isDanishWriting=Boolean(workspace.genre),isDanishAnalysis=Boolean(workspace.analysisTemplate),isDanish=isDanishWriting||isDanishAnalysis,isMath=assignment.assignment_kind==="math_task"||assignment.subject_slug==="matematik";
  const subjectLabel=assignment.subject_name||(isDanish?"Dansk":isMath?"Matematik":"Faglig opgave");
  return <main className="studentShell">
   <header className="studentTop"><div className="brand"><span>✦</span><div><strong>Klasseværelset</strong><small>{studentName}</small></div></div><Link href="/?student=1" style={{color:"inherit",fontWeight:800,textDecoration:"none"}}>Mit Klasseværelse</Link></header>
@@ -74,13 +79,17 @@ export default function StudentAssignmentPage(){
    <h1>{assignment.title}</h1>
    {assignment.instructions&&<div style={{...card,margin:"14px 0",lineHeight:1.6}}>{assignment.instructions}</div>}
 
-   {isDanish&&workspace.genre&&workspace.writingSupport&&<section style={{...card,background:"#eef2ed",marginBottom:18}}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start",flexWrap:"wrap"}}><strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:20}}>Før du skriver</strong><span style={{fontSize:10,fontWeight:900,letterSpacing:.7,padding:"5px 7px",borderRadius:999,background:"#dce9df",color:"#476452"}}>{gradeLevel!=null?`TILPASSET · ${gradeLevel}. KL.`:workspace.writingSupport.band.toUpperCase()}</span></div><p style={{margin:"9px 0 5px",lineHeight:1.55}}>{workspace.coach}</p><p style={{margin:"8px 0 5px"}}><b>Formål:</b> {workspace.genre.purpose}</p><p style={{margin:"5px 0 0"}}><b>Modtager:</b> {workspace.genre.audience}</p><div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:10}}>{workspace.writingSupport.focus.map(x=><span key={x} style={{fontSize:11,fontWeight:800,padding:"5px 7px",borderRadius:999,background:"white",border:"1px solid #d7dfd8",color:"#56675d"}}>{x}</span>)}</div></section>}
+   {isDanishWriting&&workspace.genre&&workspace.writingSupport&&<section style={{...card,background:"#eef2ed",marginBottom:18}}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start",flexWrap:"wrap"}}><strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:20}}>Før du skriver</strong><span style={levelTag}>{gradeLevel!=null?`TILPASSET · ${gradeLevel}. KL.`:workspace.writingSupport.band.toUpperCase()}</span></div><p style={{margin:"9px 0 5px",lineHeight:1.55}}>{workspace.coach}</p><p style={{margin:"8px 0 5px"}}><b>Formål:</b> {workspace.genre.purpose}</p><p style={{margin:"5px 0 0"}}><b>Modtager:</b> {workspace.genre.audience}</p><div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:10}}>{workspace.writingSupport.focus.map(x=><span key={x} style={focusChip}>{x}</span>)}</div></section>}
+   {isDanishAnalysis&&workspace.analysisTemplate&&workspace.analysisSupport&&<section style={{...card,background:"#eef2ed",marginBottom:18}}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start",flexWrap:"wrap"}}><strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:20}}>Sådan arbejder du med teksten</strong><span style={levelTag}>{gradeLevel!=null?`TILPASSET · ${gradeLevel}. KL.`:workspace.analysisSupport.band.toUpperCase()}</span></div><p style={{margin:"9px 0 5px",lineHeight:1.55}}>{workspace.coach}</p><div style={{marginTop:10,padding:"10px 11px",borderRadius:9,background:"white",border:"1px solid #d8e0da"}}><strong style={{fontSize:13}}>Husk rækkefølgen</strong><div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:7}}>{["1. Find et tekstspor","2. Beskriv hvad du ser","3. Forklar virkningen","4. Fortolk med belæg"].map(x=><span key={x} style={focusChip}>{x}</span>)}</div></div></section>}
    {!isDanish&&<section style={{...card,background:isMath?"#edf1f5":"#eef2ed",marginBottom:18}}><strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:20}}>{isMath?"Før du regner":"Før du går i gang"}</strong><p style={{margin:"7px 0 0",lineHeight:1.55}}>{workspace.coach}</p></section>}
 
-   <div style={{display:"grid",gap:14}}>{workspace.structure.map((step,i)=><label key={`${assignment.id}-${i}`} style={{...card,display:"block",fontWeight:900}}><span style={{display:"block",marginBottom:8}}>{i+1}. {step}</span><textarea value={content[i]||""} onChange={e=>update(i,e.target.value)} rows={isMath?Math.max(4,i===0?4:6):gradeLevel!=null&&gradeLevel<=4?4:i===0?3:6} style={{width:"100%",boxSizing:"border-box",padding:12,border:"1px solid #d8d5cd",borderRadius:9,font:"inherit",lineHeight:1.5,resize:"vertical"}} placeholder={isMath?"Skriv beregninger, forklaring eller svar her…":"Skriv din del her…"}/></label>)}</div>
+   <div style={{display:"grid",gap:14}}>{workspace.structure.map((step,i)=><label key={`${assignment.id}-${i}`} style={{...card,display:"block",fontWeight:900}}><span style={{display:"block",marginBottom:8}}>{i+1}. {step}</span><textarea value={content[i]||""} onChange={e=>update(i,e.target.value)} rows={isMath?Math.max(4,i===0?4:6):gradeLevel!=null&&gradeLevel<=4?4:i===0?3:6} style={{width:"100%",boxSizing:"border-box",padding:12,border:"1px solid #d8d5cd",borderRadius:9,font:"inherit",lineHeight:1.5,resize:"vertical"}} placeholder={isMath?"Skriv beregninger, forklaring eller svar her…":isDanishAnalysis?"Skriv dit tekstspor og din forklaring her…":"Skriv din del her…"}/></label>)}</div>
 
-   <section style={{...card,marginTop:16}}><strong style={{fontFamily:"Georgia,serif",fontSize:19}}>{isMath?"Tjek din matematik":isDanish?"Læs din tekst igennem":"Tjek din besvarelse"}</strong><div style={{display:"grid",gap:7,marginTop:10}}>{workspace.checklist.map(x=><label key={x} style={{display:"flex",gap:9,alignItems:"start"}}><input type="checkbox"/><span>{x}</span></label>)}</div></section>
+   <section style={{...card,marginTop:16}}><strong style={{fontFamily:"Georgia,serif",fontSize:19}}>{isMath?"Tjek din matematik":isDanishAnalysis?"Tjek din analyse":isDanishWriting?"Læs din tekst igennem":"Tjek din besvarelse"}</strong><div style={{display:"grid",gap:7,marginTop:10}}>{workspace.checklist.map(x=><label key={x} style={{display:"flex",gap:9,alignItems:"start"}}><input type="checkbox"/><span>{x}</span></label>)}</div></section>
    <p style={{marginTop:16,color:message?"#8b342e":"#687168",fontWeight:700}}>{saveStatus}</p>
   </section>
  </main>;
 }
+
+const levelTag:React.CSSProperties={fontSize:10,fontWeight:900,letterSpacing:.7,padding:"5px 7px",borderRadius:999,background:"#dce9df",color:"#476452"};
+const focusChip:React.CSSProperties={fontSize:11,fontWeight:800,padding:"5px 7px",borderRadius:999,background:"white",border:"1px solid #d7dfd8",color:"#56675d"};
