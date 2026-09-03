@@ -8,7 +8,7 @@ import {hasRole} from "../lib/roles";
 
 const items=[
  {label:"Opslagstavlen",href:"/noticeboard",roots:["/noticeboard"]},
- {label:"Klasseværelset",href:"/students",roots:["/students","/student-profile","/teacher-dashboard","/teacher-overview","/create-assignment","/grammar"]},
+ {label:"Klasseværelset",href:"/students",roots:["/students","/student-profile","/teacher-dashboard","/teacher-overview","/create-assignment","/grammar","/math"]},
  {label:"Kalender",href:"/calendar",roots:["/calendar"]},
  {label:"Lærerværelset",href:"/teacher-room",roots:["/teacher-room","/archive","/my-tasks"]},
  {label:"Forberedelsen",href:"/preparation",roots:["/preparation"]}
@@ -18,6 +18,8 @@ const protectedRoots=[...items.flatMap(x=>x.roots),"/admin","/board","/parent"];
 const mainTabs=new Set(["/noticeboard","/students","/calendar","/teacher-room","/preparation"]);
 function starts(path:string,root:string){return path===root||path.startsWith(root+"/")}
 
+type SubjectRoomContext={roomId:number;classId:number;subjectName:string;subjectSlug:string};
+
 export default function DashboardNav(){
  const pathname=usePathname();
  const[ready,setReady]=useState(false);
@@ -26,6 +28,7 @@ export default function DashboardNav(){
  const[parent,setParent]=useState(false);
  const[board,setBoard]=useState(false);
  const[email,setEmail]=useState("");
+ const[subjectRoom,setSubjectRoom]=useState<SubjectRoomContext|null>(null);
  const isProtected=protectedRoots.some(root=>starts(pathname,root));
 
  useEffect(()=>{
@@ -46,6 +49,23 @@ export default function DashboardNav(){
   return()=>{active=false;listener.subscription.unsubscribe()};
  },[]);
 
+ useEffect(()=>{
+  let active=true;
+  const match=pathname.match(/^\/students\/subjects\/(\d+)(?:\/|$)/);
+  if(!match){setSubjectRoom(null);return()=>{active=false}};
+  const roomId=Number(match[1]);
+  (async()=>{
+   const{data:room,error:roomError}=await supabase.from("class_subjects").select("id,class_id,subject_id").eq("id",roomId).maybeSingle();
+   if(!active)return;
+   if(roomError||!room){setSubjectRoom(null);return}
+   const{data:subject,error:subjectError}=await supabase.from("subjects").select("name,slug").eq("id",room.subject_id).maybeSingle();
+   if(!active)return;
+   if(subjectError||!subject){setSubjectRoom(null);return}
+   setSubjectRoom({roomId:Number(room.id),classId:Number(room.class_id),subjectName:String(subject.name||"Fag"),subjectSlug:String(subject.slug||"").toLowerCase()});
+  })();
+  return()=>{active=false};
+ },[pathname]);
+
  const logout=async()=>{
   await supabase.auth.signOut();
   window.location.replace("/");
@@ -55,6 +75,8 @@ export default function DashboardNav(){
 
  const roleLabel=starts(pathname,"/admin")?"Admin":starts(pathname,"/parent")?"Forælder":starts(pathname,"/board")?"Bestyrelse":teacher?"Lærer":"Bruger";
  const compactMainHeader=mainTabs.has(pathname);
+ const isMathRoom=subjectRoom?.subjectSlug==="matematik";
+ const isDanishRoom=subjectRoom?.subjectSlug==="dansk";
 
  return <>
   <nav aria-label="Primær navigation" style={{position:"sticky",top:0,zIndex:50,background:"rgba(245,242,234,.97)",borderBottom:"1px solid #ddd9d0",backdropFilter:"blur(10px)"}}>
@@ -77,6 +99,23 @@ export default function DashboardNav(){
     </div>
    </div>
   </nav>
+
+  {teacher&&subjectRoom&&<nav aria-label={`${subjectRoom.subjectName} værktøjer`} style={{background:"#edf1ec",borderBottom:"1px solid #d8ddd7"}}>
+   <div style={{maxWidth:1280,margin:"0 auto",padding:"10px 14px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+    <span style={{fontSize:12,fontWeight:900,color:"#64746b",marginRight:5}}>Fagets værktøjer</span>
+    {isMathRoom&&<>
+     <Link href={`/students/class-math-profile?class=${subjectRoom.classId}`} style={subjectToolButton(false)}>Matematik-overblik</Link>
+     <Link href={`/math?class=${subjectRoom.classId}`} style={subjectToolButton(false)}>Træning & progression</Link>
+    </>}
+    {isDanishRoom&&<>
+     <Link href={`/students/class-learning-profile?class=${subjectRoom.classId}`} style={subjectToolButton(false)}>Dansk-overblik</Link>
+     <Link href="/grammar?mode=assign" style={subjectToolButton(false)}>Grammatik & sprog</Link>
+    </>}
+    <Link href={`/teacher-overview?class=${subjectRoom.classId}`} style={subjectToolButton(false)}>Opgaver & besvarelser</Link>
+    <Link href={`/create-assignment?class=${subjectRoom.classId}&subject=${subjectRoom.roomId}`} style={subjectToolButton(true)}>+ Ny opgave</Link>
+   </div>
+  </nav>}
+
   {compactMainHeader&&<style>{`
    main > header:first-child {
     background: transparent !important;
@@ -101,3 +140,4 @@ export default function DashboardNav(){
 }
 
 function roleButton(active:boolean):React.CSSProperties{return{display:"inline-flex",alignItems:"center",padding:"7px 8px",borderRadius:8,textDecoration:"none",fontWeight:800,fontSize:11,whiteSpace:"nowrap",border:active?"1px solid #486b59":"1px solid #cfcac0",color:active?"white":"#526159",background:active?"#486b59":"#fff"}}
+function subjectToolButton(primary:boolean):React.CSSProperties{return{display:"inline-flex",alignItems:"center",padding:"8px 11px",borderRadius:8,textDecoration:"none",fontWeight:850,fontSize:12,whiteSpace:"nowrap",border:primary?"1px solid #486b59":"1px solid #d4d9d4",background:primary?"#486b59":"#fff",color:primary?"#fff":"#365044"}}
