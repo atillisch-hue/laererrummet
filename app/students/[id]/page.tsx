@@ -4,6 +4,7 @@ import Link from "next/link";
 import {use,useEffect,useState} from "react";
 import {supabase} from "../../../lib/supabase";
 import LearningProfile from "./learning-profile";
+import MathLearningProfile from "./math-learning-profile";
 
 type Student={id:number;name:string;class_id:number|null};
 type Meeting={id:number;title:string;meeting_type:string;starts_at:string;status:string;minutes:string|null};
@@ -49,6 +50,7 @@ export default function StudentOverview({params}:{params:Promise<{id:string}>}){
    </div>
 
    <LearningProfile studentId={studentId}/>
+   {student.class_id&&<MathLearningProfile studentId={studentId} classId={student.class_id}/>}
 
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:16,marginBottom:16}}>
     <section style={card}><p style={eyebrow}>FRAVÆRSHISTORIK</p><h2 style={h2}>Seneste registreringer</h2>{latestAbsence.length?latestAbsence.map(a=><div key={a.id} style={row}><div><strong>{absenceLabel(a.status)}</strong><small style={meta}>{new Date(a.absence_date+"T12:00").toLocaleDateString("da-DK",{day:"numeric",month:"long",year:"numeric"})}{a.source==="parent"?" · meldt af forælder":""}</small></div>{a.note&&<span style={hint}>{a.note}</span>}</div>):<p style={hint}>Ingen fraværsregistreringer.</p>}<Link href={`/students?class=${student.class_id||""}`} style={actionLink}>Åbn klassens fravær →</Link></section>
