@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {useEffect,useMemo,useState} from "react";
 import {supabase} from "../../lib/supabase";
 import {scheduleOccursOn,type RecurrencePattern} from "../../lib/scheduleRecurrence";
@@ -11,6 +12,9 @@ type Klass={id:number;name:string};
 type Busy={user_id:string;starts_at:string;ends_at:string;busy_type:"meeting"|"absence"|string};
 type Meeting={id:number;title:string;meeting_type:string;starts_at:string;ends_at:string|null;location:string|null};
 type WorkEntry={id:number;work_date:string;starts_at:string;ends_at:string;category:string;note:string|null};
+type LessonInstance={id:number;schedule_entry_id:number;lesson_date:string;subject_unit_id:number|null;status:"planned"|"active"|"completed"|"cancelled";attendance_checked_at:string|null};
+type SubjectUnit={id:number;title:string};
+type ResourceLink={lesson_instance_id:number};
 
 type Props={
  selectedDate:string;
@@ -34,6 +38,9 @@ export default function WeekScheduleView({selectedDate,onSelectDate,viewedUserId
  const[classes,setClasses]=useState<Klass[]>([]);
  const[busy,setBusy]=useState<Busy[]>([]);
  const[workEntries,setWorkEntries]=useState<WorkEntry[]>([]);
+ const[lessons,setLessons]=useState<LessonInstance[]>([]);
+ const[units,setUnits]=useState<SubjectUnit[]>([]);
+ const[resourceLinks,setResourceLinks]=useState<ResourceLink[]>([]);
  const[loading,setLoading]=useState(true);
  const[error,setError]=useState("");
 
@@ -55,11 +62,32 @@ export default function WeekScheduleView({selectedDate,onSelectDate,viewedUserId
     supabase.from("work_time_entries").select("id,work_date,starts_at,ends_at,category,note").eq("user_id",viewedUserId).gte("work_date",weekStart).lt("work_date",weekEnd).order("work_date").order("starts_at")
    ]);
    if(!active)return;
+   const teacherRows=(tRes.data||[]) as ScheduleTeacher[];
+   const assignedEntryIds=teacherRows.map(x=>x.schedule_entry_id);
+   let lessonRows:LessonInstance[]=[];
+   let unitRows:SubjectUnit[]=[];
+   let resourceRows:ResourceLink[]=[];
+   if(assignedEntryIds.length){
+    const lessonRes=await supabase.from("lesson_instances").select("id,schedule_entry_id,lesson_date,subject_unit_id,status,attendance_checked_at").in("schedule_entry_id",assignedEntryIds).gte("lesson_date",weekStart).lt("lesson_date",weekEnd).order("lesson_date");
+    if(!active)return;
+    lessonRows=(lessonRes.data||[]) as LessonInstance[];
+    const unitIds=Array.from(new Set(lessonRows.map(x=>x.subject_unit_id).filter((x):x is number=>typeof x==="number")));
+    const lessonIds=lessonRows.map(x=>x.id);
+    const[uRes,rRes]=await Promise.all([
+     unitIds.length?supabase.from("subject_units").select("id,title").in("id",unitIds):Promise.resolve({data:[],error:null}),
+     lessonIds.length?supabase.from("lesson_resource_links").select("lesson_instance_id").in("lesson_instance_id",lessonIds):Promise.resolve({data:[],error:null})
+    ]);
+    if(!active)return;
+    unitRows=(uRes.data||[]) as SubjectUnit[];
+    resourceRows=(rRes.data||[]) as ResourceLink[];
+    if(lessonRes.error||uRes.error||rRes.error)setError((lessonRes.error||uRes.error||rRes.error)?.message||"Noget af lektionsstatus kunne ikke hentes.");
+   }
    setEntries((eRes.data||[]) as ScheduleEntry[]);
-   setTeachers((tRes.data||[]) as ScheduleTeacher[]);
+   setTeachers(teacherRows);
    setClasses((cRes.data||[]) as Klass[]);
    setBusy((bRes.data||[]) as Busy[]);
    setWorkEntries((wRes.data||[]) as WorkEntry[]);
+   setLessons(lessonRows);setUnits(unitRows);setResourceLinks(resourceRows);
    const problem=eRes.error||tRes.error||cRes.error||bRes.error||wRes.error;
    if(problem)setError(problem.message||"Ugen kunne ikke hentes helt.");
    setLoading(false);
@@ -77,6 +105,9 @@ export default function WeekScheduleView({selectedDate,onSelectDate,viewedUserId
  function entriesForDate(date:string){const weekday=new Date(`${date}T12:00:00`).getDay();return entries.filter(e=>assignedIds.has(e.id)&&e.weekday===weekday&&scheduleOccursOn(e.recurrence_pattern,date)).sort((a,b)=>a.start_time.localeCompare(b.start_time))}
  function workForDate(date:string){return workEntries.filter(x=>x.work_date===date).sort((a,b)=>a.starts_at.localeCompare(b.starts_at))}
  function timeLabel(value:string){return new Date(value).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"})}
+ function lessonFor(entryId:number,date:string){return lessons.find(x=>x.schedule_entry_id===entryId&&x.lesson_date===date)||null}
+ function unitTitle(unitId:number|null){return units.find(x=>x.id===unitId)?.title||null}
+ function resourceCount(lessonId:number){return resourceLinks.filter(x=>x.lesson_instance_id===lessonId).length}
 
  return <section style={{background:"white",border:"1px solid #ddd9d0",borderRadius:16,padding:18}}>
   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
@@ -90,7 +121,7 @@ export default function WeekScheduleView({selectedDate,onSelectDate,viewedUserId
     {absence&&<div style={{marginTop:8,padding:"7px 8px",borderRadius:8,background:"#f3e6df",color:"#7b4b3f",fontSize:11,fontWeight:900}}>FRAVÆRENDE</div>}
     {dayWork.length>0&&<div style={{marginTop:8,display:"grid",gap:4}}>{dayWork.map(w=><div key={`w-${w.id}`} style={{padding:"6px 7px",borderRadius:8,background:"#e8f0f5",border:"1px solid #cfdfe7"}}><strong style={{fontSize:10}}>{shortTime(w.starts_at)}–{shortTime(w.ends_at)} · {workLabel(w.category)}</strong>{w.note&&<small style={{display:"block",color:"#64747d",marginTop:1}}>{w.note}</small>}</div>)}</div>}
     <div style={{display:"grid",gap:6,marginTop:9}}>
-     {dayEntries.map(e=><div key={`s-${e.id}`} style={{padding:"7px 8px",borderRadius:8,background:e.entry_kind==="lesson"?"#e8efe9":"#f0ede6",border:"1px solid #dde3dd"}}><strong style={{fontSize:11}}>{shortTime(e.start_time)}–{shortTime(e.end_time)}</strong><div style={{fontSize:12,fontWeight:800,marginTop:2}}>{e.subject}</div><small style={{display:"block",color:"#6f776f",marginTop:1}}>{kindLabel(e.entry_kind)} · {className(e.class_id)}{e.room?` · ${e.room}`:""}</small></div>)}
+     {dayEntries.map(e=>{const lesson=e.entry_kind==="lesson"?lessonFor(e.id,date):null,unit=lesson?unitTitle(lesson.subject_unit_id):null,count=lesson?resourceCount(lesson.id):0,isPastOrToday=date<=iso(new Date());return <div key={`s-${e.id}`} style={{padding:"7px 8px",borderRadius:8,background:e.entry_kind==="lesson"?"#e8efe9":"#f0ede6",border:"1px solid #dde3dd"}}><strong style={{fontSize:11}}>{shortTime(e.start_time)}–{shortTime(e.end_time)}</strong><div style={{fontSize:12,fontWeight:800,marginTop:2}}>{e.subject}</div>{unit&&<div style={{fontSize:11,fontWeight:900,color:"#4f6758",marginTop:3}}>↳ {unit}</div>}<small style={{display:"block",color:"#6f776f",marginTop:2}}>{kindLabel(e.entry_kind)} · {className(e.class_id)}{e.room?` · ${e.room}`:""}</small>{lesson&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:5}}>{count>0&&<span style={lessonChip}>{count} koblet</span>}{lesson.attendance_checked_at&&<span style={lessonChip}>Fravær ført ✓</span>}{isPastOrToday&&!lesson.attendance_checked_at&&<span style={{...lessonChip,background:"#f4eee0",color:"#75623f"}}>Fravær ikke ført</span>}{lesson.status==="completed"&&<span style={lessonChip}>Afsluttet ✓</span>}</div>}{isSelf&&e.entry_kind==="lesson"&&<Link onClick={event=>event.stopPropagation()} href={`/calendar/lesson/${e.id}?date=${date}`} style={{display:"inline-block",marginTop:6,color:"#486b59",fontSize:11,fontWeight:900,textDecoration:"none"}}>Åbn time →</Link>}</div>})}
      {isSelf?ownMeetings.map(m=><div key={`m-${m.id}`} style={{padding:"7px 8px",borderRadius:8,background:"#eef1f3",border:"1px solid #dce2e5"}}><strong style={{fontSize:11}}>{timeLabel(m.starts_at)}{m.ends_at?`–${timeLabel(m.ends_at)}`:""}</strong><div style={{fontSize:12,fontWeight:800,marginTop:2}}>{m.title}</div><small style={{color:"#6b7479"}}>Møde{m.location?` · ${m.location}`:""}</small></div>):dayBusy.filter(x=>x.busy_type==="meeting").map((x,i)=><div key={`b-${i}-${x.starts_at}`} style={{padding:"7px 8px",borderRadius:8,background:"#eef1f3",border:"1px solid #dce2e5"}}><strong style={{fontSize:11}}>{timeLabel(x.starts_at)}–{timeLabel(x.ends_at)}</strong><div style={{fontSize:12,fontWeight:800,marginTop:2}}>Optaget</div><small style={{color:"#6b7479"}}>Møde</small></div>)}
      {!absence&&dayEntries.length===0&&dayWork.length===0&&(!isSelf?dayBusy.filter(x=>x.busy_type==="meeting").length===0:ownMeetings.length===0)&&<small style={{color:"#929790",padding:"8px 2px"}}>Ingen skemaposter</small>}
     </div>
@@ -103,3 +134,4 @@ function weekNumber(value:string){const d=new Date(`${value}T12:00:00`),x=new Da
 const eyebrow:React.CSSProperties={fontSize:11,fontWeight:900,letterSpacing:1.3,color:"#718077",margin:0};
 const nav:React.CSSProperties={border:"1px solid #d8d5cd",borderRadius:8,padding:"8px 10px",background:"white",color:"#365044",fontWeight:800,cursor:"pointer"};
 const todayTag:React.CSSProperties={fontSize:9,fontWeight:900,letterSpacing:.7,background:"#e6eddc",color:"#496148",padding:"4px 6px",borderRadius:999};
+const lessonChip:React.CSSProperties={fontSize:9,fontWeight:900,padding:"3px 5px",borderRadius:999,background:"#edf3ee",color:"#536b5b"};
