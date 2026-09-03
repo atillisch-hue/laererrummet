@@ -6,9 +6,9 @@ import {supabase} from "../lib/supabase";
 
 type Task={
  task_key:string;
- source:"meeting"|"board";
+ source:"meeting"|"board"|"personal";
  action_id:number;
- context_id:number;
+ context_id:number|null;
  title:string;
  description:string|null;
  due_date:string|null;
@@ -34,10 +34,11 @@ export default function MeetingActionInbox(){
   setBusy(null);
  }
  function contextLink(t:Task){return t.source==="board"?`/board/meetings#board-meeting-${t.context_id}`:`/calendar/meeting/${t.context_id}`}
+ function sourceLabel(t:Task){if(t.source==="personal")return"Oprettet af dig";return t.source==="board"?"Tildelt fra bestyrelsen":"Tildelt fra et møde"}
  if(!ready||(!tasks.length&&!error))return null;
  return <section style={{background:"#fff",border:"1px solid #d7ddd6",borderRadius:16,padding:"19px 21px",marginBottom:20}}>
-  <div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:12,flexWrap:"wrap"}}><div><p style={{fontSize:11,fontWeight:900,letterSpacing:1.4,color:"#718077",margin:0}}>KRÆVER DIN HANDLING</p><h2 style={{fontFamily:"Georgia,serif",fontSize:27,margin:"5px 0 0"}}>Det skal du følge op på</h2></div><Link href="/my-tasks" style={{color:"#365044",fontWeight:900,textDecoration:"none"}}>Se alle →</Link></div>
-  {error?<div style={{marginTop:13,padding:"10px 12px",background:"#fff3cd",borderRadius:8,color:"#765b29"}}>Handlingerne kunne ikke hentes lige nu.</div>:<div style={{display:"grid",gap:9,marginTop:15}}>{tasks.slice(0,6).map(t=>{const overdue=!!t.due_date&&t.due_date<today();return <article key={t.task_key} style={{display:"flex",gap:11,alignItems:"start",padding:"12px 13px",background:"#f7f5ef",border:"1px solid #e3dfd6",borderRadius:10}}><button type="button" disabled={busy===t.task_key} onClick={()=>complete(t)} aria-label="Markér handling som udført" title="Markér som udført" style={{width:27,height:27,borderRadius:7,border:"2px solid #486b59",background:"white",cursor:"pointer",flex:"0 0 auto",fontWeight:900,color:"#486b59"}}>{busy===t.task_key?"…":""}</button><div style={{flex:1,minWidth:0}}><strong style={{fontSize:16}}>{t.title}</strong>{t.description&&<p style={{margin:"5px 0",color:"#6e756f",fontSize:14}}>{t.description}</p>}<div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:6,fontSize:12}}>{t.due_date&&<span style={{fontWeight:900,color:overdue?"#a44438":"#657169"}}>{overdue?"Overskredet · ":"Deadline · "}{new Date(t.due_date+"T12:00:00").toLocaleDateString("da-DK")}</span>}{t.can_open_context&&t.context_title?<Link href={contextLink(t)} style={{color:"#486b59",fontWeight:800,textDecoration:"none"}}>{t.context_type||"Møde"} · {t.context_title} →</Link>:<span style={{color:"#7b817c"}}>{t.source==="board"?"Tildelt fra bestyrelsen":"Tildelt fra et møde"}</span>}</div></div></article>})}{tasks.length>6&&<small style={{color:"#707670",fontWeight:800}}>+ {tasks.length-6} flere under Mine opgaver</small>}</div>}
+  <div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:12,flexWrap:"wrap"}}><div><p style={{fontSize:11,fontWeight:900,letterSpacing:1.4,color:"#718077",margin:0}}>KRÆVER DIN HANDLING</p><h2 style={{fontFamily:"Georgia,serif",fontSize:27,margin:"5px 0 0"}}>Det skal du følge op på</h2></div><Link href="/my-tasks" style={{color:"#365044",fontWeight:900,textDecoration:"none"}}>+ Opret / se alle →</Link></div>
+  {error?<div style={{marginTop:13,padding:"10px 12px",background:"#fff3cd",borderRadius:8,color:"#765b29"}}>Handlingerne kunne ikke hentes lige nu.</div>:<div style={{display:"grid",gap:9,marginTop:15}}>{tasks.slice(0,6).map(t=>{const overdue=!!t.due_date&&t.due_date<today();return <article key={t.task_key} style={{display:"flex",gap:11,alignItems:"start",padding:"12px 13px",background:"#f7f5ef",border:"1px solid #e3dfd6",borderRadius:10}}><button type="button" disabled={busy===t.task_key} onClick={()=>complete(t)} aria-label="Markér handling som udført" title="Markér som udført" style={{width:27,height:27,borderRadius:7,border:"2px solid #486b59",background:"white",cursor:"pointer",flex:"0 0 auto",fontWeight:900,color:"#486b59"}}>{busy===t.task_key?"…":""}</button><div style={{flex:1,minWidth:0}}><strong style={{fontSize:16}}>{t.title}</strong>{t.description&&<p style={{margin:"5px 0",color:"#6e756f",fontSize:14}}>{t.description}</p>}<div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:6,fontSize:12}}>{t.due_date&&<span style={{fontWeight:900,color:overdue?"#a44438":"#657169"}}>{overdue?"Overskredet · ":"Deadline · "}{new Date(t.due_date+"T12:00:00").toLocaleDateString("da-DK")}</span>}{t.can_open_context&&t.context_title?<Link href={contextLink(t)} style={{color:"#486b59",fontWeight:800,textDecoration:"none"}}>{t.context_type||"Møde"} · {t.context_title} →</Link>:<span style={{color:"#7b817c"}}>{sourceLabel(t)}</span>}</div></div></article>})}{tasks.length>6&&<small style={{color:"#707670",fontWeight:800}}>+ {tasks.length-6} flere under Mine opgaver</small>}</div>}
  </section>;
 }
 
