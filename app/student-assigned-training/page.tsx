@@ -7,6 +7,8 @@ import {freeTrainingQuestions,type TrainingQuestion} from "../../lib/freeTrainin
 import {mathExtraQuestions} from "../../lib/mathExtraQuestions";
 import {mathGapQuestions} from "../../lib/mathGapQuestions";
 import {mathGradeBandLabel,mathTrainingAllowed} from "../../lib/mathProgression";
+import {studentFriendlyMathQuestions} from "../../lib/mathStudentLanguage";
+import {freshTrainingRound,trainingQuestionKey} from "../../lib/trainingRound";
 import {clearStudentSession,getStudentSessionToken} from "../../lib/studentSession";
 import {gradeBandLabel,minimumGradeForTopic} from "../student-grammar/grade-progression";
 
@@ -19,7 +21,7 @@ function skillBank(subjectId:string,areaId:string,skill:string):LevelBank{
  if(subjectId!=="matematik")return core;
  const extra=mathExtraQuestions[areaId]?.[skill]??{},gaps=mathGapQuestions[areaId]?.[skill]??{};
  const levels=new Set([...Object.keys(core),...Object.keys(extra),...Object.keys(gaps)]);
- return Object.fromEntries([...levels].map(level=>[level,[...(core[level]??[]),...(extra[level]??[]),...(gaps[level]??[])]]));
+ return Object.fromEntries([...levels].map(level=>[level,studentFriendlyMathQuestions([...(core[level]??[]),...(extra[level]??[]),...(gaps[level]??[])])]));
 }
 function allowed(subjectId:string,skill:string,levelId:string,grade:number|null){
  if(grade===null)return true;
@@ -30,15 +32,11 @@ function allowed(subjectId:string,skill:string,levelId:string,grade:number|null)
  }
  return true;
 }
-function round(pool:TrainingQuestion[],assignmentId:number,attempt:number,size=5){
- if(pool.length<=size)return pool;
- const start=Math.abs(assignmentId*17+attempt*size)%pool.length;
- return Array.from({length:size},(_,i)=>pool[(start+i)%pool.length]);
-}
 
 export default function StudentAssignedTraining(){
  const[ready,setReady]=useState(false),[token,setToken]=useState(""),[studentGrade,setStudentGrade]=useState<number|null>(null),[assignment,setAssignment]=useState<Assigned|null>(null),[error,setError]=useState("");
- const[answers,setAnswers]=useState<Record<number,string>>({}),[submitted,setSubmitted]=useState(false),[saveState,setSaveState]=useState(""),[attemptOffset,setAttemptOffset]=useState(0);
+ const[answers,setAnswers]=useState<Record<number,string>>({}),[submitted,setSubmitted]=useState(false),[saveState,setSaveState]=useState("");
+ const[roundIndex,setRoundIndex]=useState(0),[seenKeys,setSeenKeys]=useState<string[]>([]),[avoidKeys,setAvoidKeys]=useState<string[]>([]);
 
  useEffect(()=>{(async()=>{
   const session=getStudentSessionToken();if(!session){window.location.replace("/?student=1");return}
@@ -52,7 +50,7 @@ export default function StudentAssignedTraining(){
   const found=((assignmentResponse.data?.ok?assignmentResponse.data.assignments:[])||[]).find((row:Assigned)=>Number(row.id)===assignmentId)||null;
   if(!found){setError("Du har ikke adgang til denne træning.");setReady(true);return}
   const raw=studentResponse.data.student?.grade_level;
-  setToken(session);setStudentGrade(raw===null||raw===undefined?null:Number(raw));setAssignment(found);setReady(true);
+  setToken(session);setStudentGrade(raw===null||raw===undefined?null:Number(raw));setAssignment(found);setRoundIndex(Number(found.attempts||0));setReady(true);
  })()},[]);
 
  const subject=useMemo(()=>assignment?trainingCatalog.find(s=>s.id===assignment.subject_id)||null:null,[assignment]);
@@ -60,7 +58,7 @@ export default function StudentAssignedTraining(){
  const level=subject?.levels.find(l=>l.id===assignment?.level_id)||null;
  const effectiveGrade=assignment?.target_grade??studentGrade;
  const pool=useMemo(()=>assignment?skillBank(assignment.subject_id,assignment.area_id,assignment.skill_id)[assignment.level_id]??[]:[],[assignment]);
- const questions=useMemo(()=>assignment?round(pool,assignment.id,(assignment.attempts||0)+attemptOffset,5):[],[pool,assignment,attemptOffset]);
+ const questions=useMemo(()=>assignment?freshTrainingRound(pool,new Set(seenKeys),`${assignment.id}|${roundIndex}`,5,new Set(avoidKeys)):[],[pool,assignment,roundIndex,seenKeys,avoidKeys]);
  const score=questions.filter((q,i)=>answers[i]===q.answer).length;
  const allAnswered=questions.length>0&&questions.every((_,i)=>Boolean(answers[i]));
  const isAllowed=assignment?allowed(assignment.subject_id,assignment.skill_id,assignment.level_id,effectiveGrade):false;
@@ -74,7 +72,11 @@ export default function StudentAssignedTraining(){
   setAssignment({...assignment,started:true,attempts:Number(data.attempts||assignment.attempts+1),best_score:Number(data.best_score??score),last_score:Number(data.last_score??score),max_score:Number(data.max_score??questions.length),mastered:Boolean(data.mastered)});
   setSaveState("Resultatet er gemt ✓");
  }
- function retry(){setAnswers({});setSubmitted(false);setSaveState("");setAttemptOffset(v=>v+1);window.scrollTo({top:0,behavior:"smooth"})}
+ function retry(){
+  const current=questions.map(trainingQuestionKey);
+  setSeenKeys(previous=>[...new Set([...previous,...current])]);
+  setAvoidKeys(current);setRoundIndex(value=>value+1);setAnswers({});setSubmitted(false);setSaveState("");window.scrollTo({top:0,behavior:"smooth"});
+ }
 
  if(!ready)return <main style={{padding:50}}>Åbner træningen…</main>;
  if(error||!assignment||!subject||!area||!level)return <main style={shell}><section style={card}><h1>Træningen kunne ikke åbnes</h1><p>{error||"Opgaven peger på et træningsområde, der ikke længere findes."}</p><a href="/?student=1" style={link}>← Mit Klasseværelse</a></section></main>;
@@ -88,9 +90,9 @@ export default function StudentAssignedTraining(){
   <p style={{fontSize:17,color:"#69716c",lineHeight:1.55}}>{area.title} · {assignment.skill_id} · {level.title}</p>
   <div style={{display:"flex",gap:7,flexWrap:"wrap",margin:"12px 0 22px"}}><span style={chip}>{assignment.target_grade!==null?`${assignment.target_grade}. kl. træningsniveau`:studentGrade!==null?`${studentGrade}. klasse`:"Åbent niveau"}</span>{band&&<span style={chip}>{band}</span>}{assignment.started&&<span style={chip}>{assignment.attempts} forsøg · bedste {assignment.best_score}/{assignment.max_score}</span>}{assignment.mastered&&<span style={{...chip,background:"#dfeee3"}}>Mestret ✓</span>}</div>
 
-  <div style={{display:"grid",gap:14}}>{questions.map((item,index)=><article key={`${item.q}-${index}`} style={card}><small style={eyebrow}>OPGAVE {index+1} AF {questions.length}</small><h2 style={{fontFamily:"Georgia,serif",fontSize:21,margin:"9px 0 14px"}}>{item.q}</h2><div style={{display:"grid",gap:7}}>{item.options.map(option=>{const chosen=answers[index]===option,correct=submitted&&option===item.answer,wrong=submitted&&chosen&&option!==item.answer;return <button key={option} disabled={submitted} onClick={()=>setAnswers(a=>({...a,[index]:option}))} style={{padding:"11px 13px",textAlign:"left",borderRadius:9,border:`2px solid ${correct?"#5f8068":wrong?"#b86b62":chosen?"#526b60":"#e1ddd5"}`,background:correct?"#edf5ef":wrong?"#fff0ed":chosen?"#edf1ec":"#fff",fontWeight:chosen||correct?800:600,cursor:submitted?"default":"pointer"}}>{option}</button>})}</div>{submitted&&<div style={{marginTop:12,padding:"11px 13px",borderRadius:9,background:answers[index]===item.answer?"#edf5ef":"#fff7e8",lineHeight:1.45}}><strong>{answers[index]===item.answer?"Rigtigt ✓":"Ikke helt"}</strong><br/>{item.why}</div>}</article>)}</div>
+  <div style={{display:"grid",gap:14}}>{questions.map((item,index)=><article key={`${item.q}-${index}`} style={card}><small style={eyebrow}>OPGAVE {index+1} AF {questions.length}</small><h2 style={{fontFamily:"Georgia,serif",fontSize:21,margin:"9px 0 14px",lineHeight:1.35}}>{item.q}</h2><div style={{display:"grid",gap:7}}>{item.options.map(option=>{const chosen=answers[index]===option,correct=submitted&&option===item.answer,wrong=submitted&&chosen&&option!==item.answer;return <button key={option} disabled={submitted} onClick={()=>setAnswers(a=>({...a,[index]:option}))} style={{padding:"11px 13px",textAlign:"left",borderRadius:9,border:`2px solid ${correct?"#5f8068":wrong?"#b86b62":chosen?"#526b60":"#e1ddd5"}`,background:correct?"#edf5ef":wrong?"#fff0ed":chosen?"#edf1ec":"#fff",fontWeight:chosen||correct?800:600,cursor:submitted?"default":"pointer"}}>{option}</button>})}</div>{submitted&&<div style={{marginTop:12,padding:"11px 13px",borderRadius:9,background:answers[index]===item.answer?"#edf5ef":"#fff7e8",lineHeight:1.55}}><strong>{answers[index]===item.answer?"Rigtigt ✓":"Ikke helt endnu"}</strong><br/>{item.why}</div>}</article>)}</div>
 
-  {!submitted?<button disabled={!allAnswered} onClick={submit} style={{...primary,width:"100%",marginTop:18,opacity:allAnswered?1:.5}}>Ret mine svar →</button>:<section style={{...card,marginTop:18}}><p style={eyebrow}>RESULTAT</p><h2 style={{fontFamily:"Georgia,serif",fontSize:32,margin:"5px 0"}}>{score}/{questions.length}</h2><p style={muted}>{score===questions.length?"Du har mestret denne runde. Resultatet tæller både på lærerens tildeling og i din egen progression.":"Læs forklaringerne og prøv igen. Næste runde bruger andre spørgsmål, når banken er stor nok."}</p>{saveState&&<p style={{fontWeight:850,color:"#526b60"}}>{saveState}</p>}<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}><button onClick={retry} style={primary}>Prøv igen {pool.length>5?"med andre opgaver":""} →</button><button onClick={()=>window.location.href="/?student=1"} style={secondary}>Til mit Klasseværelse</button></div></section>}
+  {!submitted?<button disabled={!allAnswered} onClick={submit} style={{...primary,width:"100%",marginTop:18,opacity:allAnswered?1:.5}}>Ret mine svar →</button>:<section style={{...card,marginTop:18}}><p style={eyebrow}>RESULTAT</p><h2 style={{fontFamily:"Georgia,serif",fontSize:32,margin:"5px 0"}}>{score}/{questions.length}</h2><p style={muted}>{score===questions.length?"Flot. Du har styr på denne runde.":"Se forklaringerne, og prøv igen med nye opgaver. Målet er at forstå metoden — ikke at huske svarene."}</p>{saveState&&<p style={{fontWeight:850,color:"#526b60"}}>{saveState}</p>}<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}><button onClick={retry} style={primary}>Prøv igen {pool.length>5?"med nye opgaver":""} →</button><button onClick={()=>window.location.href="/?student=1"} style={secondary}>Til mit Klasseværelse</button></div></section>}
  </section></main>;
 }
 
