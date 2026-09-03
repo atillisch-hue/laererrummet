@@ -8,6 +8,8 @@ import {mathExtraQuestions} from "../../lib/mathExtraQuestions";
 import {mathGapQuestions} from "../../lib/mathGapQuestions";
 import {mathGradeBandLabel,mathTrainingAllowed} from "../../lib/mathProgression";
 import {studentFriendlyMathQuestions} from "../../lib/mathStudentLanguage";
+import {studentFriendlyDanishQuestions} from "../../lib/danishStudentLanguage";
+import {mathAnswerIsCorrect,mathHintForSkill,mathUsesTypedAnswer} from "../../lib/mathPractice";
 import {freshTrainingRound,trainingQuestionKey} from "../../lib/trainingRound";
 import {clearStudentSession,getStudentSessionToken} from "../../lib/studentSession";
 import {gradeBandLabel,minimumGradeForTopic} from "../student-grammar/grade-progression";
@@ -18,6 +20,7 @@ const grammarLevelMinimumGrade:Record<string,number>={start:1,basis:3,traening:5
 
 function skillBank(subjectId:string,areaId:string,skill:string):LevelBank{
  const core=(freeTrainingQuestions[subjectId]?.[areaId]?.[skill]??{}) as LevelBank;
+ if(subjectId==="dansk-grammatik")return Object.fromEntries(Object.entries(core).map(([level,questions])=>[level,studentFriendlyDanishQuestions(questions)]));
  if(subjectId!=="matematik")return core;
  const extra=mathExtraQuestions[areaId]?.[skill]??{},gaps=mathGapQuestions[areaId]?.[skill]??{};
  const levels=new Set([...Object.keys(core),...Object.keys(extra),...Object.keys(gaps)]);
@@ -32,11 +35,12 @@ function allowed(subjectId:string,skill:string,levelId:string,grade:number|null)
  }
  return true;
 }
+function answerCorrect(subjectId:string,question:TrainingQuestion,value:string){return subjectId==="matematik"?mathAnswerIsCorrect(question,value):value===question.answer}
 
 export default function StudentAssignedTraining(){
  const[ready,setReady]=useState(false),[token,setToken]=useState(""),[studentGrade,setStudentGrade]=useState<number|null>(null),[assignment,setAssignment]=useState<Assigned|null>(null),[error,setError]=useState("");
  const[answers,setAnswers]=useState<Record<number,string>>({}),[submitted,setSubmitted]=useState(false),[saveState,setSaveState]=useState("");
- const[roundIndex,setRoundIndex]=useState(0),[seenKeys,setSeenKeys]=useState<string[]>([]),[avoidKeys,setAvoidKeys]=useState<string[]>([]);
+ const[roundIndex,setRoundIndex]=useState(0),[seenKeys,setSeenKeys]=useState<string[]>([]),[avoidKeys,setAvoidKeys]=useState<string[]>([]),[helpOpen,setHelpOpen]=useState<Record<number,boolean>>({});
 
  useEffect(()=>{(async()=>{
   const session=getStudentSessionToken();if(!session){window.location.replace("/?student=1");return}
@@ -59,14 +63,14 @@ export default function StudentAssignedTraining(){
  const effectiveGrade=assignment?.target_grade??studentGrade;
  const pool=useMemo(()=>assignment?skillBank(assignment.subject_id,assignment.area_id,assignment.skill_id)[assignment.level_id]??[]:[],[assignment]);
  const questions=useMemo(()=>assignment?freshTrainingRound(pool,new Set(seenKeys),`${assignment.id}|${roundIndex}`,5,new Set(avoidKeys)):[],[pool,assignment,roundIndex,seenKeys,avoidKeys]);
- const score=questions.filter((q,i)=>answers[i]===q.answer).length;
- const allAnswered=questions.length>0&&questions.every((_,i)=>Boolean(answers[i]));
+ const score=questions.filter((q,i)=>answerCorrect(assignment?.subject_id||"",q,answers[i]||"")).length;
+ const allAnswered=questions.length>0&&questions.every((_,i)=>Boolean(answers[i]?.trim()));
  const isAllowed=assignment?allowed(assignment.subject_id,assignment.skill_id,assignment.level_id,effectiveGrade):false;
 
  async function submit(){
   if(!assignment||!token||!allAnswered||submitted)return;
   setSubmitted(true);setSaveState("Gemmer…");
-  const snapshot=Object.fromEntries(questions.map((q,index)=>[index,{question:q.q,studentAnswer:answers[index],correctAnswer:q.answer,correct:answers[index]===q.answer,explanation:q.why,targetGrade:effectiveGrade,source:"teacher_training_assignment"}]));
+  const snapshot=Object.fromEntries(questions.map((q,index)=>[index,{question:q.q,studentAnswer:answers[index],correctAnswer:q.answer,correct:answerCorrect(assignment.subject_id,q,answers[index]||""),explanation:q.why,targetGrade:effectiveGrade,source:"teacher_training_assignment"}]));
   const{data,error:e}=await studentSupabase.rpc("save_student_training_assignment_attempt_session",{p_session_token:token,p_training_assignment_id:assignment.id,p_answers:snapshot,p_score:score,p_max_score:questions.length});
   if(e||!data?.ok){setSaveState("Resultatet kunne ikke gemmes i skyen lige nu.");return}
   setAssignment({...assignment,started:true,attempts:Number(data.attempts||assignment.attempts+1),best_score:Number(data.best_score??score),last_score:Number(data.last_score??score),max_score:Number(data.max_score??questions.length),mastered:Boolean(data.mastered)});
@@ -75,7 +79,7 @@ export default function StudentAssignedTraining(){
  function retry(){
   const current=questions.map(trainingQuestionKey);
   setSeenKeys(previous=>[...new Set([...previous,...current])]);
-  setAvoidKeys(current);setRoundIndex(value=>value+1);setAnswers({});setSubmitted(false);setSaveState("");window.scrollTo({top:0,behavior:"smooth"});
+  setAvoidKeys(current);setRoundIndex(value=>value+1);setAnswers({});setSubmitted(false);setSaveState("");setHelpOpen({});window.scrollTo({top:0,behavior:"smooth"});
  }
 
  if(!ready)return <main style={{padding:50}}>Åbner træningen…</main>;
@@ -88,9 +92,9 @@ export default function StudentAssignedTraining(){
   <p style={{...eyebrow,marginTop:30}}>FRA DIN LÆRER · {subject.title.toUpperCase()}</p>
   <h1 style={h1}>{assignment.title}</h1>
   <p style={{fontSize:17,color:"#69716c",lineHeight:1.55}}>{area.title} · {assignment.skill_id} · {level.title}</p>
-  <div style={{display:"flex",gap:7,flexWrap:"wrap",margin:"12px 0 22px"}}><span style={chip}>{assignment.target_grade!==null?`${assignment.target_grade}. kl. træningsniveau`:studentGrade!==null?`${studentGrade}. klasse`:"Åbent niveau"}</span>{band&&<span style={chip}>{band}</span>}{assignment.started&&<span style={chip}>{assignment.attempts} forsøg · bedste {assignment.best_score}/{assignment.max_score}</span>}{assignment.mastered&&<span style={{...chip,background:"#dfeee3"}}>Mestret ✓</span>}</div>
+  <div style={{display:"flex",gap:7,flexWrap:"wrap",margin:"12px 0 22px"}}><span style={chip}>{assignment.target_grade!==null?`${assignment.target_grade}. kl. træningsniveau`:studentGrade!==null?`${studentGrade}. klasse`:"Åbent niveau"}</span>{band&&<span style={chip}>{band}</span>}{assignment.subject_id==="matematik"&&<a href="/formelsamling" target="_blank" rel="noreferrer" style={formulaLink}>Formelsamling ↗</a>}{assignment.started&&<span style={chip}>{assignment.attempts} forsøg · bedste {assignment.best_score}/{assignment.max_score}</span>}{assignment.mastered&&<span style={{...chip,background:"#dfeee3"}}>Mestret ✓</span>}</div>
 
-  <div style={{display:"grid",gap:14}}>{questions.map((item,index)=><article key={`${item.q}-${index}`} style={card}><small style={eyebrow}>OPGAVE {index+1} AF {questions.length}</small><h2 style={{fontFamily:"Georgia,serif",fontSize:21,margin:"9px 0 14px",lineHeight:1.35}}>{item.q}</h2><div style={{display:"grid",gap:7}}>{item.options.map(option=>{const chosen=answers[index]===option,correct=submitted&&option===item.answer,wrong=submitted&&chosen&&option!==item.answer;return <button key={option} disabled={submitted} onClick={()=>setAnswers(a=>({...a,[index]:option}))} style={{padding:"11px 13px",textAlign:"left",borderRadius:9,border:`2px solid ${correct?"#5f8068":wrong?"#b86b62":chosen?"#526b60":"#e1ddd5"}`,background:correct?"#edf5ef":wrong?"#fff0ed":chosen?"#edf1ec":"#fff",fontWeight:chosen||correct?800:600,cursor:submitted?"default":"pointer"}}>{option}</button>})}</div>{submitted&&<div style={{marginTop:12,padding:"11px 13px",borderRadius:9,background:answers[index]===item.answer?"#edf5ef":"#fff7e8",lineHeight:1.55}}><strong>{answers[index]===item.answer?"Rigtigt ✓":"Ikke helt endnu"}</strong><br/>{item.why}</div>}</article>)}</div>
+  <div style={{display:"grid",gap:14}}>{questions.map((item,index)=>{const typed=assignment.subject_id==="matematik"&&mathUsesTypedAnswer(assignment.skill_id,item),isCorrect=answerCorrect(assignment.subject_id,item,answers[index]||"");return <article key={`${item.q}-${index}`} style={card}><small style={eyebrow}>OPGAVE {index+1} AF {questions.length}</small><h2 style={{fontFamily:"Georgia,serif",fontSize:21,margin:"9px 0 14px",lineHeight:1.35}}>{item.q}</h2>{typed?<input disabled={submitted} inputMode="decimal" value={answers[index]||""} onChange={e=>setAnswers(a=>({...a,[index]:e.target.value}))} placeholder="Skriv dit svar…" style={{...mathInput,borderColor:submitted?(isCorrect?"#5f8068":"#b86b62"):"#d8d5cd",background:submitted?(isCorrect?"#edf5ef":"#fff0ed"):"white"}}/>:<div style={{display:"grid",gap:7}}>{item.options.map(option=>{const chosen=answers[index]===option,correct=submitted&&option===item.answer,wrong=submitted&&chosen&&option!==item.answer;return <button key={option} disabled={submitted} onClick={()=>setAnswers(a=>({...a,[index]:option}))} style={{padding:"11px 13px",textAlign:"left",borderRadius:9,border:`2px solid ${correct?"#5f8068":wrong?"#b86b62":chosen?"#526b60":"#e1ddd5"}`,background:correct?"#edf5ef":wrong?"#fff0ed":chosen?"#edf1ec":"#fff",fontWeight:chosen||correct?800:600,cursor:submitted?"default":"pointer"}}>{option}</button>})}</div>}{assignment.subject_id==="matematik"&&!submitted&&<div style={{marginTop:10}}><button type="button" onClick={()=>setHelpOpen(v=>({...v,[index]:!v[index]}))} style={helpButton}>{helpOpen[index]?"Skjul hjælp":"Hjælp mig"}</button>{helpOpen[index]&&<div style={hintBox}><strong>Et lille skub:</strong> {mathHintForSkill(assignment.skill_id)}</div>}</div>}{submitted&&<div style={{marginTop:12,padding:"11px 13px",borderRadius:9,background:isCorrect?"#edf5ef":"#fff7e8",lineHeight:1.55}}><strong>{isCorrect?"Rigtigt ✓":"Ikke helt endnu"}</strong><br/>{!isCorrect&&typed&&<>Det rigtige svar er <strong>{item.answer}</strong>.<br/></>}{item.why}</div>}</article>})}</div>
 
   {!submitted?<button disabled={!allAnswered} onClick={submit} style={{...primary,width:"100%",marginTop:18,opacity:allAnswered?1:.5}}>Ret mine svar →</button>:<section style={{...card,marginTop:18}}><p style={eyebrow}>RESULTAT</p><h2 style={{fontFamily:"Georgia,serif",fontSize:32,margin:"5px 0"}}>{score}/{questions.length}</h2><p style={muted}>{score===questions.length?"Flot. Du har styr på denne runde.":"Se forklaringerne, og prøv igen med nye opgaver. Målet er at forstå metoden — ikke at huske svarene."}</p>{saveState&&<p style={{fontWeight:850,color:"#526b60"}}>{saveState}</p>}<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}><button onClick={retry} style={primary}>Prøv igen {pool.length>5?"med nye opgaver":""} →</button><button onClick={()=>window.location.href="/?student=1"} style={secondary}>Til mit Klasseværelse</button></div></section>}
  </section></main>;
@@ -105,3 +109,7 @@ const chip:React.CSSProperties={display:"inline-block",padding:"6px 9px",borderR
 const primary:React.CSSProperties={padding:"12px 15px",border:0,borderRadius:9,background:"#365044",color:"white",fontWeight:900,cursor:"pointer"};
 const secondary:React.CSSProperties={padding:"11px 14px",border:"1px solid #ccc8bf",borderRadius:9,background:"white",color:"#365044",fontWeight:850,cursor:"pointer"};
 const link:React.CSSProperties={color:"#526b60",fontWeight:850,textDecoration:"none"};
+const mathInput:React.CSSProperties={width:"100%",boxSizing:"border-box",padding:"13px 14px",border:"2px solid #d8d5cd",borderRadius:9,fontSize:18,fontWeight:750,color:"#26342e"};
+const helpButton:React.CSSProperties={border:"1px solid #c9d4cc",background:"#f8faf8",color:"#486b59",borderRadius:8,padding:"7px 10px",fontWeight:850,cursor:"pointer"};
+const hintBox:React.CSSProperties={marginTop:8,padding:"10px 12px",borderRadius:9,background:"#fff7e8",border:"1px solid #ead8ad",fontSize:13,lineHeight:1.5,color:"#665431"};
+const formulaLink:React.CSSProperties={display:"inline-block",padding:"6px 9px",borderRadius:999,background:"white",border:"1px solid #cfd7d1",color:"#486b59",fontSize:11,fontWeight:900,textDecoration:"none"};
