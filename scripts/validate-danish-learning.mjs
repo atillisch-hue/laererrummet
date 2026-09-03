@@ -10,6 +10,7 @@ function load(file){const absolute=path.resolve(root,file);if(cache.has(absolute
 const{danishGenres}=load("lib/danishGenreCatalog.ts");
 const{danishWritingSupport}=load("lib/danishGenreProgression.ts");
 const{danishAnalysisTemplates,danishAnalysisByName,danishAnalysisSupport}=load("lib/danishAnalysisCatalog.ts");
+const{danishCommunicationTemplates,danishCommunicationByName,danishCommunicationSupport}=load("lib/danishCommunicationCatalog.ts");
 const{danishCompetencyAreas,danishSkillsForGrade}=load("lib/danishCompetencyCatalog.ts");
 const errors=[];
 
@@ -60,9 +61,28 @@ for(const template of danishAnalysisTemplates){
  }
 }
 
-const interpretation=danishCompetencyAreas.find(a=>a.id==="interpretation");
-if(!interpretation)errors.push("competencies: missing interpretation area");
-else if(interpretation.skills.some(skill=>skill.status!=="live"))errors.push("competencies: interpretation tools should all be active after analysis rollout");
+const communicationIds=new Set();let communicationChecks=0;
+for(const template of danishCommunicationTemplates){
+ if(communicationIds.has(template.id))errors.push(`communication: duplicate id ${template.id}`);communicationIds.add(template.id);
+ if(!template.id?.trim()||!template.name?.trim()||!template.description?.trim())errors.push(`communication ${template.id||"unknown"}: missing core metadata`);
+ if(!Number.isInteger(template.minGrade)||template.minGrade<1||template.minGrade>10)errors.push(`communication ${template.id}: invalid minGrade`);
+ if(!Array.isArray(template.planning)||template.planning.length<3||template.planning.some(x=>!x?.trim()))errors.push(`communication ${template.id}: needs at least 3 planning prompts`);
+ if(!Array.isArray(template.checklist)||template.checklist.length<3||template.checklist.some(x=>!x?.trim()))errors.push(`communication ${template.id}: needs at least 3 checklist items`);
+ if(danishCommunicationByName(template.id)?.id!==template.id||danishCommunicationByName(template.name)?.id!==template.id)errors.push(`communication ${template.id}: lookup failed for id or name`);
+ for(let grade=1;grade<=10;grade++){
+  const support=danishCommunicationSupport(template,grade);communicationChecks++;
+  if(!support.band?.trim()||!support.coach?.trim())errors.push(`communication ${template.id} grade ${grade}: missing band/coach`);
+  if(!Array.isArray(support.planning)||support.planning.length<3||support.planning.some(x=>!x?.trim()))errors.push(`communication ${template.id} grade ${grade}: invalid planning`);
+  if(!Array.isArray(support.checklist)||support.checklist.length<3||support.checklist.some(x=>!x?.trim()))errors.push(`communication ${template.id} grade ${grade}: invalid checklist`);
+  if(!Array.isArray(support.focus)||support.focus.length<3||support.focus.some(x=>!x?.trim()))errors.push(`communication ${template.id} grade ${grade}: invalid focus`);
+ }
+}
+
+for(const areaId of ["interpretation","communication"]){
+ const area=danishCompetencyAreas.find(a=>a.id===areaId);
+ if(!area)errors.push(`competencies: missing ${areaId} area`);
+ else if(area.skills.some(skill=>skill.status!=="live"))errors.push(`competencies: ${areaId} tools should all be active after rollout`);
+}
 
 if(errors.length){console.error(`Danish learning validation failed with ${errors.length} issue(s):`);for(const error of errors.slice(0,80))console.error(`- ${error}`);process.exit(1)}
-console.log(`Danish learning validation passed: ${danishCompetencyAreas.length} competency areas · ${skillIds.size} skills · ${danishGenres.length} genres · ${writingChecks} grade-aware writing scaffolds · ${danishAnalysisTemplates.length} analysis focuses · ${analysisChecks} grade-aware analysis scaffolds checked.`);
+console.log(`Danish learning validation passed: ${danishCompetencyAreas.length} competency areas · ${skillIds.size} skills · ${danishGenres.length} genres · ${writingChecks} writing scaffolds · ${danishAnalysisTemplates.length} analysis focuses / ${analysisChecks} scaffolds · ${danishCommunicationTemplates.length} communication forms / ${communicationChecks} scaffolds checked.`);
