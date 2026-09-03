@@ -13,7 +13,6 @@ const items=[
  {label:"Lærerværelset",href:"/teacher-room",roots:["/teacher-room","/archive","/my-tasks"]},
  {label:"Forberedelsen",href:"/preparation",roots:["/preparation"]}
 ];
-
 const protectedRoots=[...items.flatMap(x=>x.roots),"/admin","/board","/parent"];
 const mainTabs=new Set(["/noticeboard","/students","/calendar","/teacher-room","/preparation"]);
 function starts(path:string,root:string){return path===root||path.startsWith(root+"/")}
@@ -24,58 +23,18 @@ export default function DashboardNav(){
  const[ready,setReady]=useState(false),[teacher,setTeacher]=useState(false),[admin,setAdmin]=useState(false),[parent,setParent]=useState(false),[board,setBoard]=useState(false),[email,setEmail]=useState("");
  const[subjectRoom,setSubjectRoom]=useState<SubjectRoomContext|null>(null);
  const isProtected=protectedRoots.some(root=>starts(pathname,root));
-
- useEffect(()=>{
-  let active=true;
-  const sync=async()=>{
-   const{data}=await supabase.auth.getSession();if(!active)return;const user=data.session?.user;
-   setTeacher(!!user&&(hasRole(user,"teacher")||hasRole(user,"admin")));setAdmin(!!user&&hasRole(user,"admin"));setParent(!!user&&hasRole(user,"parent"));setBoard(!!user&&hasRole(user,"board"));setEmail(user?.email||"");setReady(!!user);
-  };
-  sync();const{data:listener}=supabase.auth.onAuthStateChange(()=>sync());return()=>{active=false;listener.subscription.unsubscribe()};
- },[]);
-
- useEffect(()=>{
-  let active=true;const match=pathname.match(/^\/students\/subjects\/(\d+)(?:\/|$)/);
-  if(!match){setSubjectRoom(null);return()=>{active=false}};
-  const roomId=Number(match[1]);
-  (async()=>{
-   const{data:room,error:roomError}=await supabase.from("class_subjects").select("id,class_id,subject_id").eq("id",roomId).maybeSingle();if(!active)return;
-   if(roomError||!room){setSubjectRoom(null);return}
-   const{data:subject,error:subjectError}=await supabase.from("subjects").select("name,slug").eq("id",room.subject_id).maybeSingle();if(!active)return;
-   if(subjectError||!subject){setSubjectRoom(null);return}
-   setSubjectRoom({roomId:Number(room.id),classId:Number(room.class_id),subjectName:String(subject.name||"Fag"),subjectSlug:String(subject.slug||"").toLowerCase()});
-  })();return()=>{active=false};
- },[pathname]);
-
+ useEffect(()=>{let active=true;const sync=async()=>{const{data}=await supabase.auth.getSession();if(!active)return;const user=data.session?.user;setTeacher(!!user&&(hasRole(user,"teacher")||hasRole(user,"admin")));setAdmin(!!user&&hasRole(user,"admin"));setParent(!!user&&hasRole(user,"parent"));setBoard(!!user&&hasRole(user,"board"));setEmail(user?.email||"");setReady(!!user)};sync();const{data:listener}=supabase.auth.onAuthStateChange(()=>sync());return()=>{active=false;listener.subscription.unsubscribe()}},[]);
+ useEffect(()=>{let active=true;const match=pathname.match(/^\/students\/subjects\/(\d+)(?:\/|$)/);if(!match){setSubjectRoom(null);return()=>{active=false}};const roomId=Number(match[1]);(async()=>{const{data:room,error:roomError}=await supabase.from("class_subjects").select("id,class_id,subject_id").eq("id",roomId).maybeSingle();if(!active)return;if(roomError||!room){setSubjectRoom(null);return}const{data:subject,error:subjectError}=await supabase.from("subjects").select("name,slug").eq("id",room.subject_id).maybeSingle();if(!active)return;if(subjectError||!subject){setSubjectRoom(null);return}setSubjectRoom({roomId:Number(room.id),classId:Number(room.class_id),subjectName:String(subject.name||"Fag"),subjectSlug:String(subject.slug||"").toLowerCase()})})();return()=>{active=false}},[pathname]);
  const logout=async()=>{await supabase.auth.signOut();window.location.replace("/")};
  if(!ready||!isProtected)return null;
  const roleLabel=starts(pathname,"/admin")?"Admin":starts(pathname,"/parent")?"Forælder":starts(pathname,"/board")?"Bestyrelse":teacher?"Lærer":"Bruger";
  const compactMainHeader=mainTabs.has(pathname),isMathRoom=subjectRoom?.subjectSlug==="matematik",isDanishRoom=subjectRoom?.subjectSlug==="dansk";
-
  return <>
-  <nav aria-label="Primær navigation" style={{position:"sticky",top:0,zIndex:50,background:"rgba(245,242,234,.97)",borderBottom:"1px solid #ddd9d0",backdropFilter:"blur(10px)"}}>
-   <div style={{maxWidth:1280,margin:"0 auto",padding:"8px 14px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-    <Link href={teacher?"/noticeboard":parent?"/parent":board?"/board":"/"} style={{display:"inline-flex",alignItems:"center",gap:6,color:"#26342e",textDecoration:"none",fontWeight:900,whiteSpace:"nowrap",fontSize:14,paddingRight:2}}><span aria-hidden="true">✦</span> Klasseværelset</Link>
-    {teacher&&<div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap",flex:"1 1 auto",minWidth:0}}>{items.map(item=>{const active=item.roots.some(root=>starts(pathname,root));return <Link key={item.href} href={item.href} aria-current={active?"page":undefined} style={{display:"inline-flex",alignItems:"center",padding:"8px 9px",borderRadius:8,textDecoration:"none",fontWeight:800,fontSize:12,whiteSpace:"nowrap",border:active?"1px solid #486b59":"1px solid transparent",background:active?"#486b59":"transparent",color:active?"white":"#425249"}}>{item.label}</Link>})}</div>}
-    <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>{board&&<Link href="/board" style={roleButton(starts(pathname,"/board"))}>Bestyrelse</Link>}{parent&&<Link href="/parent" style={roleButton(starts(pathname,"/parent"))}>Forælder</Link>}{admin&&<Link href="/admin" style={roleButton(starts(pathname,"/admin"))}>Admin</Link>}<span title={email||roleLabel} style={{display:"inline-flex",alignItems:"center",padding:"6px 8px",borderRadius:999,background:"#e8ece8",color:"#526159",fontSize:10,fontWeight:900,whiteSpace:"nowrap"}}>{roleLabel}</span><button onClick={logout} style={{display:"inline-flex",alignItems:"center",padding:"7px 9px",borderRadius:8,fontWeight:900,fontSize:11,whiteSpace:"nowrap",border:"1px solid #cfcac0",color:"#526159",background:"#fff",cursor:"pointer"}}>Log ud</button></div>
-   </div>
-  </nav>
-
-  {teacher&&subjectRoom&&<nav aria-label={`${subjectRoom.subjectName} værktøjer`} style={{background:"#edf1ec",borderBottom:"1px solid #d8ddd7"}}><div style={{maxWidth:1050,margin:"0 auto",padding:"10px 24px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><span style={{fontSize:12,fontWeight:900,color:"#64746b",marginRight:5}}>Fagets værktøjer</span>{isMathRoom&&<><Link href={`/students/class-math-profile?class=${subjectRoom.classId}`} style={subjectToolButton(false)}>Matematik-overblik</Link><Link href={`/math?class=${subjectRoom.classId}`} style={subjectToolButton(false)}>Træning & progression</Link></>}{isDanishRoom&&<><Link href={`/danish?class=${subjectRoom.classId}`} style={subjectToolButton(false)}>Dansk-værktøjer</Link><Link href={`/students/class-learning-profile?class=${subjectRoom.classId}`} style={subjectToolButton(false)}>Dansk-overblik</Link><Link href="/grammar?mode=assign" style={subjectToolButton(false)}>Grammatik & sprog</Link></>}<Link href={`/teacher-overview?class=${subjectRoom.classId}`} style={subjectToolButton(false)}>Opgaver & besvarelser</Link><Link href={`/students/subjects/${subjectRoom.roomId}/users`} style={subjectToolButton(false)}>Brugere</Link><Link href={`/create-assignment?class=${subjectRoom.classId}&subject=${subjectRoom.roomId}`} style={subjectToolButton(true)}>+ Ny opgave</Link></div></nav>}
-
-  {subjectRoom&&<style>{`
-   main > header:first-child { padding-top: 18px !important; padding-bottom: 18px !important; }
-   main > header:first-child h1 { font-size: 34px !important; }
-   main > header:first-child p { line-height: 1.4 !important; }
-  `}</style>}
-  {compactMainHeader&&<style>{`
-   main > header:first-child { background: transparent !important; color: #26342e !important; padding: 20px 24px 0 !important; }
-   main > header:first-child > div { max-width: 1100px !important; margin-left: auto !important; margin-right: auto !important; }
-   main > header:first-child > div > span:first-child { display: none !important; }
-   main > header:first-child small, main > header:first-child p { color: #6f746f !important; opacity: 1 !important; }
-  `}</style>}
+  <nav aria-label="Primær navigation" style={{position:"sticky",top:0,zIndex:50,background:"rgba(245,242,234,.97)",borderBottom:"1px solid #ddd9d0",backdropFilter:"blur(10px)"}}><div style={{maxWidth:1280,margin:"0 auto",padding:"8px 14px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><Link href={teacher?"/noticeboard":parent?"/parent":board?"/board":"/"} style={{display:"inline-flex",alignItems:"center",gap:6,color:"#26342e",textDecoration:"none",fontWeight:900,whiteSpace:"nowrap",fontSize:14,paddingRight:2}}><span aria-hidden="true">✦</span> Klasseværelset</Link>{teacher&&<div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap",flex:"1 1 auto",minWidth:0}}>{items.map(item=>{const active=item.roots.some(root=>starts(pathname,root));return <Link key={item.href} href={item.href} aria-current={active?"page":undefined} style={{display:"inline-flex",alignItems:"center",padding:"8px 9px",borderRadius:8,textDecoration:"none",fontWeight:800,fontSize:12,whiteSpace:"nowrap",border:active?"1px solid #486b59":"1px solid transparent",background:active?"#486b59":"transparent",color:active?"white":"#425249"}}>{item.label}</Link>})}</div>}<div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>{board&&<Link href="/board" style={roleButton(starts(pathname,"/board"))}>Bestyrelse</Link>}{parent&&<Link href="/parent" style={roleButton(starts(pathname,"/parent"))}>Forælder</Link>}{admin&&<Link href="/admin" style={roleButton(starts(pathname,"/admin"))}>Admin</Link>}<span title={email||roleLabel} style={{display:"inline-flex",alignItems:"center",padding:"6px 8px",borderRadius:999,background:"#e8ece8",color:"#526159",fontSize:10,fontWeight:900,whiteSpace:"nowrap"}}>{roleLabel}</span><button onClick={logout} style={{display:"inline-flex",alignItems:"center",padding:"7px 9px",borderRadius:8,fontWeight:900,fontSize:11,whiteSpace:"nowrap",border:"1px solid #cfcac0",color:"#526159",background:"#fff",cursor:"pointer"}}>Log ud</button></div></div></nav>
+  {teacher&&subjectRoom&&<nav aria-label={`${subjectRoom.subjectName} værktøjer`} style={{background:"#edf1ec",borderBottom:"1px solid #d8ddd7"}}><div style={{maxWidth:1050,margin:"0 auto",padding:"10px 24px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><span style={{fontSize:12,fontWeight:900,color:"#64746b",marginRight:5}}>Fagets værktøjer</span>{isMathRoom&&<><Link href={`/students/class-math-profile?class=${subjectRoom.classId}`} style={subjectToolButton(false)}>Matematik-overblik</Link><Link href={`/math?class=${subjectRoom.classId}`} style={subjectToolButton(false)}>Træning & progression</Link></>}{isDanishRoom&&<><Link href={`/danish?class=${subjectRoom.classId}`} style={subjectToolButton(false)}>Dansk-værktøjer</Link><Link href={`/students/class-learning-profile?class=${subjectRoom.classId}`} style={subjectToolButton(false)}>Dansk-overblik</Link><Link href="/grammar?mode=assign" style={subjectToolButton(false)}>Grammatik & sprog</Link></>}<Link href={`/students/subjects/${subjectRoom.roomId}/units`} style={subjectToolButton(false)}>Forløb & årsplan</Link><Link href={`/teacher-overview?class=${subjectRoom.classId}`} style={subjectToolButton(false)}>Opgaver & besvarelser</Link><Link href={`/students/subjects/${subjectRoom.roomId}/users`} style={subjectToolButton(false)}>Brugere</Link><Link href={`/create-assignment?class=${subjectRoom.classId}&subject=${subjectRoom.roomId}`} style={subjectToolButton(true)}>+ Ny opgave</Link></div></nav>}
+  {subjectRoom&&<style>{`main > header:first-child { padding-top:18px !important;padding-bottom:18px !important;} main > header:first-child h1 {font-size:34px !important;} main > header:first-child p {line-height:1.4 !important;}`}</style>}
+  {compactMainHeader&&<style>{`main > header:first-child {background:transparent !important;color:#26342e !important;padding:20px 24px 0 !important;} main > header:first-child > div {max-width:1100px !important;margin-left:auto !important;margin-right:auto !important;} main > header:first-child > div > span:first-child {display:none !important;} main > header:first-child small,main > header:first-child p {color:#6f746f !important;opacity:1 !important;}`}</style>}
  </>;
 }
-
 function roleButton(active:boolean):React.CSSProperties{return{display:"inline-flex",alignItems:"center",padding:"7px 8px",borderRadius:8,textDecoration:"none",fontWeight:800,fontSize:11,whiteSpace:"nowrap",border:active?"1px solid #486b59":"1px solid #cfcac0",color:active?"white":"#526159",background:active?"#486b59":"#fff"}}
 function subjectToolButton(primary:boolean):React.CSSProperties{return{display:"inline-flex",alignItems:"center",padding:"8px 11px",borderRadius:8,textDecoration:"none",fontWeight:850,fontSize:12,whiteSpace:"nowrap",border:primary?"1px solid #486b59":"1px solid #d4d9d4",background:primary?"#486b59":"#fff",color:primary?"#fff":"#365044"}}
