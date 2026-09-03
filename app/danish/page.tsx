@@ -33,6 +33,7 @@ export default function DanishWorkspace(){
  const selectedGrade=grade===""?null:Number(grade);
  const writingHref=room?`/create-assignment?class=${classId}&subject=${room.id}`:`/students/subjects?class=${classId}`;
  const analysisHref=room?`/create-assignment?class=${classId}&subject=${room.id}&kind=analysis`:`/students/subjects?class=${classId}`;
+ const communicationHref=room?`/create-assignment?class=${classId}&subject=${room.id}&kind=communication`:`/students/subjects?class=${classId}`;
  const cards=useMemo(()=>danishCompetencyAreas,[]);
 
  if(!ready)return <main style={{padding:50}}>Åbner Dansk…</main>;
@@ -45,6 +46,7 @@ export default function DanishWorkspace(){
    <section style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(230px,1fr))",gap:12,marginTop:14}}>
     <ActionCard title="Skriveopgave" text={room?`Byg en genreopgave til ${selectedClass?.name||"klassen"} med elevens skrivehjælp tilpasset klassetrin.`:"Dansk-faglokalet skal være oprettet, før opgaven kan kobles sikkert til faget."} href={writingHref} action={room?"+ Ny dansk-opgave":"Åbn faglokaler"}/>
     <ActionCard title="Tekstarbejde & analyse" text={room?"Tildel tekstnært arbejde med fx personer, miljø, fortæller, komposition, virkemidler, argumentation eller fortolkning. Stilladset tilpasses den enkelte elev.":"Dansk-faglokalet skal være oprettet, før tekstarbejdet kan tildeles sikkert."} href={analysisHref} action={room?"+ Nyt tekstarbejde":"Åbn faglokaler"}/>
+    <ActionCard title="Mundtlighed & kommunikation" text={room?"Planlæg fortælling, faglig forklaring, fremlæggelse, samtale, respons, debat, podcast, video eller prøveformidling med klassetrinstilpasset stikordsstøtte.":"Dansk-faglokalet skal være oprettet, før kommunikationsopgaven kan tildeles sikkert."} href={communicationHref} action={room?"+ Ny kommunikationsopgave":"Åbn faglokaler"}/>
     <ActionCard title="Grammatik & sprog" text="Tildel målrettet grammatik, retskrivning, tegnsætning og tekstgrammatik med klassetrinsprogression." href="/grammar?mode=assign" action="Åbn træning"/>
     <ActionCard title="Læseprøve & strategier" text="Tildel niveaudelt læseprøve 6.–9. klasse og brug strategiprofilen til målrettet opfølgning." href="/grammar/laeseproeve" action="Åbn læsning"/>
     <ActionCard title="Retskrivningsprøve" text="Træn de prøve-lignende retskrivningsformer med eller uden tid på valgt niveau." href="/grammar/retskrivningsproeve" action="Åbn retskrivning"/>
