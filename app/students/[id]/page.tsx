@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {use,useEffect,useState} from "react";
 import {supabase} from "../../../lib/supabase";
+import WorkResumeTracker from "../../WorkResumeTracker";
 import LearningProfile from "./learning-profile";
 import MathLearningProfile from "./math-learning-profile";
 
@@ -16,7 +17,7 @@ const handoverLabel=(s:string)=>({practical:"Praktisk",teaching:"Undervisning",s
 
 export default function StudentOverview({params}:{params:Promise<{id:string}>}){
  const{id}=use(params),studentId=Number(id);
- const[student,setStudent]=useState<Student|null>(null),[meetings,setMeetings]=useState<Meeting[]>([]),[absence,setAbsence]=useState<Absence[]>([]),[handovers,setHandovers]=useState<Handover[]>([]),[activeActions,setActiveActions]=useState(0),[ready,setReady]=useState(false),[error,setError]=useState("");
+ const[student,setStudent]=useState<Student|null>(null),[schoolId,setSchoolId]=useState<number|null>(null),[meetings,setMeetings]=useState<Meeting[]>([]),[absence,setAbsence]=useState<Absence[]>([]),[handovers,setHandovers]=useState<Handover[]>([]),[activeActions,setActiveActions]=useState(0),[ready,setReady]=useState(false),[error,setError]=useState("");
 
  useEffect(()=>{(async()=>{
   const{data}=await supabase.auth.getSession();if(!data.session){location.replace("/?teacher=1");return}
@@ -27,7 +28,10 @@ export default function StudentOverview({params}:{params:Promise<{id:string}>}){
    supabase.from("class_handover").select("id,handover_date,category,message,author_email,created_at").eq("student_id",studentId).order("created_at",{ascending:false}).limit(50),
    supabase.from("student_action_plans").select("id").eq("student_id",studentId).eq("status","active").maybeSingle()
   ]);
-  if(s.error)setError("Eleven kunne ikke hentes.");else setStudent(s.data as Student);
+  if(s.error)setError("Eleven kunne ikke hentes.");else{
+   const row=s.data as Student;setStudent(row);
+   if(row.class_id){const{data:klass}=await supabase.from("classes").select("school_id").eq("id",row.class_id).maybeSingle();setSchoolId(typeof klass?.school_id==="number"?klass.school_id:null)}
+  }
   if(!m.error)setMeetings((m.data||[]) as Meeting[]);
   if(!a.error)setAbsence((a.data||[]) as Absence[]);
   if(!h.error)setHandovers((h.data||[]) as Handover[]);
@@ -40,6 +44,7 @@ export default function StudentOverview({params}:{params:Promise<{id:string}>}){
  const latestAbsence=absence.slice(0,5),latestHandovers=handovers.slice(0,5);
 
  return <main style={{minHeight:"100vh",background:"#f5f3ee",color:"#26342e"}}>
+  <WorkResumeTracker schoolId={schoolId} objectType="student" objectKey={student.id} title={student.name} subtitle="Elevprofil · personale" href={`/students/${student.id}`}/>
   <header style={{background:"#243d33",color:"white",padding:"22px 32px"}}><div style={{maxWidth:950,margin:"auto"}}><Link href={`/students${student.class_id?`?class=${student.class_id}`:""}`} style={topLink}>← Klassen</Link><p style={{fontSize:11,fontWeight:900,letterSpacing:1.4,opacity:.7,margin:"22px 0 3px"}}>ELEVOVERBLIK · PERSONALE</p><h1 style={{fontFamily:"Georgia,serif",fontSize:38,margin:0}}>{student.name}</h1></div></header>
   <section style={shell}>
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12,marginBottom:24}}>
