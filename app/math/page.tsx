@@ -13,6 +13,7 @@ type ClassRow={id:number;name:string};
 type Student={id:number;name:string;class_id:number;grade_level:number|null};
 type TrainingRow={id:number;title:string;area_id:string;skill_id:string;level_id:string;target_grade:number|null;created_at:string;recipient_count:number;started_count:number;mastered_count:number};
 type LevelBank=Record<string,TrainingQuestion[]>;
+type HeatmapTarget={classId?:number;areaId?:string;skill?:string;studentIds?:number[]};
 
 const math=trainingCatalog.find(s=>s.id==="matematik")!;
 function bank(areaId:string,skill:string):LevelBank{
@@ -27,7 +28,22 @@ export default function MathTeacherPage(){
  const[rows,setRows]=useState<TrainingRow[]>([]),[saving,setSaving]=useState(false),[message,setMessage]=useState("");
 
  async function loadAssignments(id:number){const{data,error}=await supabase.rpc("teacher_training_assignments",{p_class_id:id,p_subject_id:"matematik"});if(error||!data?.ok){setRows([]);setMessage(error?.message||data?.error||"Tildelingerne kunne ikke hentes.");return}setRows((data.assignments||[]) as TrainingRow[])}
- useEffect(()=>{(async()=>{const{data:s}=await supabase.auth.getSession();if(!s.session){window.location.replace("/?teacher=1");return}const[c,st]=await Promise.all([supabase.from("classes").select("id,name").order("name"),supabase.from("students").select("id,name,class_id,grade_level").order("name")]);const cs=(c.data||[]) as ClassRow[];setClasses(cs);setStudents((st.data||[]) as Student[]);const requested=Number(new URLSearchParams(window.location.search).get("class")),initial=cs.find(x=>x.id===requested)?.id||cs[0]?.id||"";setClassId(initial);if(initial)await loadAssignments(Number(initial));setReady(true)})()},[]);
+ useEffect(()=>{(async()=>{
+  const{data:s}=await supabase.auth.getSession();if(!s.session){window.location.replace("/?teacher=1");return}
+  const[c,st]=await Promise.all([supabase.from("classes").select("id,name").order("name"),supabase.from("students").select("id,name,class_id,grade_level").order("name")]);
+  const cs=(c.data||[]) as ClassRow[],allStudents=(st.data||[]) as Student[];setClasses(cs);setStudents(allStudents);
+  const query=new URLSearchParams(window.location.search),requested=Number(query.get("class")),initial=cs.find(x=>x.id===requested)?.id||cs[0]?.id||"";setClassId(initial);
+  let desiredArea=query.get("area")||"",desiredSkill=query.get("skill")||"",target:HeatmapTarget|null=null;
+  try{const raw=sessionStorage.getItem("klassevaerelset-math-target");if(raw)target=JSON.parse(raw) as HeatmapTarget}catch{target=null}finally{sessionStorage.removeItem("klassevaerelset-math-target")}
+  if(initial&&target&&Number(target.classId)===Number(initial)){
+   if(target.areaId)desiredArea=target.areaId;if(target.skill)desiredSkill=target.skill;
+   const validIds=(target.studentIds||[]).map(Number).filter(id=>allStudents.some(student=>student.id===id&&student.class_id===Number(initial)));
+   if(validIds.length){setRecipientMode("students");setSelected(validIds)}
+  }
+  const chosenArea=math.areas.find(a=>a.id===desiredArea)||math.areas.find(a=>a.skills.includes(desiredSkill))||math.areas[0];
+  if(chosenArea){setAreaId(chosenArea.id);if(desiredSkill&&chosenArea.skills.includes(desiredSkill)){setSkill(desiredSkill);setTitle(`Træn ${desiredSkill}`)}}
+  if(initial)await loadAssignments(Number(initial));setReady(true)
+ })()},[]);
 
  const area=math.areas.find(a=>a.id===areaId)||math.areas[0];
  const classStudents=students.filter(s=>s.class_id===Number(classId));
@@ -54,7 +70,7 @@ export default function MathTeacherPage(){
 
  if(!ready)return <main style={{padding:50}}>Åbner matematik…</main>;
  return <main style={shell}><section style={{maxWidth:1100,margin:"auto"}}>
-  <Link href="/teacher-dashboard" style={link}>← Mine klasser</Link>
+  <div style={{display:"flex",gap:14,flexWrap:"wrap"}}><Link href={`/students/class-math-profile?class=${classId}`} style={link}>← Matematikoverblik</Link><Link href="/teacher-dashboard" style={{...link,color:"#7a817b"}}>Mine klasser</Link></div>
   <div style={{margin:"26px 0 18px",display:"flex",justifyContent:"space-between",alignItems:"end",gap:14,flexWrap:"wrap"}}><div><p style={eyebrow}>MATEMATIK · TRÆNING & PROGRESSION</p><h1 style={h1}>Tildel målrettet matematiktræning</h1><p style={{...muted,maxWidth:760,fontSize:16}}>Vælg et matematisk område og den færdighed, eleverne skal arbejde med. Danskgenrer kan ikke vælges her — matematik har sit eget faglige katalog.</p></div>{classes.length>1&&<select value={classId} onChange={e=>changeClass(Number(e.target.value))} style={select}>{classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>}</div>
   {message&&<div style={{...card,marginBottom:14,background:message.includes("✓")?"#edf5ef":"#fff7e8"}}>{message}</div>}
 
