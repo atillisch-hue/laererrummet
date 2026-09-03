@@ -16,11 +16,13 @@ const {freeTrainingQuestions}=loadTs("lib/freeTrainingQuestions.ts");
 const {mathExtraQuestions}=loadTs("lib/mathExtraQuestions.ts");
 const {mathGapQuestions}=loadTs("lib/mathGapQuestions.ts");
 const {mathSkillMinimumGrade,mathLevelMinimumGrade}=loadTs("lib/mathProgression.ts");
+const {studentFriendlyMathQuestion}=loadTs("lib/mathStudentLanguage.ts");
+const {freshTrainingRound,trainingQuestionKey}=loadTs("lib/trainingRound.ts");
 const math=trainingCatalog.find(subject=>subject.id==="matematik");
 if(!math)throw new Error("Matematik mangler i trainingCatalog");
 
 const errors=[];
-let definitions=0,pools=0;
+let definitions=0,pools=0,wordingChecks=0;
 const catalogSkills=new Set();
 const sources=[
  {name:"core",bank:freeTrainingQuestions.matematik||{}},
@@ -28,17 +30,9 @@ const sources=[
  {name:"gap",bank:mathGapQuestions||{}},
 ];
 
-function poolParts(areaId,skill,level){
- return sources.map(source=>source.bank?.[areaId]?.[skill]?.[level]||[]);
-}
-function poolSize(areaId,skill,level){
- return poolParts(areaId,skill,level).reduce((sum,rows)=>sum+rows.length,0);
-}
-function knownLevels(areaId,skill){
- const levels=new Set();
- for(const source of sources)Object.keys(source.bank?.[areaId]?.[skill]||{}).forEach(level=>levels.add(level));
- return [...levels];
-}
+function poolParts(areaId,skill,level){return sources.map(source=>source.bank?.[areaId]?.[skill]?.[level]||[])}
+function poolSize(areaId,skill,level){return poolParts(areaId,skill,level).reduce((sum,rows)=>sum+rows.length,0)}
+function knownLevels(areaId,skill){const levels=new Set();for(const source of sources)Object.keys(source.bank?.[areaId]?.[skill]||{}).forEach(level=>levels.add(level));return [...levels]}
 
 for(const area of math.areas){
  for(const skill of area.skills){
@@ -72,6 +66,40 @@ for(const source of sources.slice(1)){
  }
 }
 
+const awkwardDisplayPatterns=[
+ /^Hvad er smartest til /,
+ /^Hvad er en smart vej til /,
+ /^Hvad kommer næste\?/,
+ / Næste tal\?$/,
+ /\. Omkreds\?$/,
+ /\. Omkredsen er…$/,
+ /\. Rumfang\?$/,
+ /P\([^)]+\)\?$/
+];
+for(const source of sources){
+ for(const [areaId,skills] of Object.entries(source.bank))for(const [skill,levels] of Object.entries(skills))for(const [level,questions] of Object.entries(levels)){
+  questions.forEach((question,index)=>{
+   const displayed=studentFriendlyMathQuestion(question);
+   wordingChecks++;
+   if(displayed.answer!==question.answer||displayed.options!==question.options)errors.push(`${source.name} · ${areaId} · ${skill} · ${level}[${index}]: elevsprogs-laget må ikke ændre svar eller svarmuligheder`);
+   const pattern=awkwardDisplayPatterns.find(candidate=>candidate.test(displayed.q));
+   if(pattern)errors.push(`${source.name} · ${areaId} · ${skill} · ${level}[${index}]: rå formulering når eleven: '${displayed.q}'`);
+  });
+ }
+}
+
+const retryPool=Array.from({length:12},(_,index)=>({q:`Testspørgsmål ${index+1}?`,options:["A","B"],answer:"A",why:"Test."}));
+const first=freshTrainingRound(retryPool,new Set(),"first",5,new Set());
+const firstKeys=new Set(first.map(trainingQuestionKey));
+const second=freshTrainingRound(retryPool,firstKeys,"second",5,firstKeys);
+const secondKeys=new Set(second.map(trainingQuestionKey));
+if(first.length!==5||second.length!==5)errors.push("Fresh retry: en fuld bank skal give fem spørgsmål pr. runde");
+if([...firstKeys].some(key=>secondKeys.has(key)))errors.push("Fresh retry: anden runde genbruger spørgsmål, selv om banken har mindst fem usete");
+const allSeen=new Set(retryPool.map(trainingQuestionKey));
+const third=freshTrainingRound(retryPool,allSeen,"third",5,secondKeys);
+const thirdKeys=new Set(third.map(trainingQuestionKey));
+if([...secondKeys].some(key=>thirdKeys.has(key)))errors.push("Fresh retry: efter hele banken er set skal den umiddelbart forrige runde undgås, når banken er stor nok");
+
 let gradeSkillChecks=0;
 for(let grade=0;grade<=10;grade++){
  for(const area of math.areas){
@@ -85,4 +113,4 @@ for(let grade=0;grade<=10;grade++){
 }
 
 if(errors.length){console.error(`Math validation failed with ${errors.length} issue(s):`);errors.slice(0,100).forEach(error=>console.error(`- ${error}`));process.exit(1)}
-console.log(`Math validation passed: ${math.areas.length} areas, ${catalogSkills.size} skills, ${pools} expanded/gap pools, ${definitions} added question definitions and ${gradeSkillChecks} grade-skill checks.`);
+console.log(`Math validation passed: ${math.areas.length} areas, ${catalogSkills.size} skills, ${pools} expanded/gap pools, ${definitions} added question definitions, ${gradeSkillChecks} grade-skill checks, ${wordingChecks} pupil-wording checks and fresh retry behaviour.`);
