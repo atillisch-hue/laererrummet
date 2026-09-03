@@ -1,5 +1,6 @@
 import type { InteractiveGrammarQuestion } from "./interactive-library";
 import { grammarTopicMeta } from "../grammar/grammar-catalog";
+import { studentFriendlyDanishQuestion } from "../../lib/danishStudentLanguage";
 
 export type GradedGrammarQuestion = InteractiveGrammarQuestion & {
   minGrade?: number;
@@ -99,7 +100,7 @@ export function tagLibraryForGrades(
       tagged[topic][level] = questions.map((question) => {
         const graded = question as GradedGrammarQuestion;
         return {
-          ...question,
+          ...studentFriendlyDanishQuestion(question),
           minGrade: graded.minGrade ?? Math.max(sourceMinimumGrade, minimumGradeForTopic(topic)),
           maxGrade: graded.maxGrade ?? sourceMaximumGrade,
         };
