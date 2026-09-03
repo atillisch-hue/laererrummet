@@ -68,7 +68,7 @@ export default function ActiveSubjectUnits(){
   const position=units.filter(x=>x.room.id===roomId).length;
   const{data,error}=await supabase.from("subject_units").insert({class_subject_id:roomId,title:form.title.trim(),driving_question:form.question.trim()||null,start_date:form.start||null,end_date:form.end||null,status:"planned",learning_goals:[],visible_to_students:false,visible_to_guardians:false,position}).select("id").single();
   if(error||!data){setMessage(error?.message||"Forløbet kunne ikke oprettes.");setCreating(false);return}
-  window.location.href=`/students/subjects/${roomId}/units`;
+  window.location.href=`/students/subjects/${roomId}/units?new=${data.id}`;
  };
 
  if(loading)return <section style={{...panel,marginTop:18}}>Henter dine forløb…</section>;
