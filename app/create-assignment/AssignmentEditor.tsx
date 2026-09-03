@@ -6,14 +6,16 @@ import {useSearchParams} from "next/navigation";
 import {supabase} from "../../lib/supabase";
 import {hasRole} from "../../lib/roles";
 import {danishGenres,danishGenreCategories,danishGenreByName,type DanishGenre,type DanishGenreCategory} from "../../lib/danishGenreCatalog";
+import {danishAnalysisTemplates,danishAnalysisByName,type DanishAnalysisTemplate} from "../../lib/danishAnalysisCatalog";
 import {genericAssignmentTemplates,mathAssignmentTemplates,type AssignmentKind,type AssignmentTemplate} from "../../lib/subjectAssignmentCatalog";
 
 type ClassRow={id:number;name:string};
-type Student={id:number;name:string;class_id:number|null};
+type Student={id:number;name:string;class_id:number|null;grade_level:number|null};
 type Room={id:number;class_id:number;subject_id:number;title:string|null};
 type Subject={id:number;name:string;slug:string};
 type RoomTeacher={class_subject_id:number;user_id:string};
 type ExistingAssignment={id:number;title:string;instructions:string|null;type:string;class_id:number;class_subject_id:number|null;subject_id:number|null;assignment_kind:AssignmentKind};
+type DanishMode="writing"|"analysis";
 
 const input:React.CSSProperties={boxSizing:"border-box",display:"block",width:"100%",marginTop:7,padding:11,border:"1px solid #d8d5cd",borderRadius:8,background:"white",font:"inherit"};
 const small:React.CSSProperties={fontSize:12,color:"#707670"};
@@ -25,8 +27,8 @@ const legacyGenre=(type:string):DanishGenre|undefined=>{
  return danishGenreByName(type);
 };
 
-function assignmentKindForSubject(slug:string|undefined):AssignmentKind{
- if(slug==="dansk")return "danish_writing";
+function assignmentKindForSubject(slug:string|undefined,danishMode:DanishMode):AssignmentKind{
+ if(slug==="dansk")return danishMode==="analysis"?"danish_analysis":"danish_writing";
  if(slug==="matematik")return "math_task";
  return "generic";
 }
@@ -36,14 +38,14 @@ export default function AssignmentEditor(){
  const editId=Number(search.get("edit"))||0;
  const editing=editId>0;
  const[ready,setReady]=useState(false),[classes,setClasses]=useState<ClassRow[]>([]),[students,setStudents]=useState<Student[]>([]),[rooms,setRooms]=useState<Room[]>([]),[subjects,setSubjects]=useState<Subject[]>([]),[roomTeachers,setRoomTeachers]=useState<RoomTeacher[]>([]),[userId,setUserId]=useState(""),[admin,setAdmin]=useState(false),[error,setError]=useState("");
- const[classId,setClassId]=useState<number|"">(""),[roomId,setRoomId]=useState<number|"">(""),[title,setTitle]=useState(""),[instructions,setInstructions]=useState(""),[genreId,setGenreId]=useState("debatindlaeg"),[category,setCategory]=useState<DanishGenreCategory>("Opinion"),[templateId,setTemplateId]=useState(""),[saving,setSaving]=useState(false),[recipientMode,setRecipientMode]=useState<"class"|"students">("class"),[selected,setSelected]=useState<number[]>([]);
+ const[classId,setClassId]=useState<number|"">(""),[roomId,setRoomId]=useState<number|"">(""),[title,setTitle]=useState(""),[instructions,setInstructions]=useState(""),[genreId,setGenreId]=useState("debatindlaeg"),[category,setCategory]=useState<DanishGenreCategory>("Opinion"),[analysisId,setAnalysisId]=useState("tekstspor"),[danishMode,setDanishMode]=useState<DanishMode>(search.get("kind")==="analysis"?"analysis":"writing"),[templateId,setTemplateId]=useState(""),[saving,setSaving]=useState(false),[recipientMode,setRecipientMode]=useState<"class"|"students">("class"),[selected,setSelected]=useState<number[]>([]);
 
  useEffect(()=>{(async()=>{
   const{data:s}=await supabase.auth.getSession();const user=s.session?.user;if(!user){window.location.href="/?teacher=1";return}
   setUserId(user.id);const isAdmin=hasRole(user,"admin");setAdmin(isAdmin);
   const[c,st,r,sub,rt]=await Promise.all([
    supabase.from("classes").select("id,name").order("id"),
-   supabase.from("students").select("id,name,class_id").order("name"),
+   supabase.from("students").select("id,name,class_id,grade_level").order("name"),
    supabase.from("class_subjects").select("id,class_id,subject_id,title").eq("active",true),
    supabase.from("subjects").select("id,name,slug").eq("active",true),
    supabase.from("class_subject_teachers").select("class_subject_id,user_id")
@@ -61,9 +63,14 @@ export default function AssignmentEditor(){
    const row=a.data as ExistingAssignment;
    const inferredRoom=row.class_subject_id?roomRows.find(x=>x.id===row.class_subject_id):roomRows.find(x=>x.class_id===row.class_id&&x.subject_id===row.subject_id&&canUse(x));
    setClassId(row.class_id);setRoomId(inferredRoom?.id||"");setTitle(row.title);setInstructions(row.instructions||"");
-   const found=legacyGenre(row.type);if(found){setGenreId(found.id);setCategory(found.category)}
-   const templatePool=row.assignment_kind==="math_task"?mathAssignmentTemplates:genericAssignmentTemplates;
-   const existingTemplate=templatePool.find(t=>t.name===row.type||t.id===row.type);setTemplateId(existingTemplate?.id||templatePool[0]?.id||"");
+   if(row.assignment_kind==="danish_analysis"){
+    setDanishMode("analysis");const found=danishAnalysisByName(row.type);if(found)setAnalysisId(found.id);
+   }else if(row.assignment_kind==="danish_writing"){
+    setDanishMode("writing");const found=legacyGenre(row.type);if(found){setGenreId(found.id);setCategory(found.category)}
+   }else{
+    const templatePool=row.assignment_kind==="math_task"?mathAssignmentTemplates:genericAssignmentTemplates;
+    const existingTemplate=templatePool.find(t=>t.name===row.type||t.id===row.type);setTemplateId(existingTemplate?.id||templatePool[0]?.id||"");
+   }
    const ids=(rec.data||[]).map(x=>Number(x.student_id));setSelected(ids);setRecipientMode(ids.length?"students":"class");
    if(!inferredRoom)setError("Opgaven mangler et aktivt faglokale. Vælg eller opret et faglokale i samme fag, før den kan gemmes igen.");
    setReady(true);return;
@@ -78,17 +85,21 @@ export default function AssignmentEditor(){
  })()},[search,editId,editing]);
 
  const classStudents=students.filter(s=>s.class_id===Number(classId));
- const editableRooms=useMemo(()=>rooms.filter(r=>r.class_id===Number(classId)&&(admin||roomTeachers.some(t=>t.class_subject_id===r.id&&t.user_id===userId)||editing&&r.id===Number(roomId))),[rooms,classId,admin,roomTeachers,userId,editing,roomId]);
+ const editableRooms=useMemo(()=>rooms.filter(r=>r.class_id===Number(classId)&&(admin||roomTeachers.some(t=>t.class_subject_id===r.id&&t.user_id===userId)||(editing&&r.id===Number(roomId)))),[rooms,classId,admin,roomTeachers,userId,editing,roomId]);
  const currentRoom=editableRooms.find(r=>r.id===Number(roomId))||rooms.find(r=>r.id===Number(roomId));
  const currentSubject=subjects.find(s=>s.id===currentRoom?.subject_id);
  const subjectSlug=currentSubject?.slug;
- const assignmentKind=assignmentKindForSubject(subjectSlug);
+ const assignmentKind=assignmentKindForSubject(subjectSlug,danishMode);
  const roomLabel=(room:Room)=>room.title||subjects.find(s=>s.id===room.subject_id)?.name||"Fag";
  const genre=useMemo(()=>danishGenres.find(g=>g.id===genreId)||danishGenres[0],[genreId]);
  const categoryGenres=useMemo(()=>danishGenres.filter(g=>g.category===category),[category]);
+ const analysisTemplate:DanishAnalysisTemplate=useMemo(()=>danishAnalysisTemplates.find(x=>x.id===analysisId)||danishAnalysisTemplates[0],[analysisId]);
  const templatePool=subjectSlug==="matematik"?mathAssignmentTemplates:subjectSlug&&subjectSlug!=="dansk"?genericAssignmentTemplates:[];
  const template:AssignmentTemplate|null=templatePool.find(t=>t.id===templateId)||templatePool[0]||null;
- const taskType=assignmentKind==="danish_writing"?genre.name:template?.name||"Opgave";
+ const taskType=assignmentKind==="danish_analysis"?analysisTemplate.name:assignmentKind==="danish_writing"?genre.name:template?.name||"Opgave";
+ const recipientStudents=recipientMode==="students"?classStudents.filter(s=>selected.includes(s.id)):classStudents;
+ const missingGrades=subjectSlug==="dansk"?recipientStudents.filter(s=>s.grade_level==null).length:0;
+ const belowAnalysisStart=assignmentKind==="danish_analysis"?recipientStudents.filter(s=>s.grade_level!=null&&s.grade_level<analysisTemplate.minGrade).length:0;
 
  useEffect(()=>{
   if(subjectSlug==="matematik"&&!mathAssignmentTemplates.some(t=>t.id===templateId))setTemplateId(mathAssignmentTemplates[0].id);
@@ -127,8 +138,9 @@ export default function AssignmentEditor(){
  if(!ready)return <main style={{padding:50}}>Henter opgaver…</main>;
  if(error&&!classId)return <main style={{minHeight:"100vh",background:"#f5f3ee",padding:50,color:"#26342e"}}><h1>Opgaven kunne ikke åbnes</h1><p>{error}</p><Link href="/teacher-dashboard">← Klasseværelset</Link></main>;
  const backHref=roomId?`/students/subjects/${roomId}`:editing&&classId?`/teacher-overview?class=${classId}`:"/preparation";
- const heading=subjectSlug==="dansk"?"Danskopgave":subjectSlug==="matematik"?"Matematikopgave":currentSubject?`${currentSubject.name}-opgave`:"Ny opgave";
- const helper=subjectSlug==="dansk"?"Vælg en dansk teksttype. Eleven får genretilpasset skrivehjælp.":subjectSlug==="matematik"?"Vælg en matematisk arbejdsform. Eleven får felter, der gør metode, beregning og ræsonnement synligt.":"Vælg en faglig arbejdsform, der passer til opgaven.";
+ const heading=subjectSlug==="dansk"?(danishMode==="analysis"?"Dansk tekstarbejde":"Danskopgave"):subjectSlug==="matematik"?"Matematikopgave":currentSubject?`${currentSubject.name}-opgave`:"Ny opgave";
+ const helper=subjectSlug==="dansk"?(danishMode==="analysis"?"Vælg et analytisk fokus. Eleven får tekstnære arbejdsspørgsmål, som tilpasses elevens klassetrin.":"Vælg en dansk teksttype. Eleven får genretilpasset skrivehjælp."):subjectSlug==="matematik"?"Vælg en matematisk arbejdsform. Eleven får felter, der gør metode, beregning og ræsonnement synligt.":"Vælg en faglig arbejdsform, der passer til opgaven.";
+ const titlePlaceholder=assignmentKind==="danish_analysis"?`Fx Undersøg fortæller og synsvinkel i teksten`:subjectSlug==="matematik"?"Fx Design den billigste skoleudflugt":`Fx ${taskType} om kunstig intelligens`;
 
  return <main style={{minHeight:"100vh",background:"#f5f3ee",padding:"28px 24px 80px",color:"#26342e"}}><section style={{maxWidth:1040,margin:"0 auto"}}>
   <Link href={backHref} style={{color:"#526b60",fontWeight:800,textDecoration:"none"}}>← {roomId&&currentRoom?`Til ${roomLabel(currentRoom)}`:editing?"Til opgaver":"Til Forberedelsen"}</Link>
@@ -137,21 +149,24 @@ export default function AssignmentEditor(){
 
   <section style={panel}><p style={{fontSize:11,fontWeight:900,letterSpacing:1.2,color:"#718077",margin:"0 0 9px"}}>1. FAG</p><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:12}}><label style={{fontWeight:800,fontSize:13}}>Klasse<select disabled={editing} value={classId} onChange={e=>changeClass(Number(e.target.value))} style={{...input,opacity:editing?.7:1}}>{classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label style={{fontWeight:800,fontSize:13}}>Faglokale<select disabled={editing&&Boolean(roomId)} value={roomId} onChange={e=>changeRoom(Number(e.target.value))} style={{...input,opacity:editing&&roomId?.7:1}}><option value="">Vælg fag…</option>{editableRooms.map(r=><option key={r.id} value={r.id}>{roomLabel(r)}</option>)}</select></label></div>{!editableRooms.length&&<p style={{...small,marginBottom:0,color:"#8a5a38"}}>Der er ikke et faglokale, du kan redigere, i denne klasse. Opret/tilknyt faglokalet først — nye opgaver kan ikke længere være fagløse.</p>}{currentSubject&&<div style={{marginTop:12,padding:"10px 12px",borderRadius:9,background:"#edf1ec",fontWeight:850}}>✓ Opgaven bliver gemt som <strong>{currentSubject.name}</strong>. Klasseværelset blokerer fagligt forkerte kombinationer i databasen.</div>}</section>
 
-  {subjectSlug==="dansk"&&<section style={panel}><p style={{fontSize:11,fontWeight:900,letterSpacing:1.2,color:"#718077",margin:"0 0 9px"}}>2. TEKSTTYPE / GENRE</p><div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{danishGenreCategories.map(c=><button type="button" key={c} onClick={()=>chooseCategory(c)} style={{padding:"8px 11px",borderRadius:999,border:category===c?"2px solid #526b60":"1px solid #d8d5cd",background:category===c?"#edf1ec":"white",fontWeight:800,cursor:"pointer"}}>{c}</button>)}</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(175px,1fr))",gap:8,marginTop:12}}>{categoryGenres.map(g=><button type="button" key={g.id} onClick={()=>setGenreId(g.id)} style={{textAlign:"left",padding:13,borderRadius:10,border:genre.id===g.id?"2px solid #526b60":"1px solid #dedbd3",background:genre.id===g.id?"#edf1ec":"#faf9f6",cursor:"pointer"}}><strong>{g.name}</strong><span style={{display:"block",...small,marginTop:4}}>{g.structure.length} skrivefelter</span></button>)}</div></section>}
+  {subjectSlug==="dansk"&&<section style={panel}><p style={{fontSize:11,fontWeight:900,letterSpacing:1.2,color:"#718077",margin:"0 0 9px"}}>2. ARBEJDSFORM</p><div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}><button type="button" disabled={editing} onClick={()=>setDanishMode("writing")} style={{...modeButton(danishMode==="writing"),opacity:editing&&danishMode!=="writing"?.45:1}}>Skriveopgave</button><button type="button" disabled={editing} onClick={()=>setDanishMode("analysis")} style={{...modeButton(danishMode==="analysis"),opacity:editing&&danishMode!=="analysis"?.45:1}}>Tekstarbejde / analyse</button></div>{editing&&<p style={{...small,marginTop:-6}}>Arbejdsformen låses ved redigering, så eksisterende elevkladder ikke skifter struktur.</p>}
+   {danishMode==="writing"?<><strong style={{fontSize:13}}>Teksttype / genre</strong><div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:8}}>{danishGenreCategories.map(c=><button type="button" key={c} onClick={()=>chooseCategory(c)} style={{padding:"8px 11px",borderRadius:999,border:category===c?"2px solid #526b60":"1px solid #d8d5cd",background:category===c?"#edf1ec":"white",fontWeight:800,cursor:"pointer"}}>{c}</button>)}</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(175px,1fr))",gap:8,marginTop:12}}>{categoryGenres.map(g=><button type="button" key={g.id} onClick={()=>setGenreId(g.id)} style={{textAlign:"left",padding:13,borderRadius:10,border:genre.id===g.id?"2px solid #526b60":"1px solid #dedbd3",background:genre.id===g.id?"#edf1ec":"#faf9f6",cursor:"pointer"}}><strong>{g.name}</strong><span style={{display:"block",...small,marginTop:4}}>{g.structure.length} skrivefelter</span></button>)}</div></>:<><strong style={{fontSize:13}}>Analytisk fokus</strong><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:8,marginTop:10}}>{danishAnalysisTemplates.map(a=><button type="button" key={a.id} onClick={()=>setAnalysisId(a.id)} style={{textAlign:"left",padding:13,borderRadius:10,border:analysisTemplate.id===a.id?"2px solid #526b60":"1px solid #dedbd3",background:analysisTemplate.id===a.id?"#edf1ec":"#faf9f6",cursor:"pointer",color:"inherit"}}><strong style={{display:"block"}}>{a.name}</strong><span style={{display:"block",...small,marginTop:4,lineHeight:1.4}}>{a.description}</span><span style={{display:"inline-block",fontSize:10,fontWeight:900,marginTop:7,padding:"3px 6px",borderRadius:999,background:"#eee9dd",color:"#756548"}}>fra ca. {a.minGrade}. kl.</span></button>)}</div>{belowAnalysisStart>0&&<div style={{marginTop:12,padding:"10px 12px",borderRadius:9,background:"#fff3cd",fontSize:12,lineHeight:1.45}}><strong>{belowAnalysisStart} elev{belowAnalysisStart===1?"":"er"}</strong> ligger under dette fokus' normale starttrin. Du kan stadig tildele det; eleven får det enklere klassetrinsstillads.</div>}</>}
+  </section>}
 
   {subjectSlug&&subjectSlug!=="dansk"&&<section style={panel}><p style={{fontSize:11,fontWeight:900,letterSpacing:1.2,color:"#718077",margin:"0 0 9px"}}>2. OPGAVETYPE</p><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:9}}>{templatePool.map(t=><button type="button" key={t.id} onClick={()=>setTemplateId(t.id)} style={{textAlign:"left",padding:14,borderRadius:10,border:template?.id===t.id?"2px solid #526b60":"1px solid #dedbd3",background:template?.id===t.id?"#edf1ec":"#faf9f6",cursor:"pointer",color:"inherit"}}><strong style={{display:"block"}}>{t.name}</strong><span style={{display:"block",...small,marginTop:5,lineHeight:1.4}}>{t.description}</span></button>)}</div></section>}
 
   <div style={{display:"grid",gridTemplateColumns:"minmax(0,1.25fr) minmax(280px,.75fr)",gap:14}}>
    <div style={{background:"white",border:"1px solid #dfdcd4",borderRadius:13,padding:20}}>
     <p style={{fontSize:11,fontWeight:900,letterSpacing:1.2,color:"#718077",margin:"0 0 13px"}}>3. OPGAVEN</p>
-    <label style={{display:"block",fontWeight:800,fontSize:13}}>Titel<input autoFocus value={title} onChange={e=>setTitle(e.target.value)} placeholder={subjectSlug==="matematik"?"Fx Design den billigste skoleudflugt":`Fx ${taskType} om kunstig intelligens`} style={input}/></label>
-    <label style={{display:"block",fontWeight:800,fontSize:13,marginTop:16}}>Opgaveformulering<textarea value={instructions} onChange={e=>setInstructions(e.target.value)} placeholder="Skriv hvad eleven skal undersøge, løse, skrive eller producere." rows={6} style={{...input,lineHeight:1.5,resize:"vertical"}}/><span style={{display:"block",fontWeight:400,...small,marginTop:5}}>Det er denne tekst, eleven ser, når opgaven åbnes.</span></label>
+    <label style={{display:"block",fontWeight:800,fontSize:13}}>Titel<input autoFocus value={title} onChange={e=>setTitle(e.target.value)} placeholder={titlePlaceholder} style={input}/></label>
+    <label style={{display:"block",fontWeight:800,fontSize:13,marginTop:16}}>Opgaveformulering<textarea value={instructions} onChange={e=>setInstructions(e.target.value)} placeholder={assignmentKind==="danish_analysis"?"Skriv hvilken tekst eleven skal arbejde med, og hvad der særligt skal undersøges.":"Skriv hvad eleven skal undersøge, løse, skrive eller producere."} rows={6} style={{...input,lineHeight:1.5,resize:"vertical"}}/><span style={{display:"block",fontWeight:400,...small,marginTop:5}}>Det er denne tekst, eleven ser, når opgaven åbnes.</span></label>
     <div style={{marginTop:18}}><strong style={{fontSize:13}}>4. Modtagere</strong><div style={{display:"flex",gap:7,marginTop:7,flexWrap:"wrap"}}><button type="button" onClick={()=>{setRecipientMode("class");setSelected([])}} style={modeButton(recipientMode==="class")}>Hele klassen</button><button type="button" onClick={()=>setRecipientMode("students")} style={modeButton(recipientMode==="students")}>Udvalgte elever</button></div></div>
-    {recipientMode==="students"&&<div style={{marginTop:13,padding:12,background:"#f7f4ed",borderRadius:9}}>{classStudents.length?<div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{classStudents.map(s=><button type="button" key={s.id} onClick={()=>toggle(s.id)} style={{padding:"7px 10px",borderRadius:999,border:selected.includes(s.id)?"2px solid #526b60":"1px solid #d8d5cd",background:selected.includes(s.id)?"#edf1ec":"white",fontWeight:700,cursor:"pointer"}}>{selected.includes(s.id)?"✓ ":""}{s.name}</button>)}</div>:<span>Der er ingen elever i klassen endnu.</span>}</div>}
+    {recipientMode==="students"&&<div style={{marginTop:13,padding:12,background:"#f7f4ed",borderRadius:9}}>{classStudents.length?<div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{classStudents.map(s=><button type="button" key={s.id} onClick={()=>toggle(s.id)} style={{padding:"7px 10px",borderRadius:999,border:selected.includes(s.id)?"2px solid #526b60":"1px solid #d8d5cd",background:selected.includes(s.id)?"#edf1ec":"white",fontWeight:700,cursor:"pointer"}}>{selected.includes(s.id)?"✓ ":""}{s.name}{s.grade_level!=null?` · ${s.grade_level}. kl.`:" · klassetrin mangler"}</button>)}</div>:<span>Der er ingen elever i klassen endnu.</span>}</div>}
+    {subjectSlug==="dansk"&&missingGrades>0&&<div style={{marginTop:12,padding:"10px 12px",borderRadius:9,background:"#f1ece0",fontSize:12,lineHeight:1.45}}>{missingGrades} modtager{missingGrades===1?"":"e"} mangler klassetrin. De får den åbne standardprogression, indtil klassetrin er sat under Admin → Elevklassetrin.</div>}
     <button disabled={disabled} onClick={save} style={{marginTop:20,padding:"12px 17px",border:0,borderRadius:9,background:"#365044",color:"white",fontWeight:900,fontSize:15,opacity:disabled?0.55:1,cursor:saving?"wait":"pointer"}}>{saving?"Gemmer…":editing?"Gem ændringer":"Tildel opgave nu →"}</button>
    </div>
 
-   <aside style={{background:"#e8eee9",border:"1px solid #d4ddd6",borderRadius:13,padding:18,alignSelf:"start"}}><p style={{fontSize:11,fontWeight:900,letterSpacing:1.2,color:"#65766d",margin:"0 0 4px"}}>ELEVEN FÅR</p><h2 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"5px 0"}}>{taskType}</h2>{assignmentKind==="danish_writing"?<><p style={{...small,lineHeight:1.5}}><strong>Formål:</strong> {genre.purpose}</p><p style={{...small,lineHeight:1.5}}><strong>Modtager:</strong> {genre.audience}</p><strong style={{display:"block",marginTop:14}}>Skrivefelter</strong><ol style={{paddingLeft:20,...small,lineHeight:1.7}}>{genre.structure.map(x=><li key={x}>{x}</li>)}</ol></>:template?<><p style={{...small,lineHeight:1.5}}>{template.description}</p><div style={{padding:10,borderRadius:9,background:"white",fontSize:12,lineHeight:1.45}}><strong>Arbejdsråd:</strong> {template.coach}</div><strong style={{display:"block",marginTop:14}}>Arbejdsfelter</strong><ol style={{paddingLeft:20,...small,lineHeight:1.7}}>{template.structure.map(x=><li key={x}>{x}</li>)}</ol></>:<p style={small}>Vælg først et faglokale.</p>}</aside>
+   <aside style={{background:"#e8eee9",border:"1px solid #d4ddd6",borderRadius:13,padding:18,alignSelf:"start"}}><p style={{fontSize:11,fontWeight:900,letterSpacing:1.2,color:"#65766d",margin:"0 0 4px"}}>ELEVEN FÅR</p><h2 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"5px 0"}}>{taskType}</h2>{assignmentKind==="danish_analysis"?<><p style={{...small,lineHeight:1.5}}>{analysisTemplate.description}</p><div style={{padding:10,borderRadius:9,background:"white",fontSize:12,lineHeight:1.45}}><strong>Arbejdsprincip:</strong> tekstspor → iagttagelse → forklaring → fortolkning med belæg.</div><strong style={{display:"block",marginTop:14}}>Arbejdsspørgsmål</strong><ol style={{paddingLeft:20,...small,lineHeight:1.7}}>{analysisTemplate.prompts.map(x=><li key={x}>{x}</li>)}</ol><small style={{display:"block",marginTop:8,color:"#647169"}}>Spørgsmålene bliver automatisk gjort enklere eller mere krævende efter elevens klassetrin.</small></>:assignmentKind==="danish_writing"?<><p style={{...small,lineHeight:1.5}}><strong>Formål:</strong> {genre.purpose}</p><p style={{...small,lineHeight:1.5}}><strong>Modtager:</strong> {genre.audience}</p><strong style={{display:"block",marginTop:14}}>Skrivefelter</strong><ol style={{paddingLeft:20,...small,lineHeight:1.7}}>{genre.structure.map(x=><li key={x}>{x}</li>)}</ol></>:template?<><p style={{...small,lineHeight:1.5}}>{template.description}</p><div style={{padding:10,borderRadius:9,background:"white",fontSize:12,lineHeight:1.45}}><strong>Arbejdsråd:</strong> {template.coach}</div><strong style={{display:"block",marginTop:14}}>Arbejdsfelter</strong><ol style={{paddingLeft:20,...small,lineHeight:1.7}}>{template.structure.map(x=><li key={x}>{x}</li>)}</ol></>:<p style={small}>Vælg først et faglokale.</p>}</aside>
   </div>
  </section></main>;
 }
