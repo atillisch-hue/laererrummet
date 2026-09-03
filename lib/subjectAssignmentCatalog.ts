@@ -1,4 +1,4 @@
-export type AssignmentKind="danish_writing"|"danish_analysis"|"math_task"|"generic";
+export type AssignmentKind="danish_writing"|"danish_analysis"|"danish_communication"|"math_task"|"generic";
 
 export type AssignmentTemplate={
   id:string;
