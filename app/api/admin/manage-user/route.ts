@@ -10,6 +10,10 @@ function primaryRole(roles:string[]){
 }
 
 function normalizeAbbreviation(value:unknown){return String(value||"").trim().toUpperCase()}
+function normalizeRoles(value:unknown):string[]{
+ const requested:unknown[]=Array.isArray(value)?value:[];
+ return Array.from(new Set<string>(requested.filter((r):r is string=>typeof r==="string"&&allowed.includes(r))));
+}
 
 async function getAdmin(req:Request,body:any){
  const authHeader=req.headers.get("authorization");
@@ -41,7 +45,7 @@ async function syncActiveCache(admin:any,userId:string){
 
 async function syncRoleCaches(admin:any,userId:string){
  const{data:memberships}=await admin.from("school_memberships").select("role").eq("user_id",userId).eq("active",true);
- const roles=[...new Set((memberships||[]).map((m:any)=>String(m.role)).filter((r:string)=>allowed.includes(r)))];
+ const roles=normalizeRoles((memberships||[]).map((m:any)=>m.role));
  const primary=primaryRole(roles);
  await admin.auth.admin.updateUserById(userId,{app_metadata:{roles,role:roles.length?primary:null}});
  await admin.from("user_roles").delete().eq("user_id",userId);
@@ -71,7 +75,7 @@ export async function PATCH(req:Request){
   }
 
   if(Array.isArray(body.roles)){
-   const roles=[...new Set(body.roles.filter((r:string)=>allowed.includes(r)))];
+   const roles=normalizeRoles(body.roles);
    if(!roles.length)return NextResponse.json({error:"Brugeren skal have mindst én rolle."},{status:400});
    if(id===access.me.id&&!roles.includes("admin"))return NextResponse.json({error:"Du kan ikke fjerne din egen admin-rolle."},{status:400});
    const{data:stateRows,error:stateError}=await access.admin.from("school_memberships").select("active").eq("school_id",access.schoolId).eq("user_id",id);
