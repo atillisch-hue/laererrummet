@@ -3,6 +3,7 @@ import {createClient} from "@supabase/supabase-js";
 
 const allowed=["teacher","staff","leader","parent","board","admin"];
 const personnelGroups=new Set(["teacher","pedagogue","substitute","administration","other"]);
+const MIN_ACCOUNT_PASSWORD_LENGTH=12;
 
 function primaryRole(roles:string[]){
  for(const role of ["admin","leader","teacher","staff","board","parent"]){if(roles.includes(role))return role}
@@ -54,6 +55,13 @@ async function syncRoleCaches(admin:any,userId:string){
  await syncActiveCache(admin,userId);
 }
 
+function adminGuardError(message:string){
+ if(message.includes("at least one active administrator"))return"Skolen skal altid have mindst én aktiv administrator.";
+ if(message.includes("remove your own admin role"))return"Du kan ikke fjerne din egen admin-rolle.";
+ if(message.includes("deactivate your own access"))return"Du kan ikke deaktivere din egen adgang.";
+ return"Skoleadgangen kunne ikke ændres sikkert.";
+}
+
 export async function PATCH(req:Request){
  try{
   const body=await req.json(),access=await getAdmin(req,body);
@@ -77,14 +85,14 @@ export async function PATCH(req:Request){
   if(Array.isArray(body.roles)){
    const roles=normalizeRoles(body.roles);
    if(!roles.length)return NextResponse.json({error:"Brugeren skal have mindst én rolle."},{status:400});
-   if(id===access.me.id&&!roles.includes("admin"))return NextResponse.json({error:"Du kan ikke fjerne din egen admin-rolle."},{status:400});
-   const{data:stateRows,error:stateError}=await access.admin.from("school_memberships").select("active").eq("school_id",access.schoolId).eq("user_id",id);
-   if(stateError)return NextResponse.json({error:"Brugerens nuværende status kunne ikke læses."},{status:500});
-   const wasActive=(stateRows||[]).some((m:any)=>m.active===true);
-   const{error:deleteError}=await access.admin.from("school_memberships").delete().eq("school_id",access.schoolId).eq("user_id",id);
-   if(deleteError)return NextResponse.json({error:"De gamle roller kunne ikke fjernes."},{status:500});
-   const{error:insertError}=await access.admin.from("school_memberships").insert(roles.map(role=>({school_id:access.schoolId,user_id:id,role,active:wasActive})));
-   if(insertError)return NextResponse.json({error:"De nye roller kunne ikke gemmes."},{status:500});
+   if(roles.length!==new Set(body.roles).size)return NextResponse.json({error:"En eller flere roller er ugyldige."},{status:400});
+   const{error:roleError}=await access.admin.rpc("service_replace_school_user_roles",{
+    p_actor_user_id:access.me.id,
+    p_school_id:access.schoolId,
+    p_user_id:id,
+    p_roles:roles
+   });
+   if(roleError)return NextResponse.json({error:adminGuardError(roleError.message)},{status:400});
    await syncRoleCaches(access.admin,id);
   }
 
@@ -99,15 +107,20 @@ export async function PATCH(req:Request){
   }
 
   if(body.password!==undefined){
-   const password=String(body.password||"");if(password.length<8)return NextResponse.json({error:"Adgangskoden skal være mindst 8 tegn."},{status:400});
+   const password=String(body.password||"");
+   if(password.length<MIN_ACCOUNT_PASSWORD_LENGTH)return NextResponse.json({error:`Adgangskoden skal være mindst ${MIN_ACCOUNT_PASSWORD_LENGTH} tegn.`},{status:400});
    const{error}=await access.admin.auth.admin.updateUserById(id,{password});if(error)return NextResponse.json({error:error.message},{status:400});
   }
 
   if(body.disabled!==undefined){
    const disabled=Boolean(body.disabled);
-   if(disabled&&id===access.me.id)return NextResponse.json({error:"Du kan ikke deaktivere din egen adgang."},{status:400});
-   const{error}=await access.admin.from("school_memberships").update({active:!disabled}).eq("school_id",access.schoolId).eq("user_id",id);
-   if(error)return NextResponse.json({error:"Brugerens skoleadgang kunne ikke ændres."},{status:400});
+   const{error:activeError}=await access.admin.rpc("service_set_school_user_active",{
+    p_actor_user_id:access.me.id,
+    p_school_id:access.schoolId,
+    p_user_id:id,
+    p_active:!disabled
+   });
+   if(activeError)return NextResponse.json({error:adminGuardError(activeError.message)},{status:400});
    await syncRoleCaches(access.admin,id);
   }
 
