@@ -5,21 +5,124 @@ import {useEffect,useMemo,useState} from "react";
 import {supabase} from "../../../lib/supabase";
 import {hasRole} from "../../../lib/roles";
 
-type Staff={user_id:string;display_name:string;role:string;active:boolean};
-type StaffRoles={user_id:string;roles:string[]};
-const roleOptions=[{id:"teacher",label:"Lærer"},{id:"admin",label:"Leder / admin"},{id:"board",label:"Bestyrelse"},{id:"parent",label:"Forælder"},{id:"student",label:"Elev"}];
+type PersonnelGroup="teacher"|"pedagogue"|"substitute"|"administration"|"other";
+type Staff={user_id:string;display_name:string;abbreviation:string|null;personnel_group:PersonnelGroup;roles:string[];active:boolean};
+type Filter="all"|"teacher"|"pedagogue"|"leadership"|"substitute"|"administration"|"other";
+
+const roleOptions=[
+ {id:"teacher",label:"Læreradgang"},
+ {id:"staff",label:"Personaleadgang"},
+ {id:"leader",label:"Ledelse"},
+ {id:"admin",label:"Admin"},
+ {id:"board",label:"Bestyrelse"},
+ {id:"parent",label:"Forælder"}
+];
 const roleLabels:Record<string,string>=Object.fromEntries(roleOptions.map(r=>[r.id,r.label]));
+const personnelOptions:{id:PersonnelGroup;label:string;hint:string}[]=[
+ {id:"teacher",label:"Lærer",hint:"Forkortelsen er typisk 2 bogstaver, fx AT."},
+ {id:"pedagogue",label:"Pædagog",hint:"Forkortelsen er typisk 3 bogstaver."},
+ {id:"substitute",label:"Vikar",hint:"Forkortelsen er typisk 3 bogstaver."},
+ {id:"administration",label:"Administration",hint:"Kontor, sekretariat og øvrig administration."},
+ {id:"other",label:"Andet personale",hint:"Medarbejdere, der ikke passer i de øvrige grupper."}
+];
+const personnelLabels:Record<PersonnelGroup,string>=Object.fromEntries(personnelOptions.map(p=>[p.id,p.label])) as Record<PersonnelGroup,string>;
+const filters:{id:Filter;label:string}[]=[
+ {id:"all",label:"Alle"},{id:"teacher",label:"Lærere"},{id:"pedagogue",label:"Pædagoger"},{id:"leadership",label:"Ledelse"},{id:"substitute",label:"Vikarer"},{id:"administration",label:"Administration"},{id:"other",label:"Andre"}
+];
 const box={background:"white",border:"1px solid #dedbd2",borderRadius:14,padding:20};
 
+function defaultAccess(group:PersonnelGroup){return group==="teacher"?"teacher":"staff"}
+function normalizeAbbreviation(value:string){return value.trim().toUpperCase()}
+
 export default function StaffAdminPage(){
- const[ready,setReady]=useState(false),[staff,setStaff]=useState<Staff[]>([]),[rolesByUser,setRolesByUser]=useState<Record<string,string[]>>({}),[message,setMessage]=useState(""),[error,setError]=useState("");
- const[editing,setEditing]=useState<string|null>(null),[name,setName]=useState(""),[roles,setRoles]=useState<string[]>([]),[active,setActive]=useState(true),[search,setSearch]=useState("");
- async function load(){setError("");const[{data:staffData,error:staffError},{data:roleData,error:roleError}]=await Promise.all([supabase.rpc("admin_staff_directory"),supabase.rpc("admin_staff_roles")]);if(staffError||roleError){setError(staffError?.message||roleError?.message||"Ukendt fejl");return}setStaff((staffData||[]) as Staff[]);const map:Record<string,string[]>={};((roleData||[]) as StaffRoles[]).forEach(r=>map[r.user_id]=r.roles||[]);setRolesByUser(map)}
- useEffect(()=>{(async()=>{const{data}=await supabase.auth.getSession();const u=data.session?.user;if(!u||!hasRole(u,"admin")){window.location.replace("/");return}await load();setReady(true)})()},[]);
- function edit(s:Staff){setEditing(s.user_id);setName(s.display_name||"");setRoles(rolesByUser[s.user_id]||[s.role||"teacher"]);setActive(s.active!==false);setMessage("")}
- function toggleRole(id:string){setRoles(current=>current.includes(id)?current.filter(r=>r!==id):[...current,id])}
- async function save(){if(!editing||!name.trim())return;if(!roles.length){setMessage("Vælg mindst én rolle.");return}setMessage("");const profileRole=roles.includes("admin")?"admin":roles.includes("teacher")?"teacher":roles.includes("board")?"board":roles[0];const{error:profileError}=await supabase.rpc("update_staff_member",{p_user_id:editing,p_display_name:name.trim(),p_role:profileRole,p_active:active});if(profileError){setMessage(`Kunne ikke gemme medarbejder: ${profileError.message}`);return}const{error:roleError}=await supabase.rpc("update_staff_roles",{p_user_id:editing,p_roles:roles});if(roleError){setMessage(`Navnet blev gemt, men rollerne kunne ikke gemmes: ${roleError.message}`);return}setMessage("Medarbejderen er gemt. Roller, mødebooking og ansvarslister bruger nu samme brugerprofil.");setEditing(null);await load()}
- const shown=useMemo(()=>staff.filter(s=>(s.display_name||"").toLowerCase().includes(search.toLowerCase())),[staff,search]);
+ const[ready,setReady]=useState(false),[schoolId,setSchoolId]=useState<number|null>(null),[staff,setStaff]=useState<Staff[]>([]),[message,setMessage]=useState(""),[error,setError]=useState("");
+ const[search,setSearch]=useState(""),[filter,setFilter]=useState<Filter>("all"),[showCreate,setShowCreate]=useState(false),[creating,setCreating]=useState(false);
+ const[newName,setNewName]=useState(""),[newAbbreviation,setNewAbbreviation]=useState(""),[newPersonnelGroup,setNewPersonnelGroup]=useState<PersonnelGroup>("teacher"),[newEmail,setNewEmail]=useState(""),[newPassword,setNewPassword]=useState(""),[newRoles,setNewRoles]=useState<string[]>(["teacher"]);
+ const[editing,setEditing]=useState<string|null>(null),[editName,setEditName]=useState(""),[editAbbreviation,setEditAbbreviation]=useState(""),[editPersonnelGroup,setEditPersonnelGroup]=useState<PersonnelGroup>("teacher"),[editRoles,setEditRoles]=useState<string[]>([]),[editActive,setEditActive]=useState(true),[saving,setSaving]=useState(false);
+
+ async function api(path:string,method:string,body:any){
+  const{data}=await supabase.auth.getSession();const token=data.session?.access_token;
+  if(!token)throw new Error("Din session er udløbet. Log ind igen.");
+  const res=await fetch(path,{method,headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify(body)});
+  const result=await res.json();if(!res.ok)throw new Error(result.error||"Handlingen mislykkedes.");return result;
+ }
+
+ async function load(sid?:number|null){
+  const target=sid??schoolId;if(!target)return;
+  setError("");
+  const{data,error:loadError}=await supabase.rpc("admin_staff_directory_for_school_v2",{p_school_id:target});
+  if(loadError){setError(loadError.message);return}
+  setStaff(((data||[]) as any[]).map(row=>({...row,roles:Array.isArray(row.roles)?row.roles:[],personnel_group:(row.personnel_group||"teacher") as PersonnelGroup,active:row.active!==false})));
+ }
+
+ useEffect(()=>{(async()=>{
+  const{data}=await supabase.auth.getSession();const user=data.session?.user;
+  if(!user||!hasRole(user,"admin")){window.location.replace("/");return}
+  const{data:membership,error:membershipError}=await supabase.from("school_memberships").select("school_id").eq("user_id",user.id).eq("role","admin").eq("active",true).limit(1).maybeSingle();
+  if(membershipError||!membership?.school_id){setError(membershipError?.message||"Din administratorkonto er ikke knyttet til en aktiv skole.");setReady(true);return}
+  setSchoolId(membership.school_id);await load(membership.school_id);setReady(true);
+ })()},[]);
+
+ function setCreateGroup(group:PersonnelGroup){
+  setNewPersonnelGroup(group);
+  setNewRoles(current=>{
+   const extras=current.filter(role=>role!=="teacher"&&role!=="staff");
+   return [defaultAccess(group),...extras];
+  });
+ }
+ function toggleNewRole(role:string){setNewRoles(current=>current.includes(role)?current.filter(r=>r!==role):[...current,role])}
+ function toggleEditRole(role:string){setEditRoles(current=>current.includes(role)?current.filter(r=>r!==role):[...current,role])}
+
+ async function createStaff(e:React.FormEvent){
+  e.preventDefault();if(!schoolId)return;
+  const abbreviation=normalizeAbbreviation(newAbbreviation);
+  if(!newName.trim()||abbreviation.length<2||abbreviation.length>4||!newEmail.trim()||newPassword.length<8||!newRoles.length){setMessage("Udfyld navn, forkortelse, mail, mindst én adgangsrolle og en midlertidig kode på mindst 8 tegn.");return}
+  setCreating(true);setMessage("");
+  try{
+   await api("/api/admin/create-user","POST",{school_id:schoolId,email:newEmail,password:newPassword,roles:newRoles,display_name:newName.trim(),abbreviation,personnel_group:newPersonnelGroup});
+   setMessage(`${abbreviation} · ${newName.trim()} er oprettet.`);setNewName("");setNewAbbreviation("");setNewEmail("");setNewPassword("");setNewPersonnelGroup("teacher");setNewRoles(["teacher"]);setShowCreate(false);await load();
+  }catch(e:any){setMessage(e.message||"Medarbejderen kunne ikke oprettes.")}finally{setCreating(false)}
+ }
+
+ function startEdit(member:Staff){
+  setEditing(member.user_id);setEditName(member.display_name||"");setEditAbbreviation(member.abbreviation||"");setEditPersonnelGroup(member.personnel_group);setEditRoles([...member.roles]);setEditActive(member.active);setMessage("");
+ }
+
+ async function saveEdit(){
+  if(!editing||!schoolId)return;const abbreviation=normalizeAbbreviation(editAbbreviation);
+  if(!editName.trim()||abbreviation.length<2||abbreviation.length>4||!editRoles.length){setMessage("Navn, forkortelse og mindst én adgangsrolle skal være udfyldt.");return}
+  setSaving(true);setMessage("");
+  try{
+   await api("/api/admin/manage-user","PATCH",{id:editing,school_id:schoolId,roles:editRoles,disabled:!editActive,staff_profile:{display_name:editName.trim(),abbreviation,personnel_group:editPersonnelGroup}});
+   setMessage(`${abbreviation} · ${editName.trim()} er gemt.`);setEditing(null);await load();
+  }catch(e:any){setMessage(e.message||"Medarbejderen kunne ikke gemmes.")}finally{setSaving(false)}
+ }
+
+ const shown=useMemo(()=>staff.filter(member=>{
+  const q=search.trim().toLowerCase();
+  const matchesSearch=!q||(member.display_name||"").toLowerCase().includes(q)||(member.abbreviation||"").toLowerCase().includes(q);
+  const matchesFilter=filter==="all"||filter==="leadership"?filter==="all"||member.roles.includes("leader"):member.personnel_group===filter;
+  return matchesSearch&&matchesFilter;
+ }),[staff,search,filter]);
+
  if(!ready)return <main style={{padding:50}}>Henter personale…</main>;
- return <main style={{minHeight:"100vh",background:"#f5f2ea",color:"#26342e"}}><header style={{background:"#486b59",color:"white",padding:"20px 6vw"}}><div style={{maxWidth:1050,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"center",gap:16}}><div><small style={{fontWeight:800,letterSpacing:1.5}}>KLASSEVÆRELSET · ADMINISTRATION</small><h1 style={{fontFamily:"Georgia,serif",fontSize:38,margin:"5px 0 0"}}>Personale</h1></div><Link href="/admin" style={{color:"white",textDecoration:"none",border:"1px solid rgba(255,255,255,.5)",padding:"9px 13px",borderRadius:8}}>← Administration</Link></div></header><section style={{maxWidth:1050,margin:"0 auto",padding:"38px 24px"}}><p style={{fontSize:18,color:"#667068",maxWidth:800}}>Her styrer du personale ét sted. Den samme bruger kan have flere roller samtidig, fx både lærer, leder og forælder. Aktive medarbejdere bliver automatisk tilgængelige i møder, booking og handleplaner.</p>{error&&<div style={{...box,borderColor:"#c96b5c",color:"#7b2f25",margin:"20px 0"}}>Personale kunne ikke hentes: {error}</div>}{message&&<div style={{padding:14,background:"#e7eee9",borderRadius:9,fontWeight:700,margin:"20px 0"}}>{message}</div>}<div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap",margin:"26px 0 14px"}}><h2 style={{fontFamily:"Georgia,serif",margin:0}}>Personalekatalog <span style={{fontFamily:"inherit",fontSize:18,color:"#788078"}}>({staff.filter(s=>s.active).length} aktive)</span></h2><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Søg personale…" style={{padding:"11px 13px",border:"1px solid #d8d4ca",borderRadius:8,minWidth:240}}/></div><div style={{display:"grid",gap:10}}>{shown.map(s=>{const userRoles=rolesByUser[s.user_id]||[s.role];return <article key={s.user_id} style={{...box,padding:16,opacity:s.active?1:.62}}><div style={{display:"flex",justifyContent:"space-between",gap:14,alignItems:"center",flexWrap:"wrap"}}><div><strong style={{fontSize:17}}>{s.display_name}</strong><div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:7}}>{userRoles.map(r=><span key={r} style={{background:"#edf1ed",borderRadius:999,padding:"4px 9px",fontSize:13,fontWeight:700}}>{roleLabels[r]||r}</span>)}<span style={{color:"#727970",padding:"4px 3px"}}>· {s.active?"Aktiv":"Inaktiv"}</span></div></div><button onClick={()=>edit(s)} style={{padding:"8px 12px"}}>Redigér</button></div>{editing===s.user_id&&<div style={{marginTop:16,paddingTop:16,borderTop:"1px solid #eee",display:"grid",gap:14}}><label><strong>Navn</strong><input value={name} onChange={e=>setName(e.target.value)} placeholder="Navn" style={{display:"block",width:"100%",boxSizing:"border-box",padding:11,marginTop:6}}/></label><div><strong>Roller</strong><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>{roleOptions.map(r=><label key={r.id} style={{display:"flex",gap:7,alignItems:"center",padding:"8px 11px",background:roles.includes(r.id)?"#e3ece5":"#faf8f3",border:"1px solid #ddd8cd",borderRadius:9}}><input type="checkbox" checked={roles.includes(r.id)} onChange={()=>toggleRole(r.id)}/>{r.label}</label>)}</div></div><label style={{display:"flex",gap:7,alignItems:"center"}}><input type="checkbox" checked={active} onChange={e=>setActive(e.target.checked)}/> <strong>Aktiv medarbejder</strong></label><div style={{display:"flex",gap:8}}><button onClick={save}>Gem</button><button onClick={()=>setEditing(null)}>Annuller</button></div></div>}</article>})}{!shown.length&&!error&&<div style={box}>Ingen medarbejdere matcher søgningen.</div>}</div><div style={{...box,marginTop:24,background:"#faf8f3"}}><strong>Ny medarbejder?</strong><p style={{marginBottom:0,color:"#687068"}}>Opret først medarbejderens konto under <Link href="/admin/users">Brugere & klasser</Link>. Når kontoen findes, kan roller og aktiv-status styres her.</p></div></section></main>
+ const missingAbbreviation=staff.filter(s=>s.active&&!s.abbreviation).length;
+
+ return <main style={{minHeight:"100vh",background:"#f5f2ea",color:"#26342e"}}>
+  <header style={{background:"#486b59",color:"white",padding:"20px 6vw"}}><div style={{maxWidth:1120,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"center",gap:16}}><div><small style={{fontWeight:800,letterSpacing:1.5}}>KLASSEVÆRELSET · PERSONER</small><h1 style={{fontFamily:"Georgia,serif",fontSize:38,margin:"5px 0 0"}}>Personale</h1></div><Link href="/admin" style={{color:"white",textDecoration:"none",border:"1px solid rgba(255,255,255,.5)",padding:"9px 13px",borderRadius:8}}>← Administration</Link></div></header>
+  <section style={{maxWidth:1120,margin:"0 auto",padding:"34px 24px 70px"}}>
+   <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:22}}><span style={{padding:"8px 12px",borderRadius:999,background:"#486b59",color:"white",fontWeight:850,fontSize:13}}>Personale</span><Link href="/admin/users" style={{padding:"8px 12px",borderRadius:999,background:"#fff",border:"1px solid #d8d3c8",color:"#506158",fontWeight:800,fontSize:13,textDecoration:"none"}}>Elever & forældre</Link><span style={{padding:"8px 12px",borderRadius:999,background:"#eeeae1",color:"#8a8b85",fontWeight:800,fontSize:13}}>Eksterne · senere</span></div>
+   <div style={{display:"flex",justifyContent:"space-between",gap:18,alignItems:"start",flexWrap:"wrap"}}><div><p className="eyebrow">PERSONALEKATALOG</p><h2 style={{fontFamily:"Georgia,serif",fontSize:32,margin:"7px 0"}}>Én person, én profil</h2><p style={{fontSize:17,color:"#667068",maxWidth:760,lineHeight:1.55,margin:0}}>Mailen bruges til login. I skolens daglige arbejde vises medarbejderens forkortelse og navn. Personalegruppe beskriver jobbet; adgangsroller bestemmer, hvad personen må se og gøre.</p></div><button onClick={()=>setShowCreate(v=>!v)} style={{padding:"11px 15px",fontWeight:850}}>{showCreate?"Luk":"+ Opret medarbejder"}</button></div>
+
+   {error&&<div style={{...box,borderColor:"#c96b5c",color:"#7b2f25",marginTop:20}}>Personale kunne ikke hentes: {error}</div>}
+   {message&&<div style={{padding:14,background:"#e7eee9",borderRadius:9,fontWeight:700,marginTop:20}}>{message}</div>}
+   {missingAbbreviation>0&&<div style={{padding:14,background:"#fff6df",border:"1px solid #e1c77f",borderRadius:9,marginTop:20,color:"#715d28"}}><strong>{missingAbbreviation} aktiv{missingAbbreviation===1?" medarbejder mangler":"e medarbejdere mangler"} forkortelse.</strong> Åbn profilen og angiv den korrekte skoleforkortelse i stedet for at lade systemet gætte.</div>}
+
+   {showCreate&&<form onSubmit={createStaff} style={{...box,marginTop:22}}><h3 style={{fontFamily:"Georgia,serif",fontSize:23,marginTop:0}}>Opret medarbejder</h3><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:12}}><label><strong>Navn</strong><input required value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Ane Tillisch" style={{display:"block",width:"100%",boxSizing:"border-box",padding:11,marginTop:6}}/></label><label><strong>Forkortelse</strong><input required value={newAbbreviation} onChange={e=>setNewAbbreviation(e.target.value.toUpperCase())} maxLength={4} placeholder={newPersonnelGroup==="teacher"?"AT":"ATI"} style={{display:"block",width:"100%",boxSizing:"border-box",padding:11,marginTop:6,textTransform:"uppercase"}}/></label><label><strong>Personalegruppe</strong><select value={newPersonnelGroup} onChange={e=>setCreateGroup(e.target.value as PersonnelGroup)} style={{display:"block",width:"100%",padding:11,marginTop:6}}>{personnelOptions.map(p=><option value={p.id} key={p.id}>{p.label}</option>)}</select></label></div><small style={{display:"block",color:"#747970",marginTop:8}}>{personnelOptions.find(p=>p.id===newPersonnelGroup)?.hint}</small><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12,marginTop:16}}><label><strong>Arbejdsmail / login</strong><input type="email" required value={newEmail} onChange={e=>setNewEmail(e.target.value)} placeholder="navn@skole.dk" style={{display:"block",width:"100%",boxSizing:"border-box",padding:11,marginTop:6}}/></label><label><strong>Midlertidig adgangskode</strong><input type="password" required minLength={8} value={newPassword} onChange={e=>setNewPassword(e.target.value)} style={{display:"block",width:"100%",boxSizing:"border-box",padding:11,marginTop:6}}/></label></div><div style={{marginTop:17}}><strong>Adgangsroller</strong><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>{roleOptions.map(r=><label key={r.id} style={{display:"flex",gap:7,alignItems:"center",padding:"8px 11px",background:newRoles.includes(r.id)?"#e3ece5":"#faf8f3",border:"1px solid #ddd8cd",borderRadius:9}}><input type="checkbox" checked={newRoles.includes(r.id)} onChange={()=>toggleNewRole(r.id)}/>{r.label}</label>)}</div><small style={{display:"block",color:"#747970",marginTop:7}}>Pædagoger og vikarer får som udgangspunkt almindelig personaleadgang — ikke automatisk læreradgang.</small></div><button disabled={creating} style={{marginTop:18,padding:"10px 16px"}}>{creating?"Opretter…":"Opret medarbejder"}</button></form>}
+
+   <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap",margin:"30px 0 13px"}}><div><h3 style={{fontFamily:"Georgia,serif",fontSize:25,margin:"0 0 5px"}}>Medarbejdere <span style={{fontSize:17,color:"#788078"}}>({staff.filter(s=>s.active).length} aktive)</span></h3><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{filters.map(f=><button key={f.id} onClick={()=>setFilter(f.id)} style={{padding:"6px 9px",fontSize:12,fontWeight:800,borderRadius:999,border:"1px solid #d7d2c7",background:filter===f.id?"#486b59":"#fff",color:filter===f.id?"white":"#506158"}}>{f.label}</button>)}</div></div><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Søg navn eller forkortelse…" style={{padding:"11px 13px",border:"1px solid #d8d4ca",borderRadius:8,minWidth:250}}/></div>
+
+   <div style={{display:"grid",gap:10}}>{shown.map(member=><article key={member.user_id} style={{...box,padding:16,opacity:member.active?1:.64}}><div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"center",flexWrap:"wrap"}}><div style={{display:"flex",alignItems:"center",gap:14,minWidth:0}}><div style={{width:54,height:54,borderRadius:12,background:member.abbreviation?"#486b59":"#eee5d5",color:member.abbreviation?"white":"#8a6d3b",display:"grid",placeItems:"center",fontWeight:900,fontSize:18,letterSpacing:.5,flex:"0 0 auto"}}>{member.abbreviation||"—"}</div><div style={{minWidth:0}}><strong style={{fontSize:18}}>{member.display_name}</strong><div style={{color:"#687068",fontSize:13,marginTop:3}}>{personnelLabels[member.personnel_group]||member.personnel_group} · {member.active?"Aktiv":"Inaktiv"}</div><div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:7}}>{member.roles.map(r=><span key={r} style={{background:"#edf1ed",borderRadius:999,padding:"3px 8px",fontSize:11,fontWeight:750}}>{roleLabels[r]||r}</span>)}</div></div></div><button onClick={()=>startEdit(member)} style={{padding:"8px 12px"}}>Åbn profil</button></div>{editing===member.user_id&&<div style={{marginTop:17,paddingTop:17,borderTop:"1px solid #eee",display:"grid",gap:14}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}><label><strong>Navn</strong><input value={editName} onChange={e=>setEditName(e.target.value)} style={{display:"block",width:"100%",boxSizing:"border-box",padding:10,marginTop:6}}/></label><label><strong>Forkortelse</strong><input value={editAbbreviation} onChange={e=>setEditAbbreviation(e.target.value.toUpperCase())} maxLength={4} placeholder={editPersonnelGroup==="teacher"?"AT":"ATI"} style={{display:"block",width:"100%",boxSizing:"border-box",padding:10,marginTop:6,textTransform:"uppercase"}}/></label><label><strong>Personalegruppe</strong><select value={editPersonnelGroup} onChange={e=>setEditPersonnelGroup(e.target.value as PersonnelGroup)} style={{display:"block",width:"100%",padding:10,marginTop:6}}>{personnelOptions.map(p=><option value={p.id} key={p.id}>{p.label}</option>)}</select></label></div><div><strong>Roller & adgang</strong><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>{roleOptions.map(r=><label key={r.id} style={{display:"flex",gap:7,alignItems:"center",padding:"8px 11px",background:editRoles.includes(r.id)?"#e3ece5":"#faf8f3",border:"1px solid #ddd8cd",borderRadius:9}}><input type="checkbox" checked={editRoles.includes(r.id)} onChange={()=>toggleEditRole(r.id)}/>{r.label}</label>)}</div></div><label style={{display:"flex",gap:8,alignItems:"center"}}><input type="checkbox" checked={editActive} onChange={e=>setEditActive(e.target.checked)}/><strong>Aktiv på skolen</strong></label><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button onClick={saveEdit} disabled={saving}>{saving?"Gemmer…":"Gem profil"}</button><button onClick={()=>setEditing(null)}>Annuller</button><Link href="/admin/users" style={{fontSize:13,alignSelf:"center",color:"#486b59"}}>Kontoadgang / nulstil kode →</Link></div></div>}</article>)}{!shown.length&&!error&&<div style={box}>Ingen medarbejdere matcher filteret.</div>}</div>
+  </section>
+ </main>;
 }
