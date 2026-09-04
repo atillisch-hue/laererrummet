@@ -3,12 +3,11 @@
 import Link from "next/link";
 import {useEffect,useMemo,useState} from "react";
 import {supabase} from "../../lib/supabase";
-import {scheduleOccursOn,type RecurrencePattern} from "../../lib/scheduleRecurrence";
 import {rememberWork} from "../WorkResumeTracker";
 
 type EntryKind="lesson"|"assembly"|"break"|"duty"|"other";
-type ScheduleEntry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:EntryKind;recurrence_pattern:RecurrencePattern};
-type ScheduleTeacher={schedule_entry_id:number;teacher_id:string};
+type ScheduleEntry={id:number;occurrence_date:string;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:EntryKind};
+type ScheduleOccurrenceRow={user_id:string;occurrence_date:string;schedule_entry_id:number;schedule_version_id:number;school_id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;class_subject_id:number|null;entry_kind:EntryKind;recurrence_pattern:string};
 type Klass={id:number;name:string;school_id:number|null};
 type Busy={user_id:string;starts_at:string;ends_at:string;busy_type:"meeting"|"absence"|string};
 type Meeting={id:number;title:string;meeting_type:string;starts_at:string;ends_at:string|null;location:string|null};
@@ -33,25 +32,25 @@ const markLabel=(kind:CalendarMark["kind"])=>({closed:"Lukket",pedagogical:"Pæd
 const markStyle=(kind:CalendarMark["kind"]):React.CSSProperties=>kind==="closed"?{background:"#efe0b7",color:"#725823",border:"1px solid #dcc58e"}:kind==="pedagogical"?{background:"#eee7f1",color:"#65516d",border:"1px solid #d9cbe0"}:kind==="special_week"||kind==="project"?{background:"#e5edf2",color:"#47616d",border:"1px solid #cbdbe3"}:{background:"#e8efe9",color:"#526b5b",border:"1px solid #d1ddd3"};
 
 export default function WeekScheduleView({selectedDate,onSelectDate,viewedUserId,currentUserId,viewedName,meetings,refreshKey=0}:Props){
- const[entries,setEntries]=useState<ScheduleEntry[]>([]),[teachers,setTeachers]=useState<ScheduleTeacher[]>([]),[classes,setClasses]=useState<Klass[]>([]),[busy,setBusy]=useState<Busy[]>([]),[workEntries,setWorkEntries]=useState<WorkEntry[]>([]),[lessons,setLessons]=useState<LessonInstance[]>([]),[units,setUnits]=useState<SubjectUnit[]>([]),[resourceLinks,setResourceLinks]=useState<ResourceLink[]>([]),[calendarMarks,setCalendarMarks]=useState<CalendarMark[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState("");
+ const[entries,setEntries]=useState<ScheduleEntry[]>([]),[classes,setClasses]=useState<Klass[]>([]),[busy,setBusy]=useState<Busy[]>([]),[workEntries,setWorkEntries]=useState<WorkEntry[]>([]),[lessons,setLessons]=useState<LessonInstance[]>([]),[units,setUnits]=useState<SubjectUnit[]>([]),[resourceLinks,setResourceLinks]=useState<ResourceLink[]>([]),[calendarMarks,setCalendarMarks]=useState<CalendarMark[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState("");
  const monday=useMemo(()=>mondayOf(selectedDate),[selectedDate]);
  const days=useMemo(()=>Array.from({length:7},(_,i)=>{const d=new Date(monday);d.setDate(d.getDate()+i);return d}),[monday]);
- const weekStart=iso(days[0]),weekEnd=(()=>{const d=new Date(days[6]);d.setDate(d.getDate()+1);return iso(d)})();
+ const weekStart=iso(days[0]),weekLast=iso(days[6]),weekEnd=(()=>{const d=new Date(days[6]);d.setDate(d.getDate()+1);return iso(d)})();
 
  useEffect(()=>{
   let active=true;(async()=>{
    if(!viewedUserId)return;setLoading(true);setError("");
    const start=new Date(`${weekStart}T00:00:00`),end=new Date(`${weekEnd}T00:00:00`);
-   const[eRes,tRes,cRes,bRes,wRes,sRes]=await Promise.all([
-    supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room,entry_kind,recurrence_pattern"),
-    supabase.from("schedule_teachers").select("schedule_entry_id,teacher_id").eq("teacher_id",viewedUserId),
+   const[oRes,cRes,bRes,wRes,sRes]=await Promise.all([
+    supabase.rpc("staff_schedule_occurrences",{p_user_ids:[viewedUserId],p_start_date:weekStart,p_end_date:weekLast}),
     supabase.from("classes").select("id,name,school_id"),
     supabase.rpc("staff_busy_intervals",{p_user_ids:[viewedUserId],p_start:start.toISOString(),p_end:end.toISOString()}),
     supabase.from("work_time_entries").select("id,work_date,starts_at,ends_at,category,note").eq("user_id",viewedUserId).gte("work_date",weekStart).lt("work_date",weekEnd).order("work_date").order("starts_at"),
     supabase.from("school_settings").select("school_id,closed_days,calendar_events")
    ]);
    if(!active)return;
-   const teacherRows=(tRes.data||[]) as ScheduleTeacher[],assignedEntryIds=teacherRows.map(x=>x.schedule_entry_id);
+   const occurrenceRows=((oRes.data||[]) as ScheduleOccurrenceRow[]).map(row=>({id:Number(row.schedule_entry_id),occurrence_date:row.occurrence_date,class_id:Number(row.class_id),weekday:Number(row.weekday),start_time:row.start_time,end_time:row.end_time,subject:row.subject,room:row.room,entry_kind:row.entry_kind}));
+   const assignedEntryIds=Array.from(new Set(occurrenceRows.map(x=>x.id)));
    let lessonRows:LessonInstance[]=[],unitRows:SubjectUnit[]=[],resourceRows:ResourceLink[]=[];
    if(assignedEntryIds.length){
     const lessonRes=await supabase.from("lesson_instances").select("id,schedule_entry_id,lesson_date,subject_unit_id,status,attendance_checked_at").in("schedule_entry_id",assignedEntryIds).gte("lesson_date",weekStart).lt("lesson_date",weekEnd).order("lesson_date");
@@ -65,17 +64,16 @@ export default function WeekScheduleView({selectedDate,onSelectDate,viewedUserId
     ...(Array.isArray(row.closed_days)?row.closed_days:[]).map(x=>({date:x.date,label:x.label,kind:"closed" as const})),
     ...(Array.isArray(row.calendar_events)?row.calendar_events:[]).map(x=>({date:x.date,label:x.label,kind:x.kind}))
    ]));
-   setEntries((eRes.data||[]) as ScheduleEntry[]);setTeachers(teacherRows);setClasses((cRes.data||[]) as Klass[]);setBusy((bRes.data||[]) as Busy[]);setWorkEntries((wRes.data||[]) as WorkEntry[]);setLessons(lessonRows);setUnits(unitRows);setResourceLinks(resourceRows);
-   const problem=eRes.error||tRes.error||cRes.error||bRes.error||wRes.error||sRes.error;if(problem)setError(problem.message||"Ugen kunne ikke hentes helt.");setLoading(false);
+   setEntries(occurrenceRows);setClasses((cRes.data||[]) as Klass[]);setBusy((bRes.data||[]) as Busy[]);setWorkEntries((wRes.data||[]) as WorkEntry[]);setLessons(lessonRows);setUnits(unitRows);setResourceLinks(resourceRows);
+   const problem=oRes.error||cRes.error||bRes.error||wRes.error||sRes.error;if(problem)setError(problem.message||"Ugen kunne ikke hentes helt.");setLoading(false);
   })();return()=>{active=false};
- },[viewedUserId,weekStart,weekEnd,refreshKey]);
+ },[viewedUserId,weekStart,weekLast,weekEnd,refreshKey]);
 
- const assignedIds=useMemo(()=>new Set(teachers.map(x=>x.schedule_entry_id)),[teachers]);
  const classRow=(id:number)=>classes.find(c=>c.id===id)||null,className=(id:number)=>classRow(id)?.name||"Klasse";
  const moveWeek=(amount:number)=>{const d=new Date(`${selectedDate}T12:00:00`);d.setDate(d.getDate()+amount*7);onSelectDate(iso(d))},isSelf=viewedUserId===currentUserId;
  const meetingsForDate=(date:string)=>meetings.filter(m=>m.starts_at.slice(0,10)===date).sort((a,b)=>a.starts_at.localeCompare(b.starts_at));
  const busyForDate=(date:string)=>{const start=new Date(`${date}T00:00:00`).getTime(),end=new Date(`${date}T23:59:59`).getTime();return busy.filter(x=>new Date(x.starts_at).getTime()<=end&&new Date(x.ends_at).getTime()>=start)};
- const entriesForDate=(date:string)=>{const weekday=new Date(`${date}T12:00:00`).getDay();return entries.filter(e=>assignedIds.has(e.id)&&e.weekday===weekday&&scheduleOccursOn(e.recurrence_pattern,date)).sort((a,b)=>a.start_time.localeCompare(b.start_time))};
+ const entriesForDate=(date:string)=>entries.filter(e=>e.occurrence_date===date).sort((a,b)=>a.start_time.localeCompare(b.start_time));
  const workForDate=(date:string)=>workEntries.filter(x=>x.work_date===date).sort((a,b)=>a.starts_at.localeCompare(b.starts_at));
  const marksForDate=(date:string)=>calendarMarks.filter(x=>x.date===date);
  const timeLabel=(value:string)=>new Date(value).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"});
