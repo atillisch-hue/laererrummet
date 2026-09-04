@@ -11,6 +11,9 @@
     "validate:reading-strategies": "node scripts/validate-reading-strategy-training.mjs",
     "validate:math": "node scripts/validate-math-training.mjs",
     "validate:danish": "node scripts/validate-danish-learning.mjs",
+    "backup:supabase": "node scripts/backup-supabase.mjs",
+    "backup:verify": "node scripts/verify-supabase-backup.mjs",
+    "restore:test": "node scripts/restore-supabase-backup-test.mjs",
     "build": "npm run validate:migrations && npm run validate:grammar && npm run validate:spelling-exam && npm run validate:reading-exam && npm run validate:reading-strategies && npm run validate:math && npm run validate:danish && next build",
     "start": "next start",
     "lint": "next lint"
