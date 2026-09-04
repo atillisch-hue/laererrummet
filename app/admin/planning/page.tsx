@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {useEffect,useMemo,useState} from "react";
 import {supabase} from "../../../lib/supabase";
+import PlanningCoverage from "./PlanningCoverage";
 
 type SchoolYear={id:number;school_id:number;label:string;period_start:string;period_end:string;teaching_start:string|null;teaching_end:string|null;status:"draft"|"active"|"archived"};
 type StaffDirectory={user_id:string;abbreviation:string|null;personnel_group:string};
@@ -84,6 +85,7 @@ export default function PlanningPage(){
  const closedDays=calendarEvents.filter(e=>e.closes_school).length;
  const published=versions.find(v=>v.status==="published");
  const currentVersion=published||versions.find(v=>v.status==="draft")||versions[0];
+ const coverageKey=`${currentVersion?.id??"none"}-${requirements.map(r=>`${r.id}:${r.weekly_minutes}`).join(",")}`;
 
  async function addAllocation(e:React.FormEvent){
   e.preventDefault();if(!year||!allocationUser||!allocationTitle.trim())return;
@@ -132,11 +134,13 @@ export default function PlanningPage(){
    {allocations.length>0&&<section style={{...card,marginTop:18}}><small style={eyebrow}>PLANLAGTE OPGAVER</small><div style={{display:"grid",gap:7,marginTop:10}}>{allocations.map(a=>{const s=staff.find(x=>x.user_id===a.user_id);return <div key={a.id} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:"9px 11px",background:"#f7f5ef",borderRadius:8}}><div><strong>{a.title}</strong><small style={{display:"block",color:"#707870"}}>{s?.abbreviation||s?.display_name||"Medarbejder"} · {categoryLabel(a.category)} · {hours(a.planned_minutes)}</small></div><button style={secondary} type="button" onClick={()=>removeAllocation(a.id)}>Fjern</button></div>})}</div></section>}
 
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:18,marginTop:18,alignItems:"start"}}>
-    <section style={card}><small style={eyebrow}>UNDERVISNINGSBEHOV</small><h2 style={heading}>Hvad skal skolen levere?</h2><p style={muted}>Behov gemmes som minutter pr. uge. Næste lag sammenholder dem med den valgte skemaversion og viser mangler, overbookinger og konsekvens for medarbejdernes norm.</p><div style={{display:"grid",gap:7,marginTop:12}}>{requirements.map(r=>{const s=subjectMap.get(r.class_subject_id);return <div key={r.id} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:"10px 12px",background:"#f7f5ef",borderRadius:8}}><div><strong>{s?`${classNames.get(s.class_id)||"Klasse"} · ${s.title}`:`Fag #${r.class_subject_id}`}</strong><small style={{display:"block",color:"#707870"}}>{r.weekly_minutes} min/uge · {hours(r.weekly_minutes)}</small></div><button type="button" style={secondary} onClick={()=>removeRequirement(r.id)}>Fjern</button></div>})}{!requirements.length&&<p style={muted}>Intet undervisningsbehov er lagt ind endnu.</p>}</div></section>
+    <section style={card}><small style={eyebrow}>UNDERVISNINGSBEHOV</small><h2 style={heading}>Hvad skal skolen levere?</h2><p style={muted}>Behov gemmes som minutter pr. uge. Beregningen nedenfor sammenholder dem med den valgte skemaversion og viser mangler og overplanlægning.</p><div style={{display:"grid",gap:7,marginTop:12}}>{requirements.map(r=>{const s=subjectMap.get(r.class_subject_id);return <div key={r.id} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:"10px 12px",background:"#f7f5ef",borderRadius:8}}><div><strong>{s?`${classNames.get(s.class_id)||"Klasse"} · ${s.title}`:`Fag #${r.class_subject_id}`}</strong><small style={{display:"block",color:"#707870"}}>{r.weekly_minutes} min/uge · {hours(r.weekly_minutes)}</small></div><button type="button" style={secondary} onClick={()=>removeRequirement(r.id)}>Fjern</button></div>})}{!requirements.length&&<p style={muted}>Intet undervisningsbehov er lagt ind endnu.</p>}</div></section>
     <form onSubmit={saveRequirement} style={card}><small style={eyebrow}>TILFØJ BEHOV</small><h2 style={{...heading,fontSize:22}}>Klasse og fag</h2><div style={{display:"grid",gap:10,marginTop:12}}><label style={label}>Fag<select style={input} value={requirementSubject} onChange={e=>setRequirementSubject(e.target.value?Number(e.target.value):"")}><option value="">Vælg fag</option>{subjects.map(s=><option key={s.id} value={s.id}>{classNames.get(s.class_id)||"Klasse"} · {s.title}</option>)}</select></label><label style={label}>Minutter pr. uge<input style={input} type="number" min="1" max="10080" step="5" value={requirementMinutes} onChange={e=>setRequirementMinutes(e.target.value)} placeholder="Fx 225"/></label><label style={label}>Note <small>(valgfrit)</small><textarea style={{...input,minHeight:72}} maxLength={4000} value={requirementNotes} onChange={e=>setRequirementNotes(e.target.value)}/></label><button disabled={saving||requirementSubject===""||!requirementMinutes} style={primary}>{saving?"Gemmer…":"Gem undervisningsbehov"}</button></div></form>
    </div>
 
-   <section style={{...card,marginTop:18,background:"#eef2ec"}}><small style={eyebrow}>NÆSTE BEREGNINGSLAG</small><h2 style={heading}>Fra plan til konsekvens</h2><p style={{...muted,maxWidth:900}}>Når undervisningsbehov og øvrige opgaver ligger her, kan næste trin beregne: dækkes alle fag? Hvem er over/under sin årsramme? Hvor opstår lærer-, lokale- eller tidskonflikter? Og hvad ændrer sig, hvis en skemabrik flyttes? Det bliver én beregningsmotor, som både lederens planlægning, kalenderen og Min dag kan læse fra.</p></section>
+   <PlanningCoverage key={coverageKey} schoolYearId={year.id} scheduleVersionId={currentVersion?.id??null}/>
+
+   <section style={{...card,marginTop:18,background:"#eef2ec"}}><small style={eyebrow}>NÆSTE BEREGNINGSLAG</small><h2 style={heading}>Fra dækning til ressourcekonsekvens</h2><p style={{...muted,maxWidth:900}}>Næste trin lægger medarbejderne ovenpå samme model: planlagt undervisning + årsopgaver sammenholdes med deres årsramme. Derefter kommer lærer-, lokale- og tidskonflikter, så en skemaændring kan vise konsekvensen, før den gennemføres.</p></section>
   </section>
  </main>;
 }
