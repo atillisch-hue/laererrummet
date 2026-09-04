@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 const allowedRoles = ["teacher", "staff", "leader", "parent", "board", "admin"];
 const staffRoles = new Set<string>(["teacher", "staff", "leader", "admin"]);
 const personnelGroups = new Set(["teacher", "pedagogue", "substitute", "administration", "other"]);
+const MIN_ACCOUNT_PASSWORD_LENGTH = 12;
 
 function normalizeAbbreviation(value: unknown) {
   return String(value || "").trim().toUpperCase();
@@ -40,8 +41,11 @@ export async function POST(req: Request) {
     const personnelGroup = String(body.personnel_group || "teacher");
     const hasStaffIdentity = Boolean(displayName || abbreviation || body.personnel_group);
 
-    if (!email || password.length < 8 || !newRoles.length) {
-      return NextResponse.json({ error: "Udfyld mail, mindst én rolle og en adgangskode på mindst 8 tegn." }, { status: 400 });
+    if (!email || password.length < MIN_ACCOUNT_PASSWORD_LENGTH || !newRoles.length) {
+      return NextResponse.json({ error: `Udfyld mail, mindst én rolle og en adgangskode på mindst ${MIN_ACCOUNT_PASSWORD_LENGTH} tegn.` }, { status: 400 });
+    }
+    if (newRoles.length !== new Set(requested.filter((r): r is string => typeof r === "string")).size) {
+      return NextResponse.json({ error: "En eller flere roller er ugyldige." }, { status: 400 });
     }
     if (isStaff && hasStaffIdentity) {
       if (!displayName) return NextResponse.json({ error: "Medarbejderen skal have et navn." }, { status: 400 });
