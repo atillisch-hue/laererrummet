@@ -4,12 +4,9 @@ import Link from "next/link";
 import {useEffect,useMemo,useState} from "react";
 import {useSearchParams} from "next/navigation";
 import {supabase} from "../../lib/supabase";
-import {hasRole} from "../../lib/roles";
-import {scheduleOccursOn,type RecurrencePattern} from "../../lib/scheduleRecurrence";
 
-type Entry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;class_subject_id:number|null;recurrence_pattern:RecurrencePattern};
+type ScheduleOccurrenceRow={occurrence_date:string;schedule_entry_id:number;school_id:number;class_id:number;start_time:string;end_time:string;subject:string;class_subject_id:number|null;entry_kind:string};
 type Klass={id:number;name:string;school_id:number|null};
-type Settings={school_id:number;closed_days:unknown};
 type Room={id:number;class_id:number;subject_id:number;title:string|null};
 type Item={id:number;class_subject_id:number;item_type:string;title:string|null};
 type Assignment={id:number;class_id:number;class_subject_id:number|null;title:string;type:string};
@@ -28,39 +25,27 @@ export default function LinkToLesson(){
 
  useEffect(()=>{(async()=>{
   const{data:auth}=await supabase.auth.getSession();const user=auth.session?.user;if(!user)return;
-  const admin=hasRole(user,"admin");
-  const[t,e,c]=await Promise.all([
-   supabase.from("schedule_teachers").select("schedule_entry_id,teacher_id").eq("teacher_id",user.id),
-   supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,class_subject_id,recurrence_pattern"),
-   supabase.from("classes").select("id,name,school_id")
-  ]);
-  const teacherIds=new Set((t.data||[]).map(x=>Number(x.schedule_entry_id)));
-  const classes=(c.data||[]) as Klass[];
-  const allEntries=(e.data||[]) as Entry[];
-  const entries=(teacherIds.size?allEntries.filter(x=>teacherIds.has(x.id)):admin?allEntries:[]).filter((x):x is Entry&{class_subject_id:number}=>typeof x.class_subject_id==="number");
-  const schoolIds=[...new Set(classes.map(x=>x.school_id).filter((x):x is number=>typeof x==="number"))];
-  const settings=schoolIds.length?await supabase.from("school_settings").select("school_id,closed_days").in("school_id",schoolIds):{data:[]};
-  const closed=new Map<number,Set<string>>();
-  ((settings.data||[]) as Settings[]).forEach(row=>{
-   const dates=new Set<string>();
-   if(Array.isArray(row.closed_days))for(const item of row.closed_days){const d=(item as {date?:unknown})?.date;if(typeof d==="string")dates.add(d)}
-   closed.set(row.school_id,dates);
-  });
   const today=new Date();today.setHours(12,0,0,0);
-  const next:Upcoming[]=[];
-  for(const entry of entries){
-   const klass=classes.find(x=>x.id===entry.class_id);if(!klass)continue;
-   for(let offset=0;offset<35;offset++){
-    const d=new Date(today);d.setDate(today.getDate()+offset);
-    if(d.getDay()!==entry.weekday)continue;
-    const iso=dateOnly(d);
-    if(!scheduleOccursOn(entry.recurrence_pattern,iso))continue;
-    if(klass.school_id&&closed.get(klass.school_id)?.has(iso))continue;
-    next.push({scheduleId:entry.id,classId:entry.class_id,classSubjectId:entry.class_subject_id,schoolId:klass.school_id,date:iso,start:entry.start_time,end:entry.end_time,subject:entry.subject,className:klass.name});
-   }
-  }
+  const end1=new Date(today);end1.setDate(today.getDate()+30);
+  const start2=new Date(today);start2.setDate(today.getDate()+31);
+  const end2=new Date(today);end2.setDate(today.getDate()+34);
+  const[c,o1,o2]=await Promise.all([
+   supabase.from("classes").select("id,name,school_id"),
+   supabase.rpc("staff_schedule_occurrences",{p_user_ids:[user.id],p_start_date:dateOnly(today),p_end_date:dateOnly(end1)}),
+   supabase.rpc("staff_schedule_occurrences",{p_user_ids:[user.id],p_start_date:dateOnly(start2),p_end_date:dateOnly(end2)})
+  ]);
+  const classes=(c.data||[]) as Klass[];
+  const rows=[...((o1.data||[]) as ScheduleOccurrenceRow[]),...((o2.data||[]) as ScheduleOccurrenceRow[])];
+  const next:Upcoming[]=rows
+   .filter((row):row is ScheduleOccurrenceRow&{class_subject_id:number}=>row.entry_kind==="lesson"&&typeof row.class_subject_id==="number")
+   .map(row=>{
+    const klass=classes.find(x=>x.id===Number(row.class_id));
+    return klass?{scheduleId:Number(row.schedule_entry_id),classId:Number(row.class_id),classSubjectId:Number(row.class_subject_id),schoolId:klass.school_id,date:row.occurrence_date,start:row.start_time,end:row.end_time,subject:row.subject,className:klass.name}:null;
+   })
+   .filter((row):row is Upcoming=>Boolean(row));
   next.sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start)||a.className.localeCompare(b.className,"da"));
   setLessons(next);
+  if(c.error||o1.error||o2.error)setMessage("Nogle kommende lektioner kunne ikke hentes.");
  })()},[]);
 
  useEffect(()=>{
