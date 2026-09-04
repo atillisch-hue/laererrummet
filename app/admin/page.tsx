@@ -21,14 +21,18 @@ const groups:AdminGroup[]=[
   {title:"Elevklassetrin",text:"Angiv klassetrin pr. elev — også i blandede klasser. Bruges til trinpasset grammatik og differentiering.",href:"/admin/student-grade-levels",tag:"DIFFERENTIERING"},
   {title:"Lærere & klasser",text:"Tilknyt en eller flere lærere til de klasser, de faktisk arbejder med.",href:"/admin/teacher-classes",tag:"TILKNYTNING"}
  ]},
+ {id:"planlaegning",eyebrow:"SKOLEÅR & RESSOURCER",title:"Fra skoleår til bemanding",text:"Planlæg skoleåret i én sammenhængende model, så norm, undervisningsbehov, øvrige opgaver og skema senere kan konsekvensberegnes sammen.",cards:[
+  {title:"Skoleårsplanlægning",text:"Se aktivt skoleår, normdækning, undervisningsbehov, opgaver/akkorder og skemaversion på samme side.",href:"/admin/planning",tag:"LEDELSE"},
+  {title:"Skolekalender",text:"Første og sidste undervisningsdag, ferier, lukkedage, specialuger og fælles arrangementer.",href:"/admin/settings",tag:"ÅRSKALENDER"}
+ ]},
  {id:"drift",eyebrow:"KALENDER, OPGAVER & DRIFT",title:"Det der får arbejdsdagen til at hænge sammen",text:"Skema, fravær, vikarer, personaleopgaver og arbejdstid samlet omkring den daglige drift.",cards:[
-  {title:"Skema",text:"Undervisning, samling, pauser og vagter — hver uge eller i ulige/lige uger.",href:"/admin/schedule",tag:"SKEMA"},
+  {title:"Skema",text:"Undervisning, samling, pauser og vagter — hver uge eller i ulige/lige uger. Skemabrikker kobles nu til det aktive skoleårs version.",href:"/admin/schedule",tag:"SKEMA"},
   {title:"Fravær & vikardækning",text:"Elev- og personalefravær, statistik og sikker vikardækning af konkrete lektioner.",href:"/admin/absence",tag:"DRIFT"},
   {title:"Personaleopgaver",text:"Tildel opgaver til én eller flere medarbejdere, sæt deadline og følg hvem der har afsluttet sin del.",href:"/admin/tasks",tag:"OPGAVER"},
-  {title:"Årsnorm & arbejdstid",text:"Vælg en medarbejder i kalenderen og fastsæt årsnorm, periode og eventuel ugenorm. Kun administrationen kan ændre normen.",href:"/calendar",tag:"ARBEJDSTID"}
+  {title:"Årsnorm & arbejdstid",text:"Vælg en medarbejder i kalenderen og fastsæt årsnorm, periode og eventuel ugenorm. Normen kobles til det aktive skoleår.",href:"/calendar",tag:"ARBEJDSTID"}
  ]},
  {id:"indstillinger",eyebrow:"INDSTILLINGER & SIKKERHED",title:"Rammer og adgang",text:"De fælles regler for skoleåret og hvem der må se og gøre hvad.",cards:[
-  {title:"Skoleopsætning",text:"Skoleår, skoledage, ferieperioder og lukkedage, som kalenderen arbejder ud fra.",href:"/admin/settings",tag:"INDSTILLINGER"},
+  {title:"Skoleopsætning",text:"Undervisningsperiode, ferieperioder og lukkedage. Ændringer synkroniseres med det aktive skoleår.",href:"/admin/settings",tag:"INDSTILLINGER"},
   {title:"Roller & adgang",text:"Gennemgå brugernes roller og deaktivér adgang, når en person ikke længere skal være aktiv på skolen.",href:"/admin/users",tag:"SIKKERHED"}
  ]}
 ];
