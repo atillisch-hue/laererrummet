@@ -4,7 +4,7 @@ import {useEffect,useState} from "react";
 import {supabase} from "../../lib/supabase";
 
 const areas=[
- {icon:"✓",title:"Mine opgaver",text:"Se dine aftaler, deadlines og opfølgninger fra møder samlet ét sted.",href:"/my-tasks"},
+ {icon:"✓",title:"Mine opgaver",text:"Se egne huskeopgaver, deadlines, mødeopgaver og opgaver tildelt af ledelsen samlet ét sted.",href:"/my-tasks"},
  {icon:"→",title:"Min vikardag",text:"Når du er vikar: se kun dagens tildelte timer, vikarplan, materialer og fremmøde.",href:"/substitute"},
  {icon:"▣",title:"Arkiv",text:"Find referater og dokumentation fra de møder, du har adgang til.",href:"/archive"},
  {icon:"▤",title:"Vikardækning",text:"Se lærerfravær, hvem der dækker hvilke timer, og de tilknyttede vikarplaner.",href:"/teacher-room/schedule"},
