@@ -3,12 +3,12 @@
 import Link from "next/link";
 import {useEffect,useMemo,useState} from "react";
 import {supabase} from "../lib/supabase";
-import {scheduleOccursOn,type RecurrencePattern} from "../lib/scheduleRecurrence";
 import ResumeWorkCard from "./ResumeWorkCard";
 import {rememberWork} from "./WorkResumeTracker";
 
 type EntryKind="lesson"|"assembly"|"break"|"duty"|"other";
-type Entry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:EntryKind;recurrence_pattern:RecurrencePattern};
+type Entry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:EntryKind};
+type ScheduleOccurrenceRow={schedule_entry_id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:EntryKind};
 type Substitute={id:number;schedule_entry_id:number;absent_teacher_id:string;substitute_teacher_id:string;substitute_plan:string|null};
 type Klass={id:number;name:string;school_id:number|null};
 type Meeting={id:number;title:string;starts_at:string;ends_at:string|null};
@@ -36,20 +36,20 @@ export default function NoticeboardDayOverview({selectedDate,onMoveDay,onToday}:
    const{data:auth}=await supabase.auth.getSession();const user=auth.session?.user;
    if(!user){if(active){setLoading(false);setError("Dagen kunne ikke åbnes.")}return}
    if(active)setUserId(user.id);
-   const teacherRes=await supabase.from("schedule_teachers").select("schedule_entry_id").eq("teacher_id",user.id);
-   if(!active)return;
-   const regularIds=(teacherRes.data||[]).map(x=>Number(x.schedule_entry_id)).filter(Boolean);
-   const[subRes,meetingRes]=await Promise.all([
+   const[scheduleRes,subRes,meetingRes]=await Promise.all([
+    supabase.rpc("staff_schedule_occurrences",{p_user_ids:[user.id],p_start_date:selectedDate,p_end_date:selectedDate}),
     supabase.from("substitute_assignments").select("id,schedule_entry_id,absent_teacher_id,substitute_teacher_id,substitute_plan").eq("assignment_date",selectedDate).or(`absent_teacher_id.eq.${user.id},substitute_teacher_id.eq.${user.id}`),
     supabase.from("calendar_meetings").select("id,title,starts_at,ends_at").gte("starts_at",`${selectedDate}T00:00:00`).lt("starts_at",nextDate(selectedDate)).order("starts_at")
    ]);
    if(!active)return;
+   const regularEntries=((scheduleRes.data||[]) as ScheduleOccurrenceRow[]).map(row=>({id:Number(row.schedule_entry_id),class_id:Number(row.class_id),weekday:Number(row.weekday),start_time:row.start_time,end_time:row.end_time,subject:row.subject,room:row.room,entry_kind:row.entry_kind}));
    const subRows=(subRes.data||[]) as Substitute[];
-   const allEntryIds=Array.from(new Set([...regularIds,...subRows.map(x=>x.schedule_entry_id)]));
-   const entryRes=allEntryIds.length?await supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room,entry_kind,recurrence_pattern").in("id",allEntryIds):{data:[],error:null};
+   const substituteEntryIds=Array.from(new Set(subRows.filter(x=>x.substitute_teacher_id===user.id).map(x=>x.schedule_entry_id)));
+   const entryRes=substituteEntryIds.length?await supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room,entry_kind").in("id",substituteEntryIds):{data:[],error:null};
    if(!active)return;
-   const rawEntries=(entryRes.data||[]) as Entry[],weekday=selected.getDay();
-   const dayEntries=rawEntries.filter(e=>e.weekday===weekday&&scheduleOccursOn(e.recurrence_pattern,selectedDate));
+   const substituteEntries=(entryRes.data||[]) as Entry[];
+   const byId=new Map<number,Entry>();for(const row of regularEntries)byId.set(row.id,row);for(const row of substituteEntries)byId.set(row.id,row);
+   const dayEntries=Array.from(byId.values()).sort((a,b)=>a.start_time.localeCompare(b.start_time));
    const classIds=Array.from(new Set(dayEntries.map(x=>x.class_id))),lessonEntryIds=dayEntries.filter(x=>x.entry_kind==="lesson").map(x=>x.id);
    const[classRes,lessonRes]=await Promise.all([
     classIds.length?supabase.from("classes").select("id,name,school_id").in("id",classIds):Promise.resolve({data:[],error:null}),
@@ -65,12 +65,12 @@ export default function NoticeboardDayOverview({selectedDate,onMoveDay,onToday}:
    ]);
    if(!active)return;
    setEntries(dayEntries);setSubstitutes(subRows);setClasses((classRes.data||[]) as Klass[]);setMeetings((meetingRes.data||[]) as Meeting[]);setLessons(lessonRows);setUnits((unitRes.data||[]) as Unit[]);setResources((resourceRes.data||[]) as Resource[]);setProfiles((profileRes.data||[]) as Profile[]);
-   const problem=teacherRes.error||subRes.error||meetingRes.error||entryRes.error||classRes.error||lessonRes.error||unitRes.error||resourceRes.error||profileRes.error;
+   const problem=scheduleRes.error||subRes.error||meetingRes.error||entryRes.error||classRes.error||lessonRes.error||unitRes.error||resourceRes.error||profileRes.error;
    if(problem)setError("Noget af dagens overblik kunne ikke hentes.");
    setLoading(false);
   })();
   return()=>{active=false};
- },[selectedDate,selected]);
+ },[selectedDate]);
 
  const regularIds=useMemo(()=>new Set(entries.map(x=>x.id).filter(id=>!substitutes.some(s=>s.schedule_entry_id===id&&s.substitute_teacher_id===userId))),[entries,substitutes,userId]);
  const dayItems=useMemo(()=>{
