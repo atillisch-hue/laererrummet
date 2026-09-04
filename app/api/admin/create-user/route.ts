@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const allowedRoles = ["teacher", "staff", "leader", "parent", "board", "admin"];
-const staffRoles = new Set(["teacher", "staff", "leader", "admin"]);
+const staffRoles = new Set<string>(["teacher", "staff", "leader", "admin"]);
 const personnelGroups = new Set(["teacher", "pedagogue", "substitute", "administration", "other"]);
 
 function normalizeAbbreviation(value: unknown) {
@@ -32,8 +32,8 @@ export async function POST(req: Request) {
     const requestedSchoolId = Number(body.school_id || 0);
     const email = String(body.email || "").trim().toLowerCase();
     const password = String(body.password || "");
-    const requested = Array.isArray(body.roles) ? body.roles : [];
-    const newRoles = [...new Set(requested.filter((r: string) => allowedRoles.includes(r)))];
+    const requested: unknown[] = Array.isArray(body.roles) ? body.roles : [];
+    const newRoles: string[] = Array.from(new Set<string>(requested.filter((r): r is string => typeof r === "string" && allowedRoles.includes(r))));
     const isStaff = newRoles.some(role => staffRoles.has(role));
     const displayName = String(body.display_name || "").trim();
     const abbreviation = normalizeAbbreviation(body.abbreviation);
