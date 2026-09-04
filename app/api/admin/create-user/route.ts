@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const allowedRoles = ["teacher", "leader", "parent", "board", "admin"];
-const staffRoles = new Set(["teacher", "leader", "admin"]);
+const allowedRoles = ["teacher", "staff", "leader", "parent", "board", "admin"];
+const staffRoles = new Set(["teacher", "staff", "leader", "admin"]);
 const personnelGroups = new Set(["teacher", "pedagogue", "substitute", "administration", "other"]);
 
 function normalizeAbbreviation(value: unknown) {
   return String(value || "").trim().toUpperCase();
+}
+
+function primaryRole(roles: string[]) {
+  for (const role of ["admin", "leader", "teacher", "staff", "board", "parent"]) if (roles.includes(role)) return role;
+  return roles[0] || "staff";
 }
 
 export async function POST(req: Request) {
@@ -71,11 +76,12 @@ export async function POST(req: Request) {
       if (duplicate?.length) return NextResponse.json({ error: `Forkortelsen ${abbreviation} bruges allerede på skolen.` }, { status: 409 });
     }
 
+    const primary = primaryRole(newRoles);
     const { data, error } = await admin.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
-      app_metadata: { roles: newRoles, role: newRoles[0] },
+      app_metadata: { roles: newRoles, role: primary },
       user_metadata: {}
     });
     if (error || !data.user) return NextResponse.json({ error: error?.message || "Brugeren kunne ikke oprettes." }, { status: 400 });
@@ -89,7 +95,7 @@ export async function POST(req: Request) {
     }
 
     const { error: roleCacheError } = await admin.from("user_roles").upsert(newRoles.map(role => ({ user_id: userId, role })), { onConflict: "user_id,role" });
-    const profilePatch: Record<string, unknown> = { role: newRoles[0], active: true };
+    const profilePatch: Record<string, unknown> = { role: primary, active: true };
     if (displayName) profilePatch.display_name = displayName;
     const { error: profileError } = await admin.from("user_profiles").update(profilePatch).eq("user_id", userId);
 
