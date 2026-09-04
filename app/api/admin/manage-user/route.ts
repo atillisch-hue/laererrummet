@@ -1,12 +1,12 @@
 import {NextResponse} from "next/server";
 import {createClient} from "@supabase/supabase-js";
 
-const allowed=["teacher","leader","parent","board","admin"];
+const allowed=["teacher","staff","leader","parent","board","admin"];
 const personnelGroups=new Set(["teacher","pedagogue","substitute","administration","other"]);
 
 function primaryRole(roles:string[]){
- for(const role of ["admin","leader","teacher","board","parent"]){if(roles.includes(role))return role}
- return roles[0]||"teacher";
+ for(const role of ["admin","leader","teacher","staff","board","parent"]){if(roles.includes(role))return role}
+ return roles[0]||"staff";
 }
 
 function normalizeAbbreviation(value:unknown){return String(value||"").trim().toUpperCase()}
