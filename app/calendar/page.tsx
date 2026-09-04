@@ -2,7 +2,6 @@
 
 import {useEffect,useMemo,useState} from "react";
 import {supabase} from "../../lib/supabase";
-import {scheduleOccursOn,type RecurrencePattern} from "../../lib/scheduleRecurrence";
 import WeekScheduleView from "./WeekScheduleView";
 import WorkTimePanel from "./WorkTimePanel";
 import StaffAbsencePanel from "./StaffAbsencePanel";
@@ -13,8 +12,6 @@ type Student={id:number;name:string;class_id:number};
 type Guardian={user_id:string;display_name:string;relation:string|null};
 type Room={id:number;name:string};
 type DbError={code?:string;message?:string;details?:string|null;hint?:string|null};
-type ScheduleEntry={id:number;weekday:number;start_time:string;end_time:string;recurrence_pattern:RecurrencePattern};
-type ScheduleTeacher={schedule_entry_id:number;teacher_id:string};
 type Busy={user_id:string;starts_at:string;ends_at:string;busy_type:string};
 type FreeSlot={start:string;end:string};
 type CalendarMode="calendar"|"absence"|"work";
@@ -32,19 +29,17 @@ export default function CalendarPage(){
  const[students,setStudents]=useState<Student[]>([]),[studentId,setStudentId]=useState<number|"">(""),[guardians,setGuardians]=useState<Guardian[]>([]),[selectedGuardians,setSelectedGuardians]=useState<string[]>([]),[selected,setSelected]=useState<string[]>([]);
  const[meetingLeader,setMeetingLeader]=useState(""),[minuteTaker,setMinuteTaker]=useState(""),[externalName,setExternalName]=useState(""),[externalRole,setExternalRole]=useState(""),[agendaDraft,setAgendaDraft]=useState(""),[internalNotesDraft,setInternalNotesDraft]=useState("");
  const[open,setOpen]=useState(false),[title,setTitle]=useState(""),[type,setType]=useState("Netværksmøde"),[time,setTime]=useState("13:00"),[endTime,setEndTime]=useState("14:00"),[saving,setSaving]=useState(false),[formError,setFormError]=useState("");
- const[scheduleEntries,setScheduleEntries]=useState<ScheduleEntry[]>([]),[scheduleTeachers,setScheduleTeachers]=useState<ScheduleTeacher[]>([]),[freeSlots,setFreeSlots]=useState<FreeSlot[]>([]),[availabilityLoading,setAvailabilityLoading]=useState(false),[workRefresh,setWorkRefresh]=useState(0);
+ const[freeSlots,setFreeSlots]=useState<FreeSlot[]>([]),[availabilityLoading,setAvailabilityLoading]=useState(false),[workRefresh,setWorkRefresh]=useState(0);
 
  async function load(){
-  const[meetingResult,staffResult,studentResult,roomResult,entryResult,teacherResult]=await Promise.all([
+  const[meetingResult,staffResult,studentResult,roomResult]=await Promise.all([
    supabase.from("calendar_meetings").select("id,title,meeting_type,starts_at,ends_at,location,student_id").order("starts_at"),
    supabase.rpc("get_internal_staff_directory"),
    supabase.rpc("get_internal_student_directory"),
-   supabase.from("school_rooms").select("id,name").eq("active",true).order("name"),
-   supabase.from("schedule_entries").select("id,weekday,start_time,end_time,recurrence_pattern"),
-   supabase.from("schedule_teachers").select("schedule_entry_id,teacher_id")
+   supabase.from("school_rooms").select("id,name").eq("active",true).order("name")
   ]);
-  setMeetings((meetingResult.data||[]) as Meeting[]);setDirectory((staffResult.data||[]) as DirectoryUser[]);setStudents((studentResult.data||[]) as Student[]);setRooms((roomResult.data||[]) as Room[]);setScheduleEntries((entryResult.data||[]) as ScheduleEntry[]);setScheduleTeachers((teacherResult.data||[]) as ScheduleTeacher[]);
-  const errors=[meetingResult.error&&dbError("Møder",meetingResult.error),staffResult.error&&dbError("Personale",staffResult.error),studentResult.error&&dbError("Elever",studentResult.error),roomResult.error&&dbError("Lokaler",roomResult.error),entryResult.error&&dbError("Skema",entryResult.error),teacherResult.error&&dbError("Skemalærere",teacherResult.error)].filter(Boolean);
+  setMeetings((meetingResult.data||[]) as Meeting[]);setDirectory((staffResult.data||[]) as DirectoryUser[]);setStudents((studentResult.data||[]) as Student[]);setRooms((roomResult.data||[]) as Room[]);
+  const errors=[meetingResult.error&&dbError("Møder",meetingResult.error),staffResult.error&&dbError("Personale",staffResult.error),studentResult.error&&dbError("Elever",studentResult.error),roomResult.error&&dbError("Lokaler",roomResult.error)].filter(Boolean);
   setFormError(errors.length?`Noget kunne ikke hentes helt. ${errors.join(" · ")}`:"");
  }
 
@@ -78,17 +73,20 @@ export default function CalendarPage(){
    if(!open||bookedPeople.length===0){setFreeSlots([]);return}
    const duration=minutes(endTime)-minutes(time);if(duration<=0||duration>360){setFreeSlots([]);return}
    setAvailabilityLoading(true);
-   const dayStart=new Date(`${date}T00:00:00`),dayEnd=new Date(`${date}T23:59:59`);
-   const{data,error}=await supabase.rpc("staff_busy_intervals",{p_user_ids:bookedPeople,p_start:dayStart.toISOString(),p_end:dayEnd.toISOString()});
-   if(!active)return;if(error){setFreeSlots([]);setAvailabilityLoading(false);return}
-   const busy=(data||[]) as Busy[],weekday=new Date(`${date}T12:00:00`).getDay(),entryById=new Map(scheduleEntries.map(e=>[e.id,e])),scheduleByUser=new Map<string,ScheduleEntry[]>();
-   for(const row of scheduleTeachers){if(!bookedPeople.includes(row.teacher_id))continue;const entry=entryById.get(row.schedule_entry_id);if(!entry||entry.weekday!==weekday||!scheduleOccursOn(entry.recurrence_pattern,date))continue;const list=scheduleByUser.get(row.teacher_id)||[];list.push(entry);scheduleByUser.set(row.teacher_id,list)}
-   const busyByUser=new Map<string,Busy[]>();for(const row of busy){const list=busyByUser.get(row.user_id)||[];list.push(row);busyByUser.set(row.user_id,list)}
+   const{data,error}=await supabase.rpc("staff_booking_busy_intervals",{p_user_ids:bookedPeople,p_date:date});
+   if(!active)return;
+   if(error){setFreeSlots([]);setAvailabilityLoading(false);return}
+   const busy=(data||[]) as Busy[],busyByUser=new Map<string,Busy[]>();for(const row of busy){const list=busyByUser.get(row.user_id)||[];list.push(row);busyByUser.set(row.user_id,list)}
    const candidates:FreeSlot[]=[],searchStart=7*60,searchEnd=18*60,now=new Date();
-   for(let start=searchStart;start+duration<=searchEnd;start+=15){const end=start+duration,startDate=new Date(`${date}T${hhmm(start)}:00`),endDate=new Date(`${date}T${hhmm(end)}:00`);if(date===iso(now)&&startDate.getTime()<now.getTime())continue;const free=bookedPeople.every(userId=>{if((scheduleByUser.get(userId)||[]).some(e=>start<minutes(e.end_time)&&end>minutes(e.start_time)))return false;return !(busyByUser.get(userId)||[]).some(b=>startDate.getTime()<new Date(b.ends_at).getTime()&&endDate.getTime()>new Date(b.starts_at).getTime())});if(free)candidates.push({start:hhmm(start),end:hhmm(end)});if(candidates.length>=8)break}
+   for(let start=searchStart;start+duration<=searchEnd;start+=15){
+    const end=start+duration,startDate=new Date(`${date}T${hhmm(start)}:00`),endDate=new Date(`${date}T${hhmm(end)}:00`);
+    if(date===iso(now)&&startDate.getTime()<now.getTime())continue;
+    const free=bookedPeople.every(userId=>!(busyByUser.get(userId)||[]).some(b=>startDate.getTime()<new Date(b.ends_at).getTime()&&endDate.getTime()>new Date(b.starts_at).getTime()));
+    if(free)candidates.push({start:hhmm(start),end:hhmm(end)});if(candidates.length>=8)break
+   }
    setFreeSlots(candidates);setAvailabilityLoading(false);
   })();return()=>{active=false};
- },[open,bookedPeople,date,time,endTime,scheduleEntries,scheduleTeachers]);
+ },[open,bookedPeople,date,time,endTime]);
 
  async function createMeeting(){
   if(!title.trim())return;const start=new Date(`${date}T${time}:00`),end=new Date(`${date}T${endTime}:00`);if(Number.isNaN(start.getTime())||Number.isNaN(end.getTime())||end<=start){setFormError("Sluttid skal være efter starttid.");return}
@@ -116,7 +114,7 @@ export default function CalendarPage(){
   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12}}><label style={label}>Mødetype<select value={type} onChange={e=>{setType(e.target.value);if(e.target.value!=="Elevmøde"&&e.target.value!=="Netværksmøde")setStudentId("")}} style={input}>{types.map(t=><option key={t}>{t}</option>)}</select></label><label style={label}>Titel<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Fx Teamstatus" style={input}/></label><label style={label}>Fra<input type="time" value={time} onChange={e=>setTime(e.target.value)} style={input}/></label><label style={label}>Til<input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} style={input}/></label><label style={label}>Lokale<select value={roomId} onChange={e=>setRoomId(e.target.value?Number(e.target.value):"")} style={input}><option value="">Intet lokale / andet sted</option>{rooms.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label></div>
   {studentMeeting&&<div style={section}><p style={eyebrow}>MØDET HANDLER OM</p><select value={studentId} onChange={e=>setStudentId(e.target.value?Number(e.target.value):"")} style={input}><option value="">Vælg elev (eleven får ikke adgang)</option>{students.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>{studentId&&<><p style={{...eyebrow,marginTop:16}}>FORÆLDRE / VÆRGER</p>{guardians.length?<div style={{display:"grid",gap:7,marginTop:8}}>{guardians.map(g=><label key={g.user_id} style={choice(selectedGuardians.includes(g.user_id))}><input type="checkbox" checked={selectedGuardians.includes(g.user_id)} onChange={()=>toggleGuardian(g.user_id)}/><span><strong>{g.display_name}</strong>{g.relation&&<small> · {g.relation}</small>}</span></label>)}</div>:<p style={muted}>Der er endnu ingen forældre med login koblet til eleven.</p>}<small style={{display:"block",color:"#707670",marginTop:8}}>Valgte forældre får adgang til officielt mødemateriale, aldrig interne noter.</small></>}</div>}
   <div style={section}><p style={eyebrow}>BOOK PERSONALE</p><div style={{padding:"9px 11px",background:"#e7eee9",borderRadius:8,marginTop:8,fontSize:13}}><strong>{currentName}</strong> · du er automatisk med som mødeopretter</div>{staffDirectory.filter(u=>u.user_id!==currentUserId).length?<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:7,marginTop:8}}>{staffDirectory.filter(u=>u.user_id!==currentUserId).map(u=><label key={u.user_id} style={choice(selected.includes(u.user_id))}><input type="checkbox" checked={selected.includes(u.user_id)} onChange={()=>toggleUser(u.user_id)}/><span><strong>{u.display_name}</strong> <small style={muted}>· {roleName(u.role)}</small></span></label>)}</div>:<p style={muted}>Der er endnu ikke andre aktive personer i personalekataloget.</p>}
-   <div style={{marginTop:14,padding:"12px 13px",background:"#f7f5ef",border:"1px solid #e2ded5",borderRadius:10}}><strong style={{fontSize:13}}>Fælles ledige tider</strong><small style={{display:"block",color:"#707670",marginTop:3}}>Forslag mellem kl. 07 og 18 ud fra de valgtes skema, møder og fravær. Andres mødeindhold vises ikke.</small>{availabilityLoading?<div style={{marginTop:9,color:"#707670"}}>Finder tider…</div>:freeSlots.length?<div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:9}}>{freeSlots.map(slot=><button key={slot.start} type="button" onClick={()=>{setTime(slot.start);setEndTime(slot.end)}} style={slotButton}>{slot.start}–{slot.end}</button>)}</div>:<div style={{marginTop:9,color:"#8b6d46",fontWeight:800,fontSize:13}}>Ingen fælles ledig tid fundet i dette tidsrum.</div>}</div>
+   <div style={{marginTop:14,padding:"12px 13px",background:"#f7f5ef",border:"1px solid #e2ded5",borderRadius:10}}><strong style={{fontSize:13}}>Fælles ledige tider</strong><small style={{display:"block",color:"#707670",marginTop:3}}>Forslag mellem kl. 07 og 18 ud fra gældende skema, vikardækning, møder og fravær. Andres mødeindhold vises ikke.</small>{availabilityLoading?<div style={{marginTop:9,color:"#707670"}}>Finder tider…</div>:freeSlots.length?<div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:9}}>{freeSlots.map(slot=><button key={slot.start} type="button" onClick={()=>{setTime(slot.start);setEndTime(slot.end)}} style={slotButton}>{slot.start}–{slot.end}</button>)}</div>:<div style={{marginTop:9,color:"#8b6d46",fontWeight:800,fontSize:13}}>Ingen fælles ledig tid fundet i dette tidsrum.</div>}</div>
    {bookedPeople.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:10,marginTop:14}}><label style={label}>Mødeleder<select value={meetingLeader} onChange={e=>setMeetingLeader(e.target.value)} style={input}><option value="">Ikke valgt</option>{bookedPeople.map(id=><option key={id} value={id}>{directory.find(u=>u.user_id===id)?.display_name||currentName}</option>)}</select></label><label style={label}>Referent<select value={minuteTaker} onChange={e=>setMinuteTaker(e.target.value)} style={input}><option value="">Ikke valgt</option>{bookedPeople.map(id=><option key={id} value={id}>{directory.find(u=>u.user_id===id)?.display_name||currentName}</option>)}</select></label></div>}
   </div>
   <div style={section}><p style={eyebrow}>DAGSORDEN</p><label style={label}>Start dagsordenen <span style={{fontWeight:500,color:"#707670"}}>(valgfrit)</span><textarea value={agendaDraft} onChange={e=>setAgendaDraft(e.target.value)} rows={4} placeholder={"Fx:\n1. Kort status\n2. Hvad fungerer lige nu?\n3. Aftaler og næste skridt"} style={{...input,resize:"vertical",lineHeight:1.5}}/></label><label style={{...label,marginTop:14}}>Interne forberedelsesnoter <span style={{fontWeight:500,color:"#707670"}}>(valgfrit)</span><textarea value={internalNotesDraft} onChange={e=>setInternalNotesDraft(e.target.value)} rows={3} placeholder="Noter kun til personale – deles ikke med forældre eller eksterne deltagere." style={{...input,resize:"vertical",lineHeight:1.5}}/></label></div>
