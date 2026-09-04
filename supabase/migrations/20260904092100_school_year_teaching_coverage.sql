@@ -1,1 +1,1 @@
--- Replaced by 20260904091748_school_year_teaching_coverage.sql to match the migration version registered in Supabase.
+-- superseded; safe to delete after the correctly timestamped migration file is added
