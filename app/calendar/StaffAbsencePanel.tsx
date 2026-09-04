@@ -2,12 +2,11 @@
 
 import {useEffect,useMemo,useState} from "react";
 import {supabase} from "../../lib/supabase";
-import {scheduleOccursOn,type RecurrencePattern} from "../../lib/scheduleRecurrence";
 
 type DirectoryUser={user_id:string;display_name:string;role:string};
 type StaffAbsence={id:number;user_id:string;absence_date:string;status:string;note:string|null};
-type Entry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:string;recurrence_pattern:RecurrencePattern};
-type TeacherLink={schedule_entry_id:number;teacher_id:string};
+type Entry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:string};
+type ScheduleOccurrenceRow={schedule_entry_id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:string};
 type Klass={id:number;name:string;school_id:number|null};
 type Assignment={id:number;schedule_entry_id:number;assignment_date:string;absent_teacher_id:string;substitute_teacher_id:string;school_id:number};
 type Busy={user_id:string;starts_at:string;ends_at:string;busy_type:string};
@@ -28,52 +27,43 @@ const TYPES=[
  {value:"course",label:"Kursus / arbejdsrelateret"},
  {value:"other",label:"Andet"}
 ];
-const timeMinutes=(value:string)=>{const[h,m]=value.slice(0,5).split(":").map(Number);return h*60+m};
-const overlaps=(aStart:string,aEnd:string,bStart:string,bEnd:string)=>timeMinutes(aStart)<timeMinutes(bEnd)&&timeMinutes(aEnd)>timeMinutes(bStart);
 const isoTime=(date:string,time:string)=>new Date(`${date}T${time.slice(0,5)}:00`).getTime();
 const roleLabel=(role:string)=>role==="teacher"?"Lærer":role==="admin"||role==="leader"?"Ledelse":role;
 
 export default function StaffAbsencePanel({selectedDate,viewedUserId,viewedName,directory,onChanged}:Props){
  const[absence,setAbsence]=useState<StaffAbsence|null>(null);
  const[status,setStatus]=useState("sick"),[note,setNote]=useState("");
- const[entries,setEntries]=useState<Entry[]>([]),[links,setLinks]=useState<TeacherLink[]>([]),[classes,setClasses]=useState<Klass[]>([]),[assignments,setAssignments]=useState<Assignment[]>([]),[busy,setBusy]=useState<Busy[]>([]);
+ const[entries,setEntries]=useState<Entry[]>([]),[classes,setClasses]=useState<Klass[]>([]),[assignments,setAssignments]=useState<Assignment[]>([]),[busy,setBusy]=useState<Busy[]>([]);
  const[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[message,setMessage]=useState("");
 
  async function load(){
   if(!viewedUserId)return;
   setLoading(true);setMessage("");
   const staffIds=directory.filter(x=>["teacher","admin","leader"].includes(x.role)).map(x=>x.user_id);
-  const start=new Date(`${selectedDate}T00:00:00`),end=new Date(`${selectedDate}T23:59:59`);
-  const[aRes,eRes,lRes,cRes,sRes,bRes]=await Promise.all([
+  const[aRes,oRes,cRes,sRes,bRes]=await Promise.all([
    supabase.from("staff_absence").select("id,user_id,absence_date,status,note").eq("user_id",viewedUserId).eq("absence_date",selectedDate).limit(1).maybeSingle(),
-   supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room,entry_kind,recurrence_pattern"),
-   supabase.from("schedule_teachers").select("schedule_entry_id,teacher_id"),
+   supabase.rpc("staff_schedule_occurrences",{p_user_ids:[viewedUserId],p_start_date:selectedDate,p_end_date:selectedDate}),
    supabase.from("classes").select("id,name,school_id"),
    supabase.from("substitute_assignments").select("id,schedule_entry_id,assignment_date,absent_teacher_id,substitute_teacher_id,school_id").eq("assignment_date",selectedDate),
-   staffIds.length?supabase.rpc("staff_busy_intervals",{p_user_ids:staffIds,p_start:start.toISOString(),p_end:end.toISOString()}):Promise.resolve({data:[],error:null})
+   staffIds.length?supabase.rpc("staff_booking_busy_intervals",{p_user_ids:staffIds,p_date:selectedDate}):Promise.resolve({data:[],error:null})
   ]);
   const row=(aRes.data||null) as StaffAbsence|null;
+  const occurrences=((oRes.data||[]) as ScheduleOccurrenceRow[]).map(x=>({id:Number(x.schedule_entry_id),class_id:Number(x.class_id),weekday:Number(x.weekday),start_time:x.start_time,end_time:x.end_time,subject:x.subject,room:x.room,entry_kind:x.entry_kind}));
   setAbsence(row);setStatus(row?.status||"sick");setNote(row?.note||"");
-  setEntries((eRes.data||[]) as Entry[]);setLinks((lRes.data||[]) as TeacherLink[]);setClasses((cRes.data||[]) as Klass[]);setAssignments((sRes.data||[]) as Assignment[]);setBusy((bRes.data||[]) as Busy[]);
-  const problem=aRes.error||eRes.error||lRes.error||cRes.error||sRes.error||bRes.error;
+  setEntries(occurrences);setClasses((cRes.data||[]) as Klass[]);setAssignments((sRes.data||[]) as Assignment[]);setBusy((bRes.data||[]) as Busy[]);
+  const problem=aRes.error||oRes.error||cRes.error||sRes.error||bRes.error;
   if(problem)setMessage(problem.message||"Personalefravær kunne ikke hentes helt.");
   setLoading(false);
  }
  useEffect(()=>{void load()},[selectedDate,viewedUserId]);
 
- const affected=useMemo(()=>{
-  const weekday=new Date(`${selectedDate}T12:00:00`).getDay();
-  const ids=new Set(links.filter(x=>x.teacher_id===viewedUserId).map(x=>x.schedule_entry_id));
-  return entries.filter(e=>ids.has(e.id)&&e.entry_kind==="lesson"&&e.weekday===weekday&&scheduleOccursOn(e.recurrence_pattern,selectedDate)).sort((a,b)=>a.start_time.localeCompare(b.start_time));
- },[entries,links,viewedUserId,selectedDate]);
+ const affected=useMemo(()=>entries.filter(e=>e.entry_kind==="lesson").sort((a,b)=>a.start_time.localeCompare(b.start_time)),[entries]);
 
  const className=(id:number)=>classes.find(c=>c.id===id)?.name||"Klasse";
  const personName=(id:string)=>directory.find(x=>x.user_id===id)?.display_name||"Medarbejder";
  const currentAssignment=(lessonId:number)=>assignments.find(a=>a.schedule_entry_id===lessonId&&a.absent_teacher_id===viewedUserId)||null;
  const candidateStaff=directory.filter(x=>x.user_id!==viewedUserId&&["teacher","admin","leader"].includes(x.role));
  function availableFor(personId:string,lesson:Entry){
-  const scheduleConflict=entries.some(e=>e.id!==lesson.id&&e.weekday===lesson.weekday&&scheduleOccursOn(e.recurrence_pattern,selectedDate)&&overlaps(e.start_time,e.end_time,lesson.start_time,lesson.end_time)&&links.some(l=>l.schedule_entry_id===e.id&&l.teacher_id===personId));
-  if(scheduleConflict)return false;
   const start=isoTime(selectedDate,lesson.start_time),end=isoTime(selectedDate,lesson.end_time);
   return !busy.some(b=>b.user_id===personId&&start<new Date(b.ends_at).getTime()&&end>new Date(b.starts_at).getTime());
  }
