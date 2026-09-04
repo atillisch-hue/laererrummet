@@ -7,6 +7,7 @@ type Coverage={class_subject_id:number;class_id:number;class_name:string;subject
 type Health={schedule_version_id:number;lesson_entries:number;explicit_subject_links:number;fallback_title_matches:number;unresolved_lessons:number};
 type ResourceRow={user_id:string;annual_target_minutes:number;employment_percent:number|string|null;teaching_minutes:number|string;scheduled_other_minutes:number|string;allocation_minutes:number|string;planned_minutes:number|string;remaining_minutes:number|string;utilization_percent:number|string|null;resource_status:"overbooked"|"fully_allocated"|"unallocated"};
 type StaffHealth={schedule_version_id:number;staff_relevant_entries:number;assigned_entries:number;unassigned_entries:number};
+type Conflict={conflict_type:"class"|"teacher"|"room";entry_a_id:number;entry_b_id:number;weekday:number;overlap_start:string;overlap_end:string;overlap_pattern:"weekly"|"odd"|"even";class_a:string;class_b:string;subject_a:string;subject_b:string;room:string|null;teacher_ids:string[]};
 type Props={schoolYearId:number;scheduleVersionId:number|null};
 
 const card:React.CSSProperties={background:"white",border:"1px solid #ddd9d0",borderRadius:14,padding:20,marginTop:18};
@@ -18,22 +19,27 @@ const tone=(status:Coverage["coverage_status"])=>status==="covered"?{background:
 const coverageLabel=(status:Coverage["coverage_status"])=>status==="covered"?"Dækket":status==="missing"?"Mangler":"For meget";
 const resourceTone=(status:ResourceRow["resource_status"])=>status==="fully_allocated"?{background:"#e5efe8",color:"#365844"}:status==="overbooked"?{background:"#fff0e9",color:"#8a4a39"}:{background:"#eef0ed",color:"#56645d"};
 const resourceLabel=(status:ResourceRow["resource_status"])=>status==="fully_allocated"?"Fuldt fordelt":status==="overbooked"?"Overbooket":"Ikke fuldt fordelt";
+const weekdayLabel=(day:number)=>["Søndag","Mandag","Tirsdag","Onsdag","Torsdag","Fredag","Lørdag"][day]||`Dag ${day}`;
+const recurrenceLabel=(value:string)=>value==="odd"?"ulige uger":value==="even"?"lige uger":"hver uge";
+const timeShort=(value:string)=>value?.slice(0,5)||"";
+const conflictLabel=(type:Conflict["conflict_type"])=>type==="teacher"?"Lærer":type==="room"?"Lokale":"Klasse";
 
 export default function PlanningCoverage({schoolYearId,scheduleVersionId}:Props){
- const[rows,setRows]=useState<Coverage[]>([]),[health,setHealth]=useState<Health|null>(null),[resources,setResources]=useState<ResourceRow[]>([]),[staffHealth,setStaffHealth]=useState<StaffHealth|null>(null),[names,setNames]=useState<Record<string,string>>({}),[abbreviations,setAbbreviations]=useState<Record<string,string>>({}),[error,setError]=useState(""),[loading,setLoading]=useState(true);
+ const[rows,setRows]=useState<Coverage[]>([]),[health,setHealth]=useState<Health|null>(null),[resources,setResources]=useState<ResourceRow[]>([]),[staffHealth,setStaffHealth]=useState<StaffHealth|null>(null),[conflicts,setConflicts]=useState<Conflict[]>([]),[names,setNames]=useState<Record<string,string>>({}),[abbreviations,setAbbreviations]=useState<Record<string,string>>({}),[error,setError]=useState(""),[loading,setLoading]=useState(true);
  useEffect(()=>{let live=true;(async()=>{
   setLoading(true);setError("");
-  if(!scheduleVersionId){if(live){setRows([]);setHealth(null);setResources([]);setStaffHealth(null);setLoading(false)}return}
-  const[c,h,r,sh]=await Promise.all([
+  if(!scheduleVersionId){if(live){setRows([]);setHealth(null);setResources([]);setStaffHealth(null);setConflicts([]);setLoading(false)}return}
+  const[c,h,r,sh,cf]=await Promise.all([
    supabase.rpc("school_year_teaching_coverage",{p_school_year_id:schoolYearId,p_schedule_version_id:scheduleVersionId}),
    supabase.rpc("school_year_schedule_match_health",{p_school_year_id:schoolYearId,p_schedule_version_id:scheduleVersionId}),
    supabase.rpc("school_year_staff_resource_impact",{p_school_year_id:schoolYearId,p_schedule_version_id:scheduleVersionId}),
-   supabase.rpc("school_year_staff_schedule_health",{p_school_year_id:schoolYearId,p_schedule_version_id:scheduleVersionId})
+   supabase.rpc("school_year_staff_schedule_health",{p_school_year_id:schoolYearId,p_schedule_version_id:scheduleVersionId}),
+   supabase.rpc("school_year_schedule_conflicts",{p_school_year_id:schoolYearId,p_schedule_version_id:scheduleVersionId})
   ]);
   if(!live)return;
-  if(c.error||h.error||r.error||sh.error){setError(c.error?.message||h.error?.message||r.error?.message||sh.error?.message||"Konsekvensberegningen kunne ikke gennemføres.");setLoading(false);return}
+  if(c.error||h.error||r.error||sh.error||cf.error){setError(c.error?.message||h.error?.message||r.error?.message||sh.error?.message||cf.error?.message||"Konsekvensberegningen kunne ikke gennemføres.");setLoading(false);return}
   const resourceRows=(r.data||[]) as ResourceRow[];
-  setRows((c.data||[]) as Coverage[]);setHealth(((h.data||[])[0]||null) as Health|null);setResources(resourceRows);setStaffHealth(((sh.data||[])[0]||null) as StaffHealth|null);
+  setRows((c.data||[]) as Coverage[]);setHealth(((h.data||[])[0]||null) as Health|null);setResources(resourceRows);setStaffHealth(((sh.data||[])[0]||null) as StaffHealth|null);setConflicts((cf.data||[]) as Conflict[]);
   const ids=resourceRows.map(x=>x.user_id);
   if(ids.length){
    const[pRes,dRes]=await Promise.all([
@@ -50,6 +56,7 @@ export default function PlanningCoverage({schoolYearId,scheduleVersionId}:Props)
 
  const covered=rows.filter(r=>r.coverage_status==="covered").length,missing=rows.filter(r=>r.coverage_status==="missing").length,over=rows.filter(r=>r.coverage_status==="over").length;
  const overbooked=resources.filter(r=>r.resource_status==="overbooked").length,fully=resources.filter(r=>r.resource_status==="fully_allocated").length,unallocated=resources.filter(r=>r.resource_status==="unallocated").length;
+ const classConflicts=conflicts.filter(c=>c.conflict_type==="class").length,teacherConflicts=conflicts.filter(c=>c.conflict_type==="teacher").length,roomConflicts=conflicts.filter(c=>c.conflict_type==="room").length;
 
  return <>
   <section style={card}>
@@ -73,6 +80,16 @@ export default function PlanningCoverage({schoolYearId,scheduleVersionId}:Props)
     {staffHealth&&staffHealth.unassigned_entries>0&&<div style={{marginTop:12,padding:12,background:"#fff0e9",border:"1px solid #e3b7a8",borderRadius:9,color:"#7c4333"}}><strong>{staffHealth.unassigned_entries} bemandingsrelevant skemabrik{staffHealth.unassigned_entries===1?" mangler":"ker mangler"} en medarbejder.</strong> De timer kan derfor endnu ikke indgå i personernes ressourceberegning.</div>}
     <div style={{display:"grid",gap:9,marginTop:14}}>{resources.map(row=>{const remaining=Number(row.remaining_minutes)||0,pct=Number(row.utilization_percent)||0;const display=names[row.user_id]||"Medarbejder";const abbr=abbreviations[row.user_id];return <div key={row.user_id} style={{padding:"13px 14px",background:"#f8f6f1",borderRadius:10}}><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><div><strong>{abbr?`${abbr} · `:""}{display}</strong><span style={{...resourceTone(row.resource_status),display:"inline-block",marginLeft:8,padding:"3px 7px",borderRadius:999,fontSize:10,fontWeight:900}}>{resourceLabel(row.resource_status)}</span><small style={{display:"block",color:"#747c75",marginTop:3}}>{row.employment_percent?`${Number(row.employment_percent).toLocaleString("da-DK",{maximumFractionDigits:1})}% ansættelse · `:""}{pct.toLocaleString("da-DK",{maximumFractionDigits:1})}% af årsnormen fordelt</small></div><div style={{fontWeight:900,color:remaining<0?"#8a4a39":"#365844"}}>{remaining<0?`${fmtMinutes(Math.abs(remaining))} over`:`${fmtMinutes(remaining)} endnu ikke fordelt`}</div></div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8,marginTop:10}}><Metric label="Årsnorm" value={fmtMinutes(row.annual_target_minutes)}/><Metric label="Undervisning" value={fmtMinutes(row.teaching_minutes)}/><Metric label="Skema øvrigt" value={fmtMinutes(row.scheduled_other_minutes)}/><Metric label="Årsopgaver" value={fmtMinutes(row.allocation_minutes)}/><Metric label="Planlagt i alt" value={fmtMinutes(row.planned_minutes)}/></div></div>})}{!resources.length&&<div style={{padding:12,background:"#f7f5ef",borderRadius:8,color:"#707770"}}>Der er endnu ingen årsnormer knyttet til skoleåret. Når de oprettes, vises ressourcekonsekvensen her.</div>}</div>
     <div style={{marginTop:12,padding:11,background:"#eef2ec",borderRadius:8,color:"#526158",fontSize:13}}><strong>Vigtigt:</strong> “Ikke fuldt fordelt” betyder kun, at timerne endnu ikke findes i planmodellen. Det er ikke det samme som, at medarbejderen mangler reelt arbejde.</div>
+   </>}
+  </section>
+
+  <section style={card}>
+   <small style={eyebrow}>KONFLIKTKONTROL</small>
+   <h2 style={heading}>Kan skemakladden faktisk lade sig gøre?</h2>
+   <p style={muted}>Klasseværelset kontrollerer overlappende tider for klasser, medarbejdere og lokaler. “Hver uge” kolliderer med både ulige og lige uger; ulige og lige uger kan derimod dele samme tidspunkt uden konflikt.</p>
+   {!loading&&!error&&<>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}}><span style={{padding:"6px 9px",borderRadius:999,background:classConflicts?"#fff0e9":"#e5efe8",color:classConflicts?"#8a4a39":"#365844",fontWeight:850,fontSize:12}}>{classConflicts} klassekonflikter</span><span style={{padding:"6px 9px",borderRadius:999,background:teacherConflicts?"#fff0e9":"#e5efe8",color:teacherConflicts?"#8a4a39":"#365844",fontWeight:850,fontSize:12}}>{teacherConflicts} lærerkonflikter</span><span style={{padding:"6px 9px",borderRadius:999,background:roomConflicts?"#fff0e9":"#e5efe8",color:roomConflicts?"#8a4a39":"#365844",fontWeight:850,fontSize:12}}>{roomConflicts} lokalekonflikter</span></div>
+    {conflicts.length?<div style={{display:"grid",gap:8,marginTop:14}}>{conflicts.map((c,i)=><div key={`${c.conflict_type}-${c.entry_a_id}-${c.entry_b_id}-${i}`} style={{padding:"11px 12px",background:"#fff7f2",border:"1px solid #ead1c7",borderRadius:9}}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap"}}><strong>{conflictLabel(c.conflict_type)}konflikt</strong><span style={{fontSize:12,fontWeight:850,color:"#7a4f43"}}>{weekdayLabel(c.weekday)} {timeShort(c.overlap_start)}–{timeShort(c.overlap_end)} · {recurrenceLabel(c.overlap_pattern)}</span></div><div style={{marginTop:5,fontSize:13,color:"#625f59"}}><strong>{c.class_a} · {c.subject_a}</strong> ↔ <strong>{c.class_b} · {c.subject_b}</strong>{c.conflict_type==="room"&&c.room?` · ${c.room}`:""}</div></div>)}</div>:<div style={{marginTop:14,padding:12,background:"#e9f1eb",borderRadius:8,color:"#365844",fontWeight:800}}>Ingen tidskonflikter fundet i den valgte skemaversion ✓</div>}
    </>}
   </section>
  </>;
