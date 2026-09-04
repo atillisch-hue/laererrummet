@@ -1,34 +1,59 @@
 "use client";
 import Link from "next/link";
-import {useEffect,useMemo,useState}from"react";
+import {useEffect,useState}from"react";
 import{supabase}from"../../../lib/supabase";
 
 type Entry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null};
+type Occurrence={occurrence_date:string;schedule_entry_id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null};
 type Klass={id:number;name:string};
-type Lnk={schedule_entry_id:number;teacher_id:string};
 type Profile={user_id:string;initials:string|null};
 type A={id:number;schedule_entry_id:number;assignment_date:string;absent_teacher_id:string;substitute_teacher_id:string;substitute_plan:string|null;handover_done:string|null;handover_not_done:string|null;handover_note:string|null;handover_updated_at:string|null};
 const assignmentFields="id,schedule_entry_id,assignment_date,absent_teacher_id,substitute_teacher_id,substitute_plan,handover_done,handover_not_done,handover_note,handover_updated_at";
 const iso=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 
 export default function ScheduleHub(){
- const[ready,setReady]=useState(false),[uid,setUid]=useState(""),[date,setDate]=useState(()=>iso(new Date())),[entries,setEntries]=useState<Entry[]>([]),[classes,setClasses]=useState<Klass[]>([]),[links,setLinks]=useState<Lnk[]>([]),[profiles,setProfiles]=useState<Profile[]>([]),[assignments,setAssignments]=useState<A[]>([]),[drafts,setDrafts]=useState<Record<number,string>>({}),[saving,setSaving]=useState<number|null>(null),[msg,setMsg]=useState("");
- const loadAssignments=async()=>{const{data}=await supabase.from("substitute_assignments").select(assignmentFields);setAssignments((data||[])as A[])};
- useEffect(()=>{(async()=>{const{data}=await supabase.auth.getSession();const u=data.session?.user;if(!u){location.href="/?teacher=1";return}setUid(u.id);const[e,c,l,p,a]=await Promise.all([supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room").order("weekday").order("start_time"),supabase.from("classes").select("id,name"),supabase.from("schedule_teachers").select("schedule_entry_id,teacher_id"),supabase.from("user_profiles").select("user_id,initials"),supabase.from("substitute_assignments").select(assignmentFields)]);setEntries((e.data||[])as Entry[]);setClasses((c.data||[])as Klass[]);setLinks((l.data||[])as Lnk[]);setProfiles((p.data||[])as Profile[]);setAssignments((a.data||[])as A[]);setReady(true)})()},[]);
- const d=new Date(date+"T12:00:00"),wd=d.getDay();
- const mine=useMemo(()=>entries.filter(e=>e.weekday===wd&&links.some(l=>l.schedule_entry_id===e.id&&l.teacher_id===uid)),[entries,links,uid,wd]);
- const coverage=assignments.filter(a=>a.assignment_date===date).map(a=>({a,e:entries.find(e=>e.id===a.schedule_entry_id)})).filter(x=>x.e)as{a:A;e:Entry}[];
+ const[ready,setReady]=useState(false),[uid,setUid]=useState(""),[date,setDate]=useState(()=>iso(new Date())),[mine,setMine]=useState<Entry[]>([]),[coverageEntries,setCoverageEntries]=useState<Entry[]>([]),[classes,setClasses]=useState<Klass[]>([]),[profiles,setProfiles]=useState<Profile[]>([]),[assignments,setAssignments]=useState<A[]>([]),[drafts,setDrafts]=useState<Record<number,string>>({}),[saving,setSaving]=useState<number|null>(null),[msg,setMsg]=useState("");
+
+ async function loadCoverage(targetDate:string){
+  const a=await supabase.from("substitute_assignments").select(assignmentFields).eq("assignment_date",targetDate);
+  const rows=(a.data||[])as A[];setAssignments(rows);
+  const ids=Array.from(new Set(rows.map(x=>x.schedule_entry_id)));
+  if(!ids.length){setCoverageEntries([]);return a.error}
+  const e=await supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room").in("id",ids);
+  setCoverageEntries((e.data||[])as Entry[]);
+  return a.error||e.error;
+ }
+
+ async function loadDay(userId:string,targetDate:string){
+  const[o,c,p]=await Promise.all([
+   supabase.rpc("staff_schedule_occurrences",{p_user_ids:[userId],p_start_date:targetDate,p_end_date:targetDate}),
+   supabase.from("classes").select("id,name"),
+   supabase.from("user_profiles").select("user_id,initials")
+  ]);
+  const coverageError=await loadCoverage(targetDate);
+  const occurrences=(o.data||[])as Occurrence[];
+  setMine(occurrences.map(x=>({id:x.schedule_entry_id,class_id:x.class_id,weekday:x.weekday,start_time:x.start_time,end_time:x.end_time,subject:x.subject,room:x.room})));
+  setClasses((c.data||[])as Klass[]);setProfiles((p.data||[])as Profile[]);
+  const problem=o.error||c.error||p.error||coverageError;
+  if(problem)setMsg("Noget af skemaet kunne ikke hentes helt: "+problem.message);
+ }
+
+ useEffect(()=>{(async()=>{const{data}=await supabase.auth.getSession();const u=data.session?.user;if(!u){location.href="/?teacher=1";return}setUid(u.id)})()},[]);
+ useEffect(()=>{if(!uid)return;let active=true;(async()=>{setReady(false);await loadDay(uid,date);if(active)setReady(true)})();return()=>{active=false}},[uid,date]);
+
+ const d=new Date(date+"T12:00:00");
+ const coverage=assignments.map(a=>({a,e:coverageEntries.find(e=>e.id===a.schedule_entry_id)})).filter(x=>x.e)as{a:A;e:Entry}[];
  const cls=(id:number)=>classes.find(c=>c.id===id)?.name||"Klasse";
  const who=(id:string)=>profiles.find(p=>p.user_id===id)?.initials?.trim()?.toUpperCase()||"Lærer";
  const move=(n:number)=>{const x=new Date(date+"T12:00:00");x.setDate(x.getDate()+n);setDate(iso(x));setMsg("")};
- const savePlan=async(a:A)=>{setSaving(a.id);setMsg("");const value=(drafts[a.id]??a.substitute_plan??"").trim();const{error}=await supabase.from("substitute_assignments").update({substitute_plan:value||null}).eq("id",a.id).eq("absent_teacher_id",uid);if(error)setMsg("Vikarplanen kunne ikke gemmes: "+error.message);else{setMsg(value?"Vikarplan gemt ✓":"Vikarplanen er ryddet ✓");setDrafts(v=>({...v,[a.id]:value}));await loadAssignments()}setSaving(null)};
- const clearPlan=async(a:A)=>{if(!confirm("Ryd vikarplanen for denne time? Selve vikardækningen bliver stående."))return;setSaving(a.id);setMsg("");const{error}=await supabase.from("substitute_assignments").update({substitute_plan:null}).eq("id",a.id).eq("absent_teacher_id",uid);if(error)setMsg("Vikarplanen kunne ikke ryddes: "+error.message);else{setDrafts(v=>({...v,[a.id]:""}));setMsg("Vikarplanen er ryddet ✓");await loadAssignments()}setSaving(null)};
+ const savePlan=async(a:A)=>{setSaving(a.id);setMsg("");const value=(drafts[a.id]??a.substitute_plan??"").trim();const{error}=await supabase.from("substitute_assignments").update({substitute_plan:value||null}).eq("id",a.id).eq("absent_teacher_id",uid);if(error)setMsg("Vikarplanen kunne ikke gemmes: "+error.message);else{setMsg(value?"Vikarplan gemt ✓":"Vikarplanen er ryddet ✓");setDrafts(v=>({...v,[a.id]:value}));await loadCoverage(date)}setSaving(null)};
+ const clearPlan=async(a:A)=>{if(!confirm("Ryd vikarplanen for denne time? Selve vikardækningen bliver stående."))return;setSaving(a.id);setMsg("");const{error}=await supabase.from("substitute_assignments").update({substitute_plan:null}).eq("id",a.id).eq("absent_teacher_id",uid);if(error)setMsg("Vikarplanen kunne ikke ryddes: "+error.message);else{setDrafts(v=>({...v,[a.id]:""}));setMsg("Vikarplanen er ryddet ✓");await loadCoverage(date)}setSaving(null)};
  if(!ready)return<main style={{padding:50}}>Henter skema…</main>;
  return <main style={{minHeight:"100vh",background:"#f5f3ee",padding:"38px 24px 80px",color:"#26342e"}}><section style={{maxWidth:1100,margin:"auto"}}>
-  <Link href="/teacher-room" style={{color:"#526b60",fontWeight:800,textDecoration:"none"}}>← Lærerværelset</Link><p style={{fontSize:11,fontWeight:800,letterSpacing:1.5,color:"#718077",marginTop:34}}>SKEMA & VIKARDÆKNING</p><h1 style={{fontFamily:"Georgia,serif",fontSize:42,margin:"7px 0"}}>Skema & vikardækning</h1><p style={{color:"#707670",fontSize:17}}>Dit skema og skolens vikardækning samlet ét sted.</p>
+  <Link href="/teacher-room" style={{color:"#526b60",fontWeight:800,textDecoration:"none"}}>← Lærerværelset</Link><p style={{fontSize:11,fontWeight:800,letterSpacing:1.5,color:"#718077",marginTop:34}}>SKEMA & VIKARDÆKNING</p><h1 style={{fontFamily:"Georgia,serif",fontSize:42,margin:"7px 0"}}>Skema & vikardækning</h1><p style={{color:"#707670",fontSize:17}}>Dit gældende skema og skolens vikardækning samlet ét sted.</p>
   <div style={{display:"flex",alignItems:"center",gap:8,margin:"24px 0"}}><button onClick={()=>move(-1)}>←</button><input type="date" value={date} onChange={e=>{setDate(e.target.value);setMsg("")}} style={{padding:9}}/><button onClick={()=>move(1)}>→</button></div>
   {msg&&<div style={{padding:"11px 13px",borderRadius:9,background:"#e7eee9",marginBottom:14,fontWeight:700}}>{msg}</div>}
-  <div style={{display:"grid",gridTemplateColumns:"1fr 1.25fr",gap:18,alignItems:"start"}}>
+  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(310px,1fr))",gap:18,alignItems:"start"}}>
    <section style={card}><h2 style={{fontFamily:"Georgia,serif",marginTop:0}}>Mit skema</h2><p style={{color:"#707670"}}>{d.toLocaleDateString("da-DK",{weekday:"long",day:"numeric",month:"long"})}</p>{mine.length?mine.map(e=><div key={e.id} style={{padding:"12px 0",borderTop:"1px solid #eee"}}><strong>{e.start_time.slice(0,5)}–{e.end_time.slice(0,5)} · {e.subject}</strong><small style={{display:"block",marginTop:4,color:"#687068"}}>{cls(e.class_id)}{e.room?` · ${e.room}`:""}</small></div>):<p>Ingen skemalagte timer.</p>}</section>
    <section style={card}><h2 style={{fontFamily:"Georgia,serif",marginTop:0}}>Vikardækning</h2>{coverage.length?coverage.map(({a,e})=>{const ownAbsence=a.absent_teacher_id===uid,current=drafts[a.id]??a.substitute_plan??"",hasHandover=!!(a.handover_done||a.handover_not_done||a.handover_note);return <article key={a.id} style={{padding:"14px 0",borderTop:"1px solid #eee"}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}><strong>{e.start_time.slice(0,5)}–{e.end_time.slice(0,5)} · {e.subject} · {cls(e.class_id)}</strong><span style={{fontWeight:800,color:"#486b59"}}>✓ Dækket</span></div><div style={{marginTop:6,fontSize:14}}>Fraværende: <strong>{who(a.absent_teacher_id)}</strong> · Vikar: <strong>{who(a.substitute_teacher_id)}</strong></div>
