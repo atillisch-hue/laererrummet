@@ -5,3 +5,14 @@ out
 .env.local
 .DS_Store
 *.log
+
+# Database and Storage backups may contain student/person data.
+# They must never be committed to Git.
+/backups/
+*.dump
+*.backup
+roles.sql
+schema.sql
+data.sql
+migration-history-schema.sql
+migration-history-data.sql
