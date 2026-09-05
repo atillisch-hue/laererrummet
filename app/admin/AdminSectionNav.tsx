@@ -5,11 +5,11 @@ import {usePathname} from "next/navigation";
 
 const sections=[
  {label:"Oversigt",href:"/admin",paths:["/admin"]},
- {label:"Personer",href:"/admin#personer",paths:["/admin/users","/admin/staff","/admin/board-users"]},
- {label:"Skolen",href:"/admin#skolen",paths:["/admin/teacher-classes"]},
+ {label:"Personer & adgang",href:"/admin#personer",paths:["/admin/users","/admin/staff","/admin/board-users"]},
+ {label:"Klasser & undervisning",href:"/admin#skolen",paths:["/admin/teacher-classes","/admin/student-grade-levels"]},
  {label:"Skoleår & ressourcer",href:"/admin/planning",paths:["/admin/planning"]},
- {label:"Kalender & drift",href:"/admin#drift",paths:["/admin/schedule","/admin/absence"]},
- {label:"Indstillinger & sikkerhed",href:"/admin#indstillinger",paths:["/admin/settings"]}
+ {label:"Drift",href:"/admin#drift",paths:["/admin/schedule","/admin/absence","/admin/tasks"]},
+ {label:"Indstillinger",href:"/admin/settings",paths:["/admin/settings"]}
 ];
 
 export default function AdminSectionNav(){
