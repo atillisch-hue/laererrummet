@@ -20,28 +20,16 @@ import {
   type GradedGrammarLibrary,
   type GradedGrammarQuestion,
 } from "./grade-progression";
+import {
+  isWrittenQuestion,
+  prepareAdaptiveRetry,
+  prepareRound,
+  questionKey,
+  uniqueQuestions,
+} from "./round-selection";
 
 type IQ = GradedGrammarQuestion;
 type GrammarLibrary = GradedGrammarLibrary;
-
-const ROUND_SIZE = 5;
-
-function questionKey(question: IQ) {
-  return `${question.q}::${question.answer}`;
-}
-
-function shuffle<T>(items: T[]) {
-  const copy = [...items];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-}
-
-function isWrittenQuestion(question: IQ) {
-  return question.kind === "text" || question.kind === "rewrite";
-}
 
 function normalizeStudentText(value: string) {
   return value
@@ -66,12 +54,6 @@ function normalizeQuestion(question: IQ): IQ {
     else options.push(question.answer);
   }
   return { ...question, kind: question.kind || "choice", options };
-}
-
-function uniqueQuestions(questions: IQ[]) {
-  const byKey = new Map<string, IQ>();
-  for (const question of questions) byKey.set(questionKey(question), question);
-  return Array.from(byKey.values());
 }
 
 function mergeLibraries(...sources: GrammarLibrary[]): GrammarLibrary {
@@ -125,75 +107,6 @@ function chooseLevelPool(levels: Record<string, IQ[]>, assignedLevel: string) {
       ? ["traening", "basis"]
       : ["basis", "udfordring"];
   return order.map((level) => levels[level] || []).find((pool) => pool.length > 0) || [];
-}
-
-function prepareQuestionForRound(question: IQ): IQ {
-  return isWrittenQuestion(question) ? question : { ...question, options: shuffle(question.options) };
-}
-
-function balancedSelection(candidates: IQ[], needed: number) {
-  if (needed <= 0 || candidates.length === 0) return [];
-  const written = shuffle(candidates.filter(isWrittenQuestion));
-  const choices = shuffle(candidates.filter((question) => !isWrittenQuestion(question)));
-  const targetWritten = written.length > 0 ? Math.min(2, written.length, Math.max(1, needed - 1)) : 0;
-  const selected = [...written.slice(0, targetWritten), ...choices.slice(0, Math.max(0, needed - targetWritten))];
-
-  if (selected.length < needed) {
-    const selectedKeys = new Set(selected.map(questionKey));
-    const remaining = shuffle(candidates.filter((question) => !selectedKeys.has(questionKey(question))));
-    selected.push(...remaining.slice(0, needed - selected.length));
-  }
-
-  return shuffle(selected.slice(0, needed));
-}
-
-function prepareRound(pool: IQ[], excludedKeys: Set<string>) {
-  const fresh = pool.filter((question) => !excludedKeys.has(questionKey(question)));
-  const needed = Math.min(ROUND_SIZE, pool.length);
-  let selected = balancedSelection(fresh, needed);
-
-  if (selected.length < needed) {
-    const selectedKeys = new Set(selected.map(questionKey));
-    const fallback = pool.filter((question) => !selectedKeys.has(questionKey(question)));
-    selected = [...selected, ...balancedSelection(fallback, needed - selected.length)];
-  }
-
-  return selected.map(prepareQuestionForRound);
-}
-
-function prepareAdaptiveRetry(primaryPool: IQ[], topicLevels: Record<string, IQ[]>, assignedLevel: string, score: number, excludedKeys: Set<string>) {
-  const needed = Math.min(ROUND_SIZE, uniqueQuestions(Object.values(topicLevels).flat()).length);
-  const selected: IQ[] = [];
-
-  const addFreshFrom = (pool: IQ[]) => {
-    const alreadySelected = new Set(selected.map(questionKey));
-    const candidates = pool.filter((question) => !excludedKeys.has(questionKey(question)) && !alreadySelected.has(questionKey(question)));
-    selected.push(...balancedSelection(candidates, Math.max(0, needed - selected.length)));
-  };
-
-  addFreshFrom(primaryPool);
-
-  const supportOrder = assignedLevel === "basis"
-    ? ["traening", "udfordring"]
-    : assignedLevel === "udfordring"
-      ? ["traening", "basis"]
-      : score < Math.ceil(ROUND_SIZE * 0.6)
-        ? ["basis", "udfordring"]
-        : ["udfordring", "basis"];
-
-  for (const level of supportOrder) {
-    if (selected.length >= needed) break;
-    addFreshFrom(topicLevels[level] || []);
-  }
-
-  if (selected.length < needed) {
-    const allTopicQuestions = uniqueQuestions(Object.values(topicLevels).flat());
-    const selectedKeys = new Set(selected.map(questionKey));
-    const repeatFallback = allTopicQuestions.filter((question) => !selectedKeys.has(questionKey(question)));
-    selected.push(...balancedSelection(repeatFallback, needed - selected.length));
-  }
-
-  return selected.map(prepareQuestionForRound);
 }
 
 export default function StudentGrammar() {
@@ -257,10 +170,11 @@ export default function StudentGrammar() {
     if (!assignment || questionPool.length === 0) return;
 
     const persistedSeen = new Set<string>(Array.isArray(assignment.seen_question_keys) ? assignment.seen_question_keys : []);
+    const persistedLastRound = new Set<string>(Array.isArray(assignment.last_question_keys) ? assignment.last_question_keys : []);
     const previousAttempts = Number(assignment.attempts || 0);
     const previousScore = Number(assignment.score || 0);
     const initial = persistedSeen.size > 0
-      ? prepareAdaptiveRetry(questionPool, topicLevels, assignment.level, previousScore, persistedSeen)
+      ? prepareAdaptiveRetry(questionPool, topicLevels, assignment.level, previousScore, persistedSeen, persistedLastRound)
       : prepareRound(questionPool, persistedSeen);
 
     setQuestions(initial);
@@ -317,7 +231,8 @@ export default function StudentGrammar() {
 
   function retryWithFreshQuestions() {
     const seen = new Set(seenQuestionKeys);
-    const next = prepareAdaptiveRetry(questionPool, topicLevels, assignment.level, score, seen);
+    const currentRound = new Set(questions.map(questionKey));
+    const next = prepareAdaptiveRetry(questionPool, topicLevels, assignment.level, score, seen, currentRound);
     const nextKeys = next.map(questionKey);
     setQuestions(next);
     setSeenQuestionKeys((current) => Array.from(new Set([...current, ...nextKeys])));
@@ -356,7 +271,7 @@ export default function StudentGrammar() {
 
                 {isWrittenQuestion(question) ?
                   question.kind === "rewrite" ? <textarea disabled={submitted} value={answers[index] || ""} onChange={(event) => setAnswers((current) => ({...current,[index]:event.target.value}))} placeholder={question.placeholder || "Skriv dit svar…"} rows={3} style={{width:"100%",boxSizing:"border-box",padding:"13px 14px",borderRadius:9,border:`2px solid ${submitted ? (correctNow ? "#5f8068" : "#b86b62") : "#d8d5cd"}`,background:submitted ? (correctNow ? "#edf5ef" : "#fff0ed") : "white",font:"inherit",fontSize:16,lineHeight:1.5,resize:"vertical"}} />
-                  : <input disabled={submitted} value={answers[index] || ""} onChange={(event) => setAnswers((current) => ({...current,[index]:event.target.value}))} placeholder={question.placeholder || "Skriv dit svar…"} style={{width:"100%",boxSizing:"border-box",padding:"13px 14px",borderRadius:9,border:`2px solid ${submitted ? (correctNow ? "#5f8068" : "#b86b62") : "#d8d5cd"}`,background:submitted ? (correctNow ? "#edf5ef" : "#fff0ed") : "white",font:"inherit",fontSize:16}} />
+                  : <input disabled={submitted} value={answers[index] || ""} onChange={(event) => setAnswers((current) => ({...current,[index]:event.target.value}))} placeholder={question.placeholder || "Skriv dit svar…"} style={{width:"100%",boxSizing:"" + "100%",padding:"13px 14px",borderRadius:9,border:`2px solid ${submitted ? (correctNow ? "#5f8068" : "#b86b62") : "#d8d5cd"}`,background:submitted ? (correctNow ? "#edf5ef" : "#fff0ed") : "white",font:"inherit",fontSize:16}} />
                   : <div style={{display:"grid",gap:8}}>
                     {question.options.map((option) => {
                       const chosen = answers[index] === option;
