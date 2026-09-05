@@ -18,7 +18,7 @@ export default function AdminUsersLegacyPage(){
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(250px,1fr))",gap:13,marginTop:18}}>
     <Link href="/admin/people" style={card}><small style={eyebrow}>LOGIN & ROLLER</small><h2 style={title}>Personer & adgang</h2><p style={text}>Konti, roller, aktiv/inaktiv adgang og forælder↔barn-relationer.</p><strong style={action}>Åbn →</strong></Link>
     <Link href="/admin/staff" style={card}><small style={eyebrow}>MEDARBEJDERE</small><h2 style={title}>Personaleprofiler</h2><p style={text}>Navn, forkortelse, personalegruppe og medarbejderens aktive status.</p><strong style={action}>Åbn →</strong></Link>
-    <Link href="/admin/classes-students" style={card}><small style={eyebrow}>GRUNDSTRUKTUR</small><h2 style={title}>Klasser & elever</h2><p style={text}>Opret klasser og elever, flyt elever og administrér sikre elevkoder.</p><strong style={action}>Åbn →</strong></Link>
+    <Link href="/admin/classes" style={card}><small style={eyebrow}>GRUNDSTRUKTUR</small><h2 style={title}>Klasser & elever</h2><p style={text}>Opret klasser og elever, flyt elever og administrér sikre elevkoder.</p><strong style={action}>Åbn →</strong></Link>
     <Link href="/admin/teacher-classes" style={card}><small style={eyebrow}>UNDERVISNING</small><h2 style={title}>Lærere & klasser</h2><p style={text}>Tilknyt lærere til de klasser, de faktisk underviser i.</p><strong style={action}>Åbn →</strong></Link>
    </div>
    <Link href="/admin" style={{display:"inline-block",marginTop:22,color:"#486b59",fontWeight:850,textDecoration:"none"}}>← Til administrationens oversigt</Link>
