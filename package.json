@@ -7,6 +7,7 @@
     "validate:migrations": "node scripts/validate-supabase-migrations.mjs",
     "validate:ops": "node --check scripts/backup-supabase.mjs && node --check scripts/verify-supabase-backup.mjs && node --check scripts/restore-supabase-backup-test.mjs",
     "validate:grammar": "node scripts/validate-grammar-banks.mjs",
+    "validate:grammar-retry": "node scripts/validate-grammar-retry.mjs",
     "validate:spelling-exam": "node scripts/validate-fp9-spelling-exam.mjs",
     "validate:reading-exam": "node scripts/validate-reading-exam.mjs",
     "validate:reading-strategies": "node scripts/validate-reading-strategy-training.mjs",
@@ -15,7 +16,7 @@
     "backup:supabase": "node scripts/backup-supabase.mjs",
     "backup:verify": "node scripts/verify-supabase-backup.mjs",
     "restore:test": "node scripts/restore-supabase-backup-test.mjs",
-    "build": "npm run validate:migrations && npm run validate:ops && npm run validate:grammar && npm run validate:spelling-exam && npm run validate:reading-exam && npm run validate:reading-strategies && npm run validate:math && npm run validate:danish && next build",
+    "build": "npm run validate:migrations && npm run validate:ops && npm run validate:grammar && npm run validate:grammar-retry && npm run validate:spelling-exam && npm run validate:reading-exam && npm run validate:reading-strategies && npm run validate:math && npm run validate:danish && next build",
     "start": "next start",
     "lint": "next lint"
   },
