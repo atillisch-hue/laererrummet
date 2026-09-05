@@ -60,22 +60,22 @@ export default function ClassSubjectRooms(){
   setSaving(false);
  };
 
- if(!ready)return <main style={{padding:50}}>Henter faglokaler…</main>;
+ if(!ready)return <main style={{padding:50}}>Henter fagrum…</main>;
  if(!klass)return <main style={{minHeight:"100vh",background:"#f5f3ee",padding:40}}><section style={{...card,maxWidth:700,margin:"auto"}}>{message||"Klassen kunne ikke åbnes."}</section></main>;
 
  return <main style={{minHeight:"100vh",background:"#f5f3ee",color:"#26342e"}}>
-  <header style={{background:"#243d33",color:"white",padding:"24px 32px"}}><div style={{maxWidth:1050,margin:"auto"}}><Link href={`/students?class=${klass.id}`} style={{color:"#e7ddd0",fontWeight:800,textDecoration:"none"}}>← {klass.name}</Link><p style={{fontSize:11,fontWeight:900,letterSpacing:1.5,opacity:.65,margin:"20px 0 5px"}}>KLASSEVÆRELSET</p><h1 style={{fontFamily:"Georgia,serif",fontSize:36,margin:"0 0 5px"}}>Faglokaler</h1><p style={{margin:0,opacity:.78}}>{klass.name} · hvert fag kan indrettes forskelligt af faglærerne.</p></div></header>
+  <header style={{background:"#243d33",color:"white",padding:"24px 32px"}}><div style={{maxWidth:1050,margin:"auto"}}><Link href={`/students?class=${klass.id}`} style={{color:"#e7ddd0",fontWeight:800,textDecoration:"none"}}>← {klass.name}</Link><p style={{fontSize:11,fontWeight:900,letterSpacing:1.5,opacity:.65,margin:"20px 0 5px"}}>KLASSER · {klass.name.toUpperCase()}</p><h1 style={{fontFamily:"Georgia,serif",fontSize:36,margin:"0 0 5px"}}>Fagrum</h1><p style={{margin:0,opacity:.78}}>Hvert fag har sit eget digitale arbejdsrum til forløb, materialer, opgaver og faglige værktøjer.</p></div></header>
 
   <section style={{maxWidth:1050,margin:"auto",padding:"30px 24px 80px"}}>
    {message&&<div style={{padding:"12px 14px",background:"#fff3cd",borderRadius:10,marginBottom:14}}>{message}</div>}
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:14}}>
-    {rooms.map(room=><Link key={room.id} href={`/students/subjects/${room.id}`} style={{...card,textDecoration:"none",color:"inherit",minHeight:155,display:"block"}}><small style={{fontWeight:900,color:"#718077"}}>{canEdit(room.id)?"DIT FAGLOKALE":"FAGLOKALE"}</small><h2 style={{fontFamily:"Georgia,serif",fontSize:27,margin:"8px 0 7px"}}>{room.title||subjectName(room.subject_id)}</h2><p style={{color:"#707670",lineHeight:1.45,minHeight:42,margin:"0 0 14px"}}>{room.intro||"Faglokalet er klar til at blive indrettet."}</p><strong style={{color:"#486b59"}}>Åbn faglokale →</strong></Link>)}
-    {rooms.length===0&&<section style={card}><strong>Ingen faglokaler endnu.</strong><p style={{color:"#707670"}}>Opret det første nedenfor.</p></section>}
+    {rooms.map(room=><Link key={room.id} href={`/students/subjects/${room.id}`} style={{...card,textDecoration:"none",color:"inherit",minHeight:155,display:"block"}}><small style={{fontWeight:900,color:"#718077"}}>{canEdit(room.id)?"DIT FAGRUM":"FAGRUM"}</small><h2 style={{fontFamily:"Georgia,serif",fontSize:27,margin:"8px 0 7px"}}>{room.title||subjectName(room.subject_id)}</h2><p style={{color:"#707670",lineHeight:1.45,minHeight:42,margin:"0 0 14px"}}>{room.intro||"Fagrummet er klar til at blive indrettet."}</p><strong style={{color:"#486b59"}}>Åbn fagrum →</strong></Link>)}
+    {rooms.length===0&&<section style={card}><strong>Ingen fagrum endnu.</strong><p style={{color:"#707670"}}>Opret det første nedenfor.</p></section>}
    </div>
 
-   <section style={{...card,marginTop:22,background:"#eef2ed"}}><p style={{fontSize:11,fontWeight:900,letterSpacing:1.4,color:"#718077",margin:0}}>INDRET KLASSEN</p><h2 style={{fontFamily:"Georgia,serif",fontSize:25,margin:"6px 0"}}>Tilføj faglokale</h2><p style={{color:"#6e766f",margin:"0 0 16px"}}>Brug et fag skolen allerede har, eller opret et nyt fag. Den lærer der opretter rummet bliver automatisk faglærer på det.</p>
+   <section style={{...card,marginTop:22,background:"#eef2ed"}}><p style={{fontSize:11,fontWeight:900,letterSpacing:1.4,color:"#718077",margin:0}}>KLASSENS FAG</p><h2 style={{fontFamily:"Georgia,serif",fontSize:25,margin:"6px 0"}}>Tilføj fagrum</h2><p style={{color:"#6e766f",margin:"0 0 16px"}}>Brug et fag skolen allerede har, eller opret et nyt. Den lærer, der opretter rummet, bliver automatisk tilknyttet som faglærer.</p>
     {available.length>0&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>{available.map(subject=><button key={subject.id} disabled={saving} onClick={()=>createExisting(subject)} style={secondary}>+ {subject.name}</button>)}</div>}
-    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><input value={name} onChange={e=>setName(e.target.value)} placeholder="Nyt fag, fx Engelsk" style={{flex:"1 1 240px",padding:"11px 12px",border:"1px solid #cbc7bd",borderRadius:8,fontSize:15}}/><button disabled={saving||!name.trim()} onClick={createNew} style={{...primary,opacity:saving||!name.trim()?0.5:1}}>{saving?"Opretter…":"Opret faglokale"}</button></div>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><input value={name} onChange={e=>setName(e.target.value)} placeholder="Nyt fag, fx Engelsk" style={{flex:"1 1 240px",padding:"11px 12px",border:"1px solid #cbc7bd",borderRadius:8,fontSize:15}}/><button disabled={saving||!name.trim()} onClick={createNew} style={{...primary,opacity:saving||!name.trim()?0.5:1}}>{saving?"Opretter…":"Opret fagrum"}</button></div>
    </section>
   </section>
  </main>;
