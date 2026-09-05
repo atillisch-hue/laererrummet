@@ -15,20 +15,20 @@ export default function SubjectRoomUsers(){
  const roomId=Number(params.roomId);
  const[room,setRoom]=useState<Room|null>(null),[klass,setKlass]=useState<Klass|null>(null),[subject,setSubject]=useState<Subject|null>(null),[ready,setReady]=useState(false),[error,setError]=useState("");
  useEffect(()=>{(async()=>{
-  if(!Number.isFinite(roomId)||roomId<=0){setError("Faglokalet er ugyldigt.");setReady(true);return}
+  if(!Number.isFinite(roomId)||roomId<=0){setError("Fagrummet er ugyldigt.");setReady(true);return}
   const{data:r,error:e}=await supabase.from("class_subjects").select("id,class_id,subject_id,title").eq("id",roomId).maybeSingle();
-  if(e||!r){setError("Faglokalet kunne ikke åbnes.");setReady(true);return}
+  if(e||!r){setError("Fagrummet kunne ikke åbnes.");setReady(true);return}
   setRoom(r as Room);
   const[c,s]=await Promise.all([supabase.from("classes").select("id,name").eq("id",r.class_id).maybeSingle(),supabase.from("subjects").select("id,name").eq("id",r.subject_id).maybeSingle()]);
   setKlass((c.data||null) as Klass|null);setSubject((s.data||null) as Subject|null);setReady(true);
  })()},[roomId]);
- if(!ready)return <main style={{padding:50}}>Åbner brugere…</main>;
- if(!room)return <main style={shell}><section style={{...card,maxWidth:720,margin:"auto"}}><h1>Brugere kunne ikke åbnes</h1><p>{error}</p><Link href="/students" style={link}>← Klasseværelset</Link></section></main>;
+ if(!ready)return <main style={{padding:50}}>Åbner deltagere…</main>;
+ if(!room)return <main style={shell}><section style={{...card,maxWidth:720,margin:"auto"}}><h1>Deltagere kunne ikke åbnes</h1><p>{error}</p><Link href="/teacher-dashboard" style={link}>← Klasser</Link></section></main>;
  return <main style={shell}><section style={{maxWidth:900,margin:"auto"}}>
-  <Link href={`/students/subjects/${room.id}`} style={link}>← Til {room.title||subject?.name||"faglokalet"}</Link>
+  <Link href={`/students/subjects/${room.id}`} style={link}>← Til {room.title||subject?.name||"fagrummet"}</Link>
   <p style={{...eyebrow,marginTop:28}}>{(klass?.name||"KLASSE").toUpperCase()} · {(subject?.name||"FAG").toUpperCase()}</p>
-  <h1 style={{fontFamily:"Georgia,serif",fontSize:40,margin:"6px 0 8px"}}>Brugere</h1>
-  <p style={{fontSize:17,color:"#68716c",lineHeight:1.55,maxWidth:720,marginBottom:22}}>Her styrer du, hvilke lærere der må indrette og redigere dette faglokale. Elevadgang følger fortsat klassen og opgaverne — den ændres ikke her.</p>
+  <h1 style={{fontFamily:"Georgia,serif",fontSize:40,margin:"6px 0 8px"}}>Deltagere</h1>
+  <p style={{fontSize:17,color:"#68716c",lineHeight:1.55,maxWidth:720,marginBottom:22}}>Her styrer du, hvilke lærere der kan indrette og redigere dette fagrum. Eleverne følger automatisk klassen og de opgaver, der tildeles; deres adgang ændres ikke her.</p>
   <SubjectRoomTeachers roomId={room.id}/>
  </section></main>;
 }
