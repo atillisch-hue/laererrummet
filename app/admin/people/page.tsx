@@ -1,0 +1,73 @@
+"use client";
+
+import Link from "next/link";
+import {useEffect,useMemo,useState} from "react";
+import {supabase} from "../../../lib/supabase";
+import {hasRole} from "../../../lib/roles";
+
+type User={id:string;email:string;roles:string[];active:boolean};
+type Student={id:number;name:string;class_id:number|null};
+type ParentLink={parent_id:string;student_id:number};
+
+const roleOptions=[
+ {id:"teacher",label:"Lærer"},
+ {id:"staff",label:"Personale"},
+ {id:"leader",label:"Ledelse"},
+ {id:"admin",label:"Admin"},
+ {id:"parent",label:"Forælder"},
+ {id:"board",label:"Bestyrelse"}
+];
+const roleLabel:Record<string,string>=Object.fromEntries(roleOptions.map(role=>[role.id,role.label]));
+const box:React.CSSProperties={background:"white",border:"1px solid #ddd9d0",borderRadius:14,padding:20};
+const field:React.CSSProperties={width:"100%",boxSizing:"border-box",padding:"10px 11px",border:"1px solid #d5d1c8",borderRadius:8,background:"white",font:"inherit"};
+
+export default function PeopleAccessPage(){
+ const[ready,setReady]=useState(false),[schoolId,setSchoolId]=useState<number|null>(null),[users,setUsers]=useState<User[]>([]),[students,setStudents]=useState<Student[]>([]),[links,setLinks]=useState<ParentLink[]>([]),[message,setMessage]=useState(""),[error,setError]=useState("");
+ const[search,setSearch]=useState(""),[editing,setEditing]=useState<string|null>(null),[editRoles,setEditRoles]=useState<string[]>([]),[resetPassword,setResetPassword]=useState("");
+ const[newEmail,setNewEmail]=useState(""),[newPassword,setNewPassword]=useState(""),[newRoles,setNewRoles]=useState<string[]>(["parent"]),[creating,setCreating]=useState(false),[showCreate,setShowCreate]=useState(false);
+ const[parentId,setParentId]=useState(""),[studentId,setStudentId]=useState<number|"">("");
+
+ async function api(path:string,method:string,body:any){const{data}=await supabase.auth.getSession();const token=data.session?.access_token;if(!token)throw new Error("Din session er udløbet. Log ind igen.");const response=await fetch(path,{method,headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify(body)});const payload=await response.json();if(!response.ok)throw new Error(payload.error||"Handlingen mislykkedes.");return payload}
+
+ async function load(sid?:number|null){
+  const target=sid??schoolId;if(!target)return;setError("");
+  const[classRes,userRes,linkRes]=await Promise.all([
+   supabase.from("classes").select("id").eq("school_id",target),
+   supabase.rpc("admin_user_directory_for_school",{p_school_id:target}),
+   supabase.rpc("admin_parent_links")
+  ]);
+  if(classRes.error||userRes.error||linkRes.error){setError([classRes.error?.message,userRes.error?.message,linkRes.error?.message].filter(Boolean).join(" · "));return}
+  const classIds=(classRes.data||[]).map(row=>Number(row.id));
+  const studentRes=classIds.length?await supabase.from("students").select("id,name,class_id").in("class_id",classIds).order("name"):{data:[],error:null};
+  if(studentRes.error){setError(studentRes.error.message);return}
+  setUsers(((userRes.data||[]) as any[]).map(row=>({id:String(row.id),email:String(row.email||""),roles:Array.isArray(row.roles)?row.roles:[],active:row.active!==false})));
+  setStudents((studentRes.data||[]) as Student[]);setLinks((linkRes.data||[]) as ParentLink[]);
+ }
+
+ useEffect(()=>{(async()=>{const{data}=await supabase.auth.getSession();const user=data.session?.user;if(!user||!hasRole(user,"admin")){location.replace("/");return}const{data:membership,error:membershipError}=await supabase.from("school_memberships").select("school_id").eq("user_id",user.id).eq("role","admin").eq("active",true).limit(1).maybeSingle();if(membershipError||!membership?.school_id){setError(membershipError?.message||"Din administratorkonto er ikke knyttet til en aktiv skole.");setReady(true);return}setSchoolId(membership.school_id);await load(membership.school_id);setReady(true)})()},[]);
+
+ function toggleNew(role:string){setNewRoles(current=>current.includes(role)?current.filter(item=>item!==role):[...current,role])}
+ function toggleEdit(role:string){setEditRoles(current=>current.includes(role)?current.filter(item=>item!==role):[...current,role])}
+ async function createLogin(){if(!schoolId||!newEmail.trim()||newPassword.length<8||!newRoles.length)return;setCreating(true);setMessage("");try{await api("/api/admin/create-user","POST",{school_id:schoolId,email:newEmail.trim(),password:newPassword,roles:newRoles});setMessage(`${newEmail.trim()} er oprettet.`);setNewEmail("");setNewPassword("");setNewRoles(["parent"]);setShowCreate(false);await load()}catch(e:any){setMessage(e.message||"Login kunne ikke oprettes.")}finally{setCreating(false)}}
+ async function saveUser(user:User){if(!schoolId||!editing)return;try{await api("/api/admin/manage-user","PATCH",{id:user.id,school_id:schoolId,roles:editRoles});setMessage("Adgangen er opdateret.");setEditing(null);await load()}catch(e:any){setMessage(e.message)}}
+ async function toggleActive(user:User){if(!schoolId)return;const disabling=user.active;if(!confirm(disabling?`Deaktivér ${user.email}? Historik bevares.`:`Genaktivér ${user.email}?`))return;try{await api("/api/admin/manage-user","PATCH",{id:user.id,school_id:schoolId,disabled:disabling});setMessage(disabling?"Adgangen er deaktiveret.":"Adgangen er genaktiveret.");setEditing(null);await load()}catch(e:any){setMessage(e.message)}}
+ async function changePassword(user:User){if(!schoolId||resetPassword.length<8){setMessage("Den nye adgangskode skal være mindst 8 tegn.");return}try{await api("/api/admin/manage-user","PATCH",{id:user.id,school_id:schoolId,password:resetPassword});setMessage("Adgangskoden er nulstillet.");setResetPassword("");setEditing(null)}catch(e:any){setMessage(e.message)}}
+ async function linkParent(){if(!parentId||!studentId)return;const{error}=await supabase.rpc("admin_link_parent",{p_parent_id:parentId,p_student_id:Number(studentId)});setMessage(error?"Forælder og elev kunne ikke kobles.":"Forælder og elev er koblet sammen.");if(!error){setParentId("");setStudentId("");await load()}}
+ async function unlink(parent:string,student:number){const{error}=await supabase.rpc("admin_unlink_parent",{p_parent_id:parent,p_student_id:student});setMessage(error?"Koblingen kunne ikke fjernes.":"Koblingen er fjernet.");if(!error)await load()}
+
+ const shown=useMemo(()=>{const q=search.trim().toLowerCase();return users.filter(user=>!q||user.email.toLowerCase().includes(q)||user.roles.some(role=>(roleLabel[role]||role).toLowerCase().includes(q)))},[users,search]);
+ const activeParents=users.filter(user=>user.active&&user.roles.includes("parent"));
+ if(!ready)return <main style={{padding:50}}>Henter personer og adgang…</main>;
+
+ return <main style={{minHeight:"100vh",background:"#f5f2ea",color:"#26342e"}}><header style={{background:"#486b59",color:"white",padding:"20px 6vw"}}><div style={{maxWidth:1100,margin:"auto",display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><div><small style={{fontWeight:900,letterSpacing:1.3}}>ADMINISTRATION · PERSONER</small><h1 style={{fontFamily:"Georgia,serif",fontSize:36,margin:"5px 0 0"}}>Personer & adgang</h1></div><Link href="/admin" style={{color:"white",fontWeight:800,textDecoration:"none"}}>← Administration</Link></div></header><section style={{maxWidth:1100,margin:"auto",padding:"34px 24px 80px"}}>
+  <div style={{display:"flex",justifyContent:"space-between",gap:14,alignItems:"start",flexWrap:"wrap"}}><div><p style={eyebrow}>LOGIN, ROLLER & RELATIONER</p><h2 style={h2}>Én person kan have flere roller</h2><p style={muted}>Her administrerer du systemadgang og relationer. Medarbejderens navn, initialer og personalegruppe hører til i Personaleprofiler — ikke i loginopsætningen.</p></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><Link href="/admin/staff" style={secondary}>Personaleprofiler</Link><button onClick={()=>setShowCreate(value=>!value)} style={primary}>{showCreate?"Luk":"+ Opret login"}</button></div></div>
+  {error&&<div style={{...box,marginTop:18,background:"#fff0ed",color:"#7b2f25"}}>{error}</div>}{message&&<div style={{padding:12,background:"#e7eee9",borderRadius:9,marginTop:18,fontWeight:800}}>{message}</div>}
+  {showCreate&&<section style={{...box,marginTop:18,background:"#eef2ed"}}><h3 style={{fontFamily:"Georgia,serif",fontSize:22,marginTop:0}}>Opret login</h3><p style={muted}>Brug Personaleprofiler til nye medarbejdere, så deres navn, forkortelse og personalegruppe oprettes samtidig. Her er især til forældre og bestyrelsesmedlemmer — eller ekstra roller på eksisterende konti.</p><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(230px,1fr))",gap:10}}><input type="email" value={newEmail} onChange={e=>setNewEmail(e.target.value)} placeholder="E-mail" style={field}/><input type="password" minLength={8} value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="Midlertidig adgangskode · min. 8 tegn" style={field}/></div><div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:12}}>{roleOptions.map(role=><label key={role.id} style={roleChip(newRoles.includes(role.id))}><input type="checkbox" checked={newRoles.includes(role.id)} onChange={()=>toggleNew(role.id)}/>{role.label}</label>)}</div><button onClick={createLogin} disabled={creating||!newEmail.trim()||newPassword.length<8||!newRoles.length} style={{...primary,marginTop:13,opacity:creating||!newEmail.trim()||newPassword.length<8||!newRoles.length?.5:1}}>{creating?"Opretter…":"Opret login"}</button></section>}
+
+  <section style={{...box,marginTop:20}}><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"end",flexWrap:"wrap"}}><div><p style={eyebrow}>KONTI</p><h3 style={{fontFamily:"Georgia,serif",fontSize:24,margin:"5px 0"}}>{users.filter(user=>user.active).length} aktive logins</h3></div><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Søg mail eller rolle…" style={{...field,maxWidth:300}}/></div><div style={{display:"grid",gap:8,marginTop:14}}>{shown.map(user=><article key={user.id} style={{padding:"12px 13px",border:"1px solid #e2ded5",borderRadius:10,background:user.active?"#faf9f6":"#f0ede7",opacity:user.active?1:.7}}><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"start",flexWrap:"wrap"}}><div><strong>{user.email}</strong><div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:6}}>{user.roles.map(role=><span key={role} style={smallChip}>{roleLabel[role]||role}</span>)}{!user.active&&<span style={{...smallChip,background:"#eee0d7",color:"#7a4939"}}>Inaktiv</span>}</div></div><button onClick={()=>{setEditing(editing===user.id?null:user.id);setEditRoles([...user.roles]);setResetPassword("")}} style={secondary}>{editing===user.id?"Luk":"Redigér adgang"}</button></div>{editing===user.id&&<div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #e4e0d8"}}><strong style={{fontSize:12}}>Roller</strong><div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:7}}>{roleOptions.map(role=><label key={role.id} style={roleChip(editRoles.includes(role.id))}><input type="checkbox" checked={editRoles.includes(role.id)} onChange={()=>toggleEdit(role.id)}/>{role.label}</label>)}</div><div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:11}}><button onClick={()=>saveUser(user)} disabled={!editRoles.length} style={primary}>Gem roller</button><input type="password" value={resetPassword} onChange={e=>setResetPassword(e.target.value)} placeholder="Ny adgangskode" style={{...field,maxWidth:220}}/><button onClick={()=>changePassword(user)} style={secondary}>Nulstil kode</button><button onClick={()=>toggleActive(user)} style={{...secondary,color:user.active?"#8a453b":"#365044"}}>{user.active?"Deaktivér":"Genaktivér"}</button></div></div>}</article>)}</div></section>
+
+  <section style={{...box,marginTop:20}}><p style={eyebrow}>FORÆLDRE / VÆRGER</p><h3 style={{fontFamily:"Georgia,serif",fontSize:24,margin:"5px 0"}}>Kobl adgang til det rigtige barn</h3><p style={muted}>En forælder ser kun de børn, kontoen er koblet til.</p><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(230px,1fr)) auto",gap:8,alignItems:"end"}}><label style={label}>Forælder<select value={parentId} onChange={e=>setParentId(e.target.value)} style={{...field,marginTop:5}}><option value="">Vælg forælder</option>{activeParents.map(parent=><option key={parent.id} value={parent.id}>{parent.email}</option>)}</select></label><label style={label}>Barn<select value={studentId} onChange={e=>setStudentId(e.target.value?Number(e.target.value):"")} style={{...field,marginTop:5}}><option value="">Vælg elev</option>{students.map(student=><option key={student.id} value={student.id}>{student.name}</option>)}</select></label><button onClick={linkParent} disabled={!parentId||!studentId} style={{...primary,opacity:!parentId||!studentId?.5:1}}>Kobl sammen</button></div><div style={{display:"grid",gap:7,marginTop:14}}>{links.map(link=>{const parent=users.find(user=>user.id===link.parent_id),student=students.find(item=>item.id===link.student_id);if(!student)return null;return <div key={`${link.parent_id}-${link.student_id}`} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"9px 10px",border:"1px solid #e3dfd7",borderRadius:9}}><span><strong>{parent?.email||"Forælder"}</strong> → {student.name}</span><button onClick={()=>unlink(link.parent_id,link.student_id)} style={secondary}>Fjern</button></div>})}{links.length===0&&<p style={muted}>Ingen familiekoblinger endnu.</p>}</div></section>
+ </section></main>;
+}
+
+const eyebrow:React.CSSProperties={fontSize:10,fontWeight:900,letterSpacing:1.3,color:"#718077",margin:0};const h2:React.CSSProperties={fontFamily:"Georgia,serif",fontSize:30,margin:"5px 0 8px"};const muted:React.CSSProperties={color:"#687068",lineHeight:1.5,maxWidth:760};const label:React.CSSProperties={fontSize:12,fontWeight:900,color:"#526159"};const primary:React.CSSProperties={border:0,borderRadius:8,padding:"9px 12px",background:"#365044",color:"white",fontWeight:900,cursor:"pointer"};const secondary:React.CSSProperties={display:"inline-flex",alignItems:"center",border:"1px solid #d2cdc3",borderRadius:8,padding:"8px 10px",background:"white",color:"#365044",fontWeight:850,textDecoration:"none",cursor:"pointer"};const roleChip=(active:boolean):React.CSSProperties=>({display:"flex",gap:6,alignItems:"center",padding:"7px 9px",borderRadius:8,border:"1px solid #d9d5cd",background:active?"#e5eee7":"white",fontSize:12,fontWeight:800});const smallChip:React.CSSProperties={display:"inline-block",padding:"4px 6px",borderRadius:999,background:"#edf1ec",color:"#526159",fontSize:10,fontWeight:900};
