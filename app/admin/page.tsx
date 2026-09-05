@@ -11,29 +11,25 @@ type AdminCard={title:string;text:string;href:string;tag?:string};
 type AdminGroup={id:string;eyebrow:string;title:string;text:string;cards:AdminCard[]};
 
 const groups:AdminGroup[]=[
- {id:"personer",eyebrow:"PERSONER",title:"Mennesker og adgang",text:"Konti, roller og de mennesker, der skal kunne arbejde i skolen.",cards:[
-  {title:"Brugere & roller",text:"Opret konti, vælg roller, deaktivér adgang og koble forældre til elever.",href:"/admin/users",tag:"ADGANG"},
-  {title:"Personale",text:"Navne, initialer, aktive medarbejdere og personaleroller.",href:"/admin/staff",tag:"PERSONALE"},
-  {title:"Bestyrelsesbrugere",text:"Administrér bestyrelsens brugere og adgang uden at blande elevfølsomme områder ind.",href:"/admin/board-users",tag:"BESTYRELSE"}
+ {id:"personer",eyebrow:"PERSONER & ADGANG",title:"Hvem er en del af skolen?",text:"Personer findes én gang. Herfra styrer du login, roller, relationer og de administrative profiler omkring dem.",cards:[
+  {title:"Personer & adgang",text:"Opret konti, vælg roller, deaktivér adgang, administrér elevadgang og koble forældre til børn.",href:"/admin/users",tag:"ADGANG"},
+  {title:"Personaleprofiler",text:"Navne, initialer, personalegruppe, funktioner og status for skolens medarbejdere.",href:"/admin/staff",tag:"PERSONALE"},
+  {title:"Bestyrelsesadgang",text:"Fokuseret overblik over de personer, der har adgang til bestyrelsens arbejdsrum.",href:"/admin/board-users",tag:"BESTYRELSE"}
  ]},
- {id:"skolen",eyebrow:"SKOLEN",title:"Skolens struktur",text:"Klasser, elever og hvem der underviser hvor.",cards:[
-  {title:"Klasser & elever",text:"Opret og redigér klasser og elever samt administrér elevernes adgangskoder.",href:"/admin/users",tag:"GRUNDSTRUKTUR"},
-  {title:"Elevklassetrin",text:"Angiv klassetrin pr. elev — også i blandede klasser. Bruges til trinpasset grammatik og differentiering.",href:"/admin/student-grade-levels",tag:"DIFFERENTIERING"},
-  {title:"Lærere & klasser",text:"Tilknyt en eller flere lærere til de klasser, de faktisk arbejder med.",href:"/admin/teacher-classes",tag:"TILKNYTNING"}
+ {id:"skolen",eyebrow:"KLASSER & UNDERVISNING",title:"Hvordan er skolen bygget op?",text:"Klasser, elever, klassetrin og de undervisere, der er knyttet til dem.",cards:[
+  {title:"Klasser & elever",text:"Opret og redigér klasser og elever samt administrér elevernes sikre adgangskoder.",href:"/admin/users",tag:"GRUNDSTRUKTUR"},
+  {title:"Klassetrin & differentiering",text:"Angiv klassetrin pr. elev — også i blandede klasser. Det bruges til trinpasset træning og progression.",href:"/admin/student-grade-levels",tag:"KLASSETRIN"},
+  {title:"Undervisere & klasser",text:"Tilknyt en eller flere lærere til de klasser, de faktisk arbejder med.",href:"/admin/teacher-classes",tag:"TILKNYTNING"}
  ]},
- {id:"planlaegning",eyebrow:"SKOLEÅR & RESSOURCER",title:"Fra skoleår til bemanding",text:"Planlæg skoleåret i én sammenhængende model, så norm, undervisningsbehov, øvrige opgaver og skema senere kan konsekvensberegnes sammen.",cards:[
-  {title:"Skoleårsplanlægning",text:"Se aktivt skoleår, normdækning, undervisningsbehov, opgaver/akkorder og skemaversion på samme side.",href:"/admin/planning",tag:"LEDELSE"},
-  {title:"Skolekalender",text:"Første og sidste undervisningsdag, ferier, lukkedage, specialuger og fælles arrangementer.",href:"/admin/settings",tag:"ÅRSKALENDER"}
+ {id:"planlaegning",eyebrow:"SKOLEÅR & RESSOURCER",title:"Hvordan hænger skoleåret sammen?",text:"Planlæg undervisningsbehov, norm, opgaver, skolekalender og skemaversioner som én samlet ressourceplan.",cards:[
+  {title:"Skoleårsplanlægning",text:"Se aktivt skoleår, normdækning, undervisningsbehov, øvrige opgaver og skemaversion samlet.",href:"/admin/planning",tag:"LEDELSE"},
+  {title:"Skolekalender & lukkedage",text:"Vedligehold undervisningsperiode, ferier, lukkedage, specialuger og fælles arrangementer.",href:"/admin/settings",tag:"ÅRSKALENDER"}
  ]},
- {id:"drift",eyebrow:"KALENDER, OPGAVER & DRIFT",title:"Det der får arbejdsdagen til at hænge sammen",text:"Skema, fravær, vikarer, personaleopgaver og arbejdstid samlet omkring den daglige drift.",cards:[
-  {title:"Skema",text:"Undervisning, samling, pauser og vagter — hver uge eller i ulige/lige uger. Skemabrikker kobles nu til det aktive skoleårs version.",href:"/admin/schedule",tag:"SKEMA"},
-  {title:"Fravær & vikardækning",text:"Elev- og personalefravær, statistik og sikker vikardækning af konkrete lektioner.",href:"/admin/absence",tag:"DRIFT"},
-  {title:"Personaleopgaver",text:"Tildel opgaver til én eller flere medarbejdere, sæt deadline og følg hvem der har afsluttet sin del.",href:"/admin/tasks",tag:"OPGAVER"},
-  {title:"Årsnorm & arbejdstid",text:"Vælg en medarbejder i kalenderen og fastsæt årsnorm, periode og eventuel ugenorm. Normen kobles til det aktive skoleår.",href:"/calendar",tag:"ARBEJDSTID"}
- ]},
- {id:"indstillinger",eyebrow:"INDSTILLINGER & SIKKERHED",title:"Rammer og adgang",text:"De fælles regler for skoleåret og hvem der må se og gøre hvad.",cards:[
-  {title:"Skoleopsætning",text:"Undervisningsperiode, ferieperioder og lukkedage. Ændringer synkroniseres med det aktive skoleår.",href:"/admin/settings",tag:"INDSTILLINGER"},
-  {title:"Roller & adgang",text:"Gennemgå brugernes roller og deaktivér adgang, når en person ikke længere skal være aktiv på skolen.",href:"/admin/users",tag:"SIKKERHED"}
+ {id:"drift",eyebrow:"DAGLIG DRIFT",title:"Hvad skal fungere i hverdagen?",text:"Skema, fravær, vikardækning, personaleopgaver og arbejdstid — hver med én tydelig indgang.",cards:[
+  {title:"Skema",text:"Redigér arbejdskladden, kontrollér konflikter og publicér den version, der skal gælde fra en bestemt dato.",href:"/admin/schedule",tag:"SKEMA"},
+  {title:"Fravær & vikardækning",text:"Før elevfravær, håndtér personalefravær, statistik og vikardækning.",href:"/admin/absence",tag:"FRAVÆR"},
+  {title:"Personaleopgaver",text:"Tildel opgaver til medarbejdere, sæt deadlines og følg op på status.",href:"/admin/tasks",tag:"OPGAVER"},
+  {title:"Arbejdstid & norm",text:"Åbn arbejdstidsvisningen direkte for at se og administrere arbejdstid og norm for medarbejdere.",href:"/calendar?view=work",tag:"ARBEJDSTID"}
  ]}
 ];
 
@@ -46,7 +42,7 @@ export default function AdminPage(){
   <section style={{maxWidth:1180,margin:"0 auto",padding:"42px 24px 90px"}}>
    <p className="eyebrow">ADMINISTRATION</p>
    <h1 style={{fontFamily:"Georgia,serif",fontSize:42,margin:"7px 0 8px"}}>Skolens administration</h1>
-   <p style={{maxWidth:760,fontSize:17,color:"#5f665f",lineHeight:1.55,margin:"0 0 28px"}}>Her er funktionerne samlet efter det arbejde, du prøver at få gjort — ikke efter hvilke tabeller systemet tilfældigvis bruger.</p>
+   <p style={{maxWidth:760,fontSize:17,color:"#5f665f",lineHeight:1.55,margin:"0 0 28px"}}>Vælg efter det arbejde, du vil udføre: mennesker og adgang, skolens struktur, skoleårsplanlægning eller den daglige drift.</p>
 
    <section style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16,alignItems:"start"}}>
     <RoleNoticeboard audience="admin"/>
