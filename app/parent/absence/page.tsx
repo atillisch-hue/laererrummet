@@ -7,6 +7,8 @@ import {supabase} from "../../../lib/supabase";
 type Child={id:number;name:string;class_id:number|null;class_name:string|null;school_id:number};
 type Absence={id:number;student_id:number;absence_date:string;status:string;note:string|null;source:string;created_at:string;can_manage:boolean};
 const today=()=>new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Copenhagen"});
+const childFromUrl=()=>{const raw=new URLSearchParams(window.location.search).get("child");const id=raw?Number(raw):NaN;return Number.isInteger(id)&&id>0?id:null};
+const setChildInUrl=(id:number)=>{const url=new URL(window.location.href);url.searchParams.set("child",String(id));window.history.replaceState({},"",url.toString())};
 
 export default function ParentAbsencePage(){
  const[ready,setReady]=useState(false),[children,setChildren]=useState<Child[]>([]),[absence,setAbsence]=useState<Absence[]>([]),[activeId,setActiveId]=useState<number|null>(null),[date,setDate]=useState(today()),[note,setNote]=useState(""),[message,setMessage]=useState(""),[saving,setSaving]=useState(false),[editing,setEditing]=useState<number|null>(null),[editDate,setEditDate]=useState(""),[editNote,setEditNote]=useState("");
@@ -16,11 +18,16 @@ export default function ParentAbsencePage(){
   const t=await token();if(!t){location.replace("/");return}
   const res=await fetch("/api/parent/absence",{headers:{Authorization:`Bearer ${t}`}}),body=await res.json();
   if(!res.ok){setMessage(body.error||"Fravær kunne ikke hentes.");setReady(true);return}
-  const cs=(body.children||[]) as Child[];setChildren(cs);setAbsence((body.absence||[]) as Absence[]);setActiveId(v=>v&&cs.some(c=>c.id===v)?v:(cs[0]?.id||null));setReady(true);
+  const cs=(body.children||[]) as Child[];
+  const requested=childFromUrl();
+  setChildren(cs);setAbsence((body.absence||[]) as Absence[]);
+  setActiveId(v=>{const next=v&&cs.some(c=>c.id===v)?v:(requested&&cs.some(c=>c.id===requested)?requested:(cs[0]?.id||null));if(next)setChildInUrl(next);return next});
+  setReady(true);
  }
  useEffect(()=>{load()},[]);
  const active=children.find(c=>c.id===activeId)||null;
  const rows=useMemo(()=>absence.filter(a=>a.student_id===activeId).sort((a,b)=>b.absence_date.localeCompare(a.absence_date)),[absence,activeId]);
+ const selectChild=(id:number)=>{setActiveId(id);setEditing(null);setChildInUrl(id)};
 
  async function report(){
   if(!activeId||!date)return;setSaving(true);setMessage("");const t=await token();
@@ -39,10 +46,10 @@ export default function ParentAbsencePage(){
 
  if(!ready)return <main style={shell}>Henter fravær…</main>;
  return <main style={{minHeight:"100vh",background:"#f5f3ee",color:"#26342e"}}><section style={shell}>
-  <Link href="/parent" style={back}>← Forældreportalen</Link><p style={{...eyebrow,marginTop:26}}>FRAVÆR</p><h1 style={h1}>Meld syg og se historik</h1><p style={intro}>Du kan rette eller annullere dine egne sygemeldinger for i dag og kommende dage. Tidligere fravær er historik og kan ikke ændres her.</p>
+  <Link href={active?`/parent?child=${active.id}`:"/parent"} style={back}>← Forældreportalen</Link><p style={{...eyebrow,marginTop:26}}>FRAVÆR</p><h1 style={h1}>Meld syg og se historik</h1><p style={intro}>Du kan rette eller annullere dine egne sygemeldinger for i dag og kommende dage. Tidligere fravær er historik og kan ikke ændres her.</p>
   {message&&<div style={notice}>{message}</div>}
   {!children.length?<section style={card}>Der er endnu ikke knyttet et barn til din aktive forældreadgang.</section>:<>
-   <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"22px 0"}}>{children.map(c=><button key={c.id} onClick={()=>{setActiveId(c.id);setEditing(null)}} style={{...childButton,background:activeId===c.id?"#365044":"white",color:activeId===c.id?"white":"#26342e"}}>{c.name}{c.class_name?` · ${c.class_name}`:""}</button>)}</div>
+   <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"22px 0"}}>{children.map(c=><button key={c.id} onClick={()=>selectChild(c.id)} style={{...childButton,background:activeId===c.id?"#365044":"white",color:activeId===c.id?"white":"#26342e"}}>{c.name}{c.class_name?` · ${c.class_name}`:""}</button>)}</div>
    <section style={card}><p style={eyebrow}>NY SYGEMELDING</p><h2 style={h2}>{active?.name}</h2><div style={{display:"grid",gridTemplateColumns:"minmax(180px,.6fr) minmax(240px,1.5fr)",gap:10}}><label style={label}>Dato<input type="date" min={today()} value={date} onChange={e=>setDate(e.target.value)} style={input}/></label><label style={label}>Besked til skolen <span style={{fontWeight:400}}>(valgfri)</span><input value={note} onChange={e=>setNote(e.target.value)} placeholder="Fx feber – forventes tilbage i morgen" style={input}/></label></div><button onClick={report} disabled={saving||!date} style={primary}>{saving?"Gemmer…":"Meld syg"}</button></section>
    <section style={{...card,marginTop:18}}><p style={eyebrow}>REGISTRERET FRAVÆR</p><h2 style={h2}>{rows.length} registrering{rows.length===1?"":"er"}</h2>{!rows.length?<p style={muted}>Ingen fraværsregistreringer endnu.</p>:<div style={{display:"grid",gap:9}}>{rows.map(a=>{const mine=a.source==="parent",past=a.absence_date<today(),isEditing=editing===a.id;return <article key={a.id} style={row}>
     {isEditing?<div style={{display:"grid",gap:9}}><div style={{display:"grid",gridTemplateColumns:"minmax(170px,.6fr) minmax(220px,1.5fr)",gap:8}}><label style={label}>Dato<input type="date" min={today()} value={editDate} onChange={e=>setEditDate(e.target.value)} style={input}/></label><label style={label}>Besked<input value={editNote} onChange={e=>setEditNote(e.target.value)} style={input}/></label></div><div style={{display:"flex",gap:7}}><button onClick={()=>saveEdit(a.id)} disabled={saving} style={smallPrimary}>Gem</button><button onClick={()=>setEditing(null)} style={smallButton}>Annullér</button></div></div>:<div style={{display:"flex",justifyContent:"space-between",gap:14,alignItems:"start",flexWrap:"wrap"}}><div><strong>{new Date(a.absence_date+"T12:00").toLocaleDateString("da-DK",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</strong><small style={{display:"block",color:"#707670",marginTop:3}}>{mine?"Meldt af dig":"Registreret af skolen"}{past?" · historik":""}</small>{a.note&&<p style={{margin:"7px 0 0"}}>{a.note}</p>}</div>{a.can_manage&&<div style={{display:"flex",gap:6}}><button onClick={()=>startEdit(a)} style={smallButton}>Redigér</button><button onClick={()=>remove(a.id)} style={{...smallButton,color:"#8a3c34"}}>Annullér</button></div>}</div>}
