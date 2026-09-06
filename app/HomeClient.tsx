@@ -8,7 +8,7 @@ import {trainingCatalog} from "../lib/trainingCatalog";
 import {clearStudentSession,getStudentSessionToken,storeStudentSession} from "../lib/studentSession";
 import StudentSubjectRooms from "./StudentSubjectRooms";
 
-type StaffRole="employee"|"admin"|"parent"|"board";
+type StaffRole="employee"|"leader"|"admin"|"parent"|"board";
 type Assignment={id:number;title:string;type:string;instructions?:string};
 type GrammarAssignment={id:number;title:string;area:string;topic:string;level:string};
 type SpellingExamAssignment={id:number;title:string;time_limit_minutes:number|null;question_count:number;target_grade:number;started:boolean;submitted:boolean;score:number|null;max_score:number|null};
@@ -19,7 +19,7 @@ type AuthUser={app_metadata?:Record<string,unknown>};
 
 const hasEmployeeAccess=(user:AuthUser)=>hasRole(user as any,"teacher")||hasRole(user as any,"staff")||hasRole(user as any,"leader")||hasRole(user as any,"admin");
 const hasTeachingAccess=(user:AuthUser)=>hasRole(user as any,"teacher")||hasRole(user as any,"admin");
-const employeeLanding=(user:AuthUser)=>hasTeachingAccess(user)?"/noticeboard":"/teacher-room";
+const employeeLanding=(user:AuthUser)=>hasTeachingAccess(user)?"/noticeboard":hasRole(user as any,"leader")?"/admin":"/teacher-room";
 
 export default function HomeClient(){
  const[ready,setReady]=useState(false);
@@ -83,6 +83,7 @@ export default function HomeClient(){
   if(error){setLoginError("Mail eller adgangskode er forkert.");return}
   const user=data.user;
   if(staffLogin==="admin"){if(!hasRole(user,"admin")){await supabase.auth.signOut();setLoginError("Denne konto har ikke administratoradgang.");return}window.location.href="/admin";return}
+  if(staffLogin==="leader"){if(!hasRole(user,"leader")){await supabase.auth.signOut();setLoginError("Denne konto har ikke ledelsesadgang.");return}window.location.href="/admin";return}
   if(staffLogin==="parent"){if(!hasRole(user,"parent")){await supabase.auth.signOut();setLoginError("Denne konto har ikke forældreadgang.");return}window.location.href="/parent";return}
   if(staffLogin==="board"){if(!hasRole(user,"board")){await supabase.auth.signOut();setLoginError("Denne konto har ikke bestyrelsesadgang.");return}window.location.href="/board";return}
   if(!hasEmployeeAccess(user)){await supabase.auth.signOut();setLoginError("Denne konto har ikke medarbejderadgang.");return}
@@ -113,11 +114,11 @@ export default function HomeClient(){
  if(!ready)return <main className="login"><div className="loginCard"><h1>Klasseværelset</h1><p>Henter Klasseværelset…</p></div></main>;
 
  if(staffLogin){
-  const isAdmin=staffLogin==="admin",isParent=staffLogin==="parent",isBoard=staffLogin==="board";
+  const isAdmin=staffLogin==="admin",isLeader=staffLogin==="leader",isParent=staffLogin==="parent",isBoard=staffLogin==="board";
   return <main className="login"><div className="loginCard">
    <button className="back" onClick={()=>{setStaffLogin(null);setLoginError("")}}>← Tilbage</button>
-   <div className="brand loginBrand"><span>✦</span><div><strong>Klasseværelset</strong><small>{isAdmin?"Sikker administratoradgang":isParent?"Sikker forældreadgang":isBoard?"Sikker bestyrelsesadgang":"Sikker medarbejderadgang"}</small></div></div>
-   <p className="eyebrow">{isAdmin?"ADMINISTRATORLOGIN":isParent?"FORÆLDRELOGIN":isBoard?"BESTYRELSESLOGIN":"MEDARBEJDERLOGIN"}</p><h1>Log ind</h1>
+   <div className="brand loginBrand"><span>✦</span><div><strong>Klasseværelset</strong><small>{isAdmin?"Sikker administratoradgang":isLeader?"Sikker ledelsesadgang":isParent?"Sikker forældreadgang":isBoard?"Sikker bestyrelsesadgang":"Sikker medarbejderadgang"}</small></div></div>
+   <p className="eyebrow">{isAdmin?"ADMINISTRATORLOGIN":isLeader?"LEDELSESLOGIN":isParent?"FORÆLDRELOGIN":isBoard?"BESTYRELSESLOGIN":"MEDARBEJDERLOGIN"}</p><h1>Log ind</h1>
    <form onSubmit={staffSignIn}><label style={formLabel}>E-mail</label><input style={formInput} type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="din@email.dk"/><label style={formLabel}>Adgangskode</label><input style={formInput} type="password" required value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••"/>{loginError&&<p style={{color:"#9b3b32",fontWeight:700}}>{loginError}</p>}<button className="primary" type="submit">Log ind →</button></form>
   </div></main>;
  }
@@ -126,10 +127,11 @@ export default function HomeClient(){
   <div className="brand loginBrand"><span>✦</span><div><strong>Klasseværelset</strong><small>Et roligt sted til læring og skrivning</small></div></div>
   <p className="eyebrow">VÆLG INDGANG</p><h1>Velkommen</h1><p>Vælg hvordan du vil åbne Klasseværelset.</p>
   <div className="roleGrid">
-   <button onClick={()=>sessionUser&&hasEmployeeAccess(sessionUser)?window.location.href=employeeLanding(sessionUser):setStaffLogin("employee")}><b>✎</b><strong>Jeg er medarbejder</strong><small>{sessionUser&&hasEmployeeAccess(sessionUser)?(hasTeachingAccess(sessionUser)?"Fortsæt til I dag":"Fortsæt til Lærerværelset"):"Lærer, pædagog, vikar eller ledelse"}</small></button>
+   <button onClick={()=>sessionUser&&hasEmployeeAccess(sessionUser)?window.location.href=employeeLanding(sessionUser):setStaffLogin("employee")}><b>✎</b><strong>Jeg er medarbejder</strong><small>{sessionUser&&hasEmployeeAccess(sessionUser)?(hasTeachingAccess(sessionUser)?"Fortsæt til I dag":hasRole(sessionUser as any,"leader")?"Fortsæt til Ledelse":"Fortsæt til Lærerværelset"):"Lærer, pædagog eller vikar"}</small></button>
    <button onClick={()=>setStudentMode(true)}><b>◎</b><strong>Jeg er elev</strong><small>Log ind med din personlige kode</small></button>
    <button onClick={()=>chooseRole("parent","/parent",user=>hasRole(user as any,"parent"))}><b>⌂</b><strong>Jeg er forælder</strong><small>Følg dit barns skolehverdag</small></button>
-   <button onClick={()=>chooseRole("admin","/admin",user=>hasRole(user as any,"admin"))}><b>⚙</b><strong>Jeg er administrator</strong><small>Skemaer, fravær og skolens opsætning</small></button>
+   <button onClick={()=>chooseRole("leader","/admin",user=>hasRole(user as any,"leader"))}><b>◇</b><strong>Jeg er leder</strong><small>Skoleår, ressourcer, skema og personaleopgaver</small></button>
+   <button onClick={()=>chooseRole("admin","/admin",user=>hasRole(user as any,"admin"))}><b>⚙</b><strong>Jeg er administrator</strong><small>Personer, roller og skolens grunddata</small></button>
    <button onClick={()=>chooseRole("board","/board",user=>hasRole(user as any,"board"))}><b>§</b><strong>Jeg er bestyrelsesmedlem</strong><small>Møder, dokumenter og beslutninger</small></button>
   </div>
   {account&&<small style={{display:"block",marginTop:14,color:"#707670"}}>Aktiv konto: {account}</small>}
