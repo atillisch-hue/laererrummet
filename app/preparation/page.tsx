@@ -2,6 +2,7 @@
 import Link from "next/link";
 import {useEffect,useState} from "react";
 import {supabase} from "../../lib/supabase";
+import {hasRole} from "../../lib/roles";
 import ResumeWorkCard from "../ResumeWorkCard";
 import PublishToSubjectRoom from "./PublishToSubjectRoom";
 import LinkToLesson from "./LinkToLesson";
@@ -18,7 +19,7 @@ const quick={padding:"10px 13px",borderRadius:8,fontWeight:800 as const,textDeco
 
 export default function Preparation(){
  const[ready,setReady]=useState(false);
- useEffect(()=>{supabase.auth.getSession().then(({data})=>{if(!data.session){window.location.href="/?teacher=1";return}setReady(true)})},[]);
+ useEffect(()=>{supabase.auth.getSession().then(({data})=>{const user=data.session?.user;if(!user){window.location.href="/?teacher=1";return}if(!hasRole(user,"teacher")){window.location.replace(hasRole(user,"admin")||hasRole(user,"leader")?"/admin":"/teacher-room");return}setReady(true)})},[]);
  if(!ready)return <main style={{padding:50}}>Åbner Forberedelse…</main>;
  return <main style={{minHeight:"100vh",background:"#f5f3ee",color:"#26342e"}}>
   <header style={{background:"#243d33",color:"white",padding:"24px 32px"}}><div style={{maxWidth:1120,margin:"0 auto",display:"flex",alignItems:"center",gap:14}}><span style={{display:"grid",placeItems:"center",width:46,height:46,borderRadius:12,background:"#dfa94f",color:"#243d33",fontSize:22}}>✦</span><div><strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:25}}>Forberedelse</strong><small style={{opacity:.75}}>Planlæg, byg og placer det undervisningsarbejde, du vil have samlet digitalt</small></div></div></header>
