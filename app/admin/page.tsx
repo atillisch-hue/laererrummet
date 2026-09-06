@@ -10,7 +10,7 @@ import MeetingActionInbox from "../MeetingActionInbox";
 type AdminCard={title:string;text:string;href:string;tag?:string};
 type AdminGroup={id:string;eyebrow:string;title:string;text:string;cards:AdminCard[]};
 
-const groups:AdminGroup[]=[
+const adminGroups:AdminGroup[]=[
  {id:"personer",eyebrow:"PERSONER & ADGANG",title:"Hvem er en del af skolen?",text:"Personer findes én gang. Herfra styrer du login, roller, relationer og de administrative profiler omkring dem.",cards:[
   {title:"Personer & adgang",text:"Administrér login, roller, deaktivering og relationen mellem forældre/værger og børn.",href:"/admin/people",tag:"ADGANG"},
   {title:"Personaleprofiler",text:"Navne, initialer, personalegruppe, funktioner og status for skolens medarbejdere.",href:"/admin/staff",tag:"PERSONALE"},
@@ -20,32 +20,37 @@ const groups:AdminGroup[]=[
   {title:"Klasser & elever",text:"Opret og redigér klasser og elever samt administrér elevernes sikre adgangskoder.",href:"/admin/classes",tag:"GRUNDSTRUKTUR"},
   {title:"Klassetrin & differentiering",text:"Angiv klassetrin pr. elev — også i blandede klasser. Det bruges til trinpasset træning og progression.",href:"/admin/student-grade-levels",tag:"KLASSETRIN"},
   {title:"Undervisere & klasser",text:"Tilknyt en eller flere lærere til de klasser, de faktisk arbejder med.",href:"/admin/teacher-classes",tag:"TILKNYTNING"}
- ]},
+ ]}
+];
+
+const leadershipGroups:AdminGroup[]=[
  {id:"planlaegning",eyebrow:"SKOLEÅR & RESSOURCER",title:"Hvordan hænger skoleåret sammen?",text:"Planlæg undervisningsbehov, norm, opgaver, skolekalender og skemaversioner som én samlet ressourceplan.",cards:[
   {title:"Skoleårsplanlægning",text:"Se aktivt skoleår, normdækning, undervisningsbehov, øvrige opgaver og skemaversion samlet.",href:"/admin/planning",tag:"LEDELSE"},
   {title:"Skolekalender & lukkedage",text:"Vedligehold undervisningsperiode, ferier, lukkedage, specialuger og fælles arrangementer.",href:"/admin/settings",tag:"ÅRSKALENDER"}
  ]},
- {id:"drift",eyebrow:"DAGLIG DRIFT",title:"Hvad skal fungere i hverdagen?",text:"Skema, fravær, vikardækning, personaleopgaver og arbejdstid — hver med én tydelig indgang.",cards:[
+ {id:"drift",eyebrow:"DAGLIG DRIFT",title:"Hvad skal fungere i hverdagen?",text:"Skema, personaleopgaver og arbejdstid — hver med én tydelig indgang.",cards:[
   {title:"Skema",text:"Redigér arbejdskladden, kontrollér konflikter og publicér den version, der skal gælde fra en bestemt dato.",href:"/admin/schedule",tag:"SKEMA"},
-  {title:"Fravær & vikardækning",text:"Før elevfravær, håndtér personalefravær, statistik og vikardækning.",href:"/admin/absence",tag:"FRAVÆR"},
   {title:"Personaleopgaver",text:"Tildel opgaver til medarbejdere, sæt deadlines og følg op på status.",href:"/admin/tasks",tag:"OPGAVER"},
   {title:"Arbejdstid & norm",text:"Åbn arbejdstidsvisningen direkte for at se og administrere arbejdstid og norm for medarbejdere.",href:"/calendar?view=work",tag:"ARBEJDSTID"}
  ]}
 ];
 
+const adminOnlyDrift:AdminCard={title:"Fravær & vikardækning",text:"Før elevfravær, håndtér personalefravær, statistik og vikardækning.",href:"/admin/absence",tag:"FRAVÆR"};
+
 export default function AdminPage(){
- const[ready,setReady]=useState(false);
- useEffect(()=>{supabase.auth.getSession().then(({data})=>{const user=data.session?.user;if(!user){window.location.replace("/");return}if(!hasRole(user,"admin")){window.location.replace("/noticeboard");return}setReady(true)})},[]);
- if(!ready)return <main style={{padding:50}}>Henter administrationen…</main>;
+ const[ready,setReady]=useState(false),[isAdmin,setIsAdmin]=useState(false),[isLeader,setIsLeader]=useState(false);
+ useEffect(()=>{supabase.auth.getSession().then(({data})=>{const user=data.session?.user;if(!user){window.location.replace("/");return}const admin=hasRole(user,"admin"),leader=hasRole(user,"leader");if(!admin&&!leader){window.location.replace("/teacher-room");return}setIsAdmin(admin);setIsLeader(leader);setReady(true)})},[]);
+ if(!ready)return <main style={{padding:50}}>Henter {isAdmin?"administrationen":"ledelsen"}…</main>;
+ const groups=isAdmin?[...adminGroups,...leadershipGroups.map(group=>group.id==="drift"?{...group,text:"Skema, fravær, vikardækning, personaleopgaver og arbejdstid — hver med én tydelig indgang.",cards:[group.cards[0],adminOnlyDrift,...group.cards.slice(1)]}:group)]:leadershipGroups;
 
  return <main style={{minHeight:"100vh",background:"#f5f2ea",color:"#26342e"}}>
   <section style={{maxWidth:1180,margin:"0 auto",padding:"42px 24px 90px"}}>
-   <p className="eyebrow">ADMINISTRATION</p>
-   <h1 style={{fontFamily:"Georgia,serif",fontSize:42,margin:"7px 0 8px"}}>Skolens administration</h1>
-   <p style={{maxWidth:760,fontSize:17,color:"#5f665f",lineHeight:1.55,margin:"0 0 28px"}}>Vælg efter det arbejde, du vil udføre: mennesker og adgang, skolens struktur, skoleårsplanlægning eller den daglige drift.</p>
+   <p className="eyebrow">{isAdmin?"ADMINISTRATION":"LEDELSE"}</p>
+   <h1 style={{fontFamily:"Georgia,serif",fontSize:42,margin:"7px 0 8px"}}>{isAdmin?"Skolens administration":"Ledelsesoverblik"}</h1>
+   <p style={{maxWidth:820,fontSize:17,color:"#5f665f",lineHeight:1.55,margin:"0 0 28px"}}>{isAdmin?"Vælg efter det arbejde, du vil udføre: mennesker og adgang, skolens struktur, skoleårsplanlægning eller den daglige drift.":"Her arbejder du med skoleåret, ressourcerne, skemaet og de opgaver, der skal hænge sammen i hverdagen. Login, roller og skolens grunddata ligger hos administratoren."}</p>
 
    <section style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16,alignItems:"start"}}>
-    <RoleNoticeboard audience="admin"/>
+    {isAdmin&&<RoleNoticeboard audience="admin"/>}
     <MeetingActionInbox/>
    </section>
 
@@ -66,6 +71,7 @@ export default function AdminPage(){
      </div>
     </section>)}
    </div>
+   {isLeader&&!isAdmin&&<p style={{marginTop:24,color:"#737a73",fontSize:13}}>Ledelsesrollen giver ikke adgang til login, roller, elevkoder eller øvrig systemadministration.</p>}
   </section>
  </main>;
 }
