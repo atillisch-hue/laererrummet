@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {verifiedTokenHasAal2} from "../../../../lib/serverMfa";
 
 const allowedRoles = ["teacher", "staff", "leader", "parent", "board", "admin"];
 const staffRoles = new Set<string>(["teacher", "staff", "leader", "admin"]);
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
     const admin = createClient(url, service, { auth: { autoRefreshToken: false, persistSession: false } });
     const { data: me, error: meError } = await admin.auth.getUser(token);
     if (meError || !me.user) return NextResponse.json({ error: "Sessionen kunne ikke bekræftes." }, { status: 401 });
+    if(!verifiedTokenHasAal2(token))return NextResponse.json({error:"2-trinsbekræftelse er påkrævet for administratorhandlinger.",code:"mfa_required"},{status:403});
 
     const body = await req.json();
     const requestedSchoolId = Number(body.school_id || 0);
