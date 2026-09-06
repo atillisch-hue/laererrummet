@@ -1,5 +1,6 @@
 import {NextResponse} from "next/server";
 import {createClient} from "@supabase/supabase-js";
+import {verifiedTokenHasAal2} from "../../../../lib/serverMfa";
 
 const allowed=["teacher","staff","leader","parent","board","admin"];
 const personnelGroups=new Set(["teacher","pedagogue","substitute","administration","other"]);
@@ -19,11 +20,13 @@ function normalizeRoles(value:unknown):string[]{
 async function getAdmin(req:Request,body:any){
  const authHeader=req.headers.get("authorization");
  if(!authHeader?.startsWith("Bearer "))return{error:"Ikke logget ind.",status:401}as const;
+ const token=authHeader.slice(7);
  const url=process.env.NEXT_PUBLIC_SUPABASE_URL,service=process.env.SUPABASE_SERVICE_ROLE_KEY;
  if(!url||!service)return{error:"Serveren mangler Supabase-konfiguration.",status:500}as const;
  const admin=createClient(url,service,{auth:{autoRefreshToken:false,persistSession:false}});
- const{data,error}=await admin.auth.getUser(authHeader.slice(7));
+ const{data,error}=await admin.auth.getUser(token);
  if(error||!data.user)return{error:"Sessionen kunne ikke bekræftes.",status:401}as const;
+ if(!verifiedTokenHasAal2(token))return{error:"2-trinsbekræftelse er påkrævet for administratorhandlinger.",status:403,code:"mfa_required"}as const;
  const requestedSchoolId=Number(body.school_id||0);
  let q=admin.from("school_memberships").select("school_id").eq("user_id",data.user.id).eq("role","admin").eq("active",true);
  if(requestedSchoolId)q=q.eq("school_id",requestedSchoolId);
@@ -65,7 +68,7 @@ function adminGuardError(message:string){
 export async function PATCH(req:Request){
  try{
   const body=await req.json(),access=await getAdmin(req,body);
-  if("error" in access)return NextResponse.json({error:access.error},{status:access.status});
+  if("error" in access)return NextResponse.json({error:access.error,...("code" in access?{code:access.code}:{})},{status:access.status});
   const id=String(body.id||"");if(!id)return NextResponse.json({error:"Bruger mangler."},{status:400});
   if(!(await verifyTarget(access.admin,access.schoolId,id)))return NextResponse.json({error:"Brugeren tilhører ikke den skole, du administrerer."},{status:403});
 
