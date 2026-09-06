@@ -1,95 +1,170 @@
-# Klassevaerelset Supabase security baseline
+# Klasseværelset · Supabase security baseline
 
-Last refreshed: 2026-09-01
+Sidst opdateret: 6. september 2026.
 
-This file documents the current security/database baseline after the first hardening passes. It is not a substitute for migrations or automated tests. Re-run `supabase/security-audit.sql` after security-sensitive database changes.
+Dette dokument beskriver den tekniske database-/Supabase-sikkerhedsbaseline. Den overordnede produktbaseline ligger i `SECURITY.md`, og den operative recovery-procedure ligger i `docs/backup-and-restore.md`.
 
-## Current posture
+## Aktuel posture
 
-- 37 public tables.
-- RLS enabled on all 37 public tables.
-- 100 public RLS policies.
-- 0 policies with direct per-row `auth.uid()` calls after the RLS performance pass.
-- 0 authorization functions detected using `user_metadata` for roles/access.
-- 0 foreign keys without a supporting leading index.
-- `school_memberships` is the authoritative source for school-scoped roles.
-- Root operational objects now carry `school_id`: meetings, noticeboard posts, staff absence, rooms and resource bookings.
-- Guardians cannot read raw meeting rows containing internal notes; guardian meeting access goes through a safe RPC projection.
-- Student access is now session-based: the short code is accepted only by the session bootstrap RPC and is not reused for normal data/write calls.
-- Student session tokens are 256-bit random values; only SHA-256 hashes are stored server-side. Sessions expire after 12 hours and can be revoked on logout.
-- Failed student-code login attempts are limited per IP to 30 attempts per 5 minutes.
-- Student access codes are case-insensitively unique in the database.
-- New/regenerated student codes are generated with browser Web Crypto as 8 characters from a 32-symbol unambiguous alphabet (40 bits). Existing six-character codes remain valid until deliberately rotated.
+Seneste målte status:
+
+- 74 public-tabeller.
+- RLS aktiveret på alle 74 public-tabeller.
+- 239 public RLS-policies.
+- `school_memberships` er autoritativ kilde til skoleafgrænsede adgangsroller.
+- 3 forskellige konti har aktive `admin`/`leader`-rettigheder.
+- 1 verificeret TOTP-faktor findes aktuelt på privilegerede konti.
+- 22 elevkoder står stadig `needs_rotation=true`.
+- 0 elevkoder er endnu roteret til den aktuelle 12+ tegns standard.
+
+Roller kommer ikke fra `user_metadata`. `admin` giver ikke implicit læreradgang, og `leader` giver ikke implicit systemadmin.
+
+## Tenant- og rolleafgrænsning
+
+Skole-/rolleautorisation håndhæves server-/database-side via medlemskab, relationer, klassekoblinger, RLS og snævre RPC'er. Centrale negative adgangstests er gennemført for lærer, personale, leder, admin, forælder og bestyrelse.
+
+Eksempler på verificeret adfærd:
+
+- lærer-only ser kun elever i egne tilknyttede klasser,
+- `staff` udvider ikke elevsynlighed,
+- forældre ser kun egne børn via `parent_students`,
+- bestyrelsesrolle giver ikke intern personale-/adminadgang,
+- leder kan bruge ledelsesområder men ikke admin-kataloget,
+- kombinerede roller giver summen af de eksplicit tildelte rettigheder.
+
+## Privileged MFA / AAL2
+
+Admin- og ledelsesområder kræver TOTP-baseret MFA (`aal2`). Håndhævelsen findes i flere lag:
+
+1. `app/AccessGuard.tsx` sender privilegerede `aal1`-sessioner til enrollment/challenge.
+2. `/account/security` håndterer TOTP-enrollment.
+3. `/mfa` håndterer challenge og opgradering til `aal2`.
+4. service-role API-ruter til bruger-/rolle-/adgangsmutationer validerer bearer-token og kræver `aal2` før service role bruges.
+5. højrisiko-RPC'er kræver `aal2` før mutation.
+6. restriktive RLS-policies kræver `aal2` ved direkte writes til centrale admin-/ledelsestabeller.
+
+Verificerede regressionstests:
+
+- privilegeret RPC med `aal1` stoppes med `MFA required`,
+- samme RPC med `aal2` passerer MFA-gaten og rammer den normale objekt-/rollevalidering,
+- direkte admin-write med `aal1` gav 0 skrivbare klasser,
+- samme no-op write med `aal2` passerede den eksisterende admin-policy.
+
+Den gamle `admin_update_schedule_entry`-RPC er ikke længere executable for `authenticated`; v2-editoren er den kanoniske vej.
+
+TOTP er tilgængeligt på projektets nuværende Free-plan. Leaked-password protection er fortsat slået fra og kræver plan-/Auth-konfigurationsafklaring før bred drift.
+
+## Elevadgang
+
+Elevadgang bruger et separat bootstrap/session-flow frem for almindelig Supabase Auth:
+
+- elevkoden accepteres kun ved session-bootstrap,
+- adgangskoder lagres kun som SHA-256-hash i `private.student_access_credentials`,
+- nye koder skal være 12–32 tegn fra det godkendte entydige alfabet,
+- sessions hemmelighed lagres kun hash'et,
+- sessioner udløber og kan tilbagekaldes,
+- kodeforsøg er rate-limited,
+- rotation tilbagekalder eksisterende aktive elevsessioner.
+
+Alle 22 eksisterende elevkoder er stadig gamle koder og skal roteres kontrolleret før bred pilot. Admin-UI viser status og understøtter rotation én elev ad gangen. Der masseroteres ikke uden en sikker udleveringsplan.
 
 ## Intentional anonymous SECURITY DEFINER RPCs
 
-The student UI does not require a full Supabase Auth user. These functions therefore remain callable by `anon`, but each normal student operation requires a valid limited student-session token:
+Elev-UI'et bruger ikke almindelig Supabase Auth. Derfor er de session-token-baserede elev-RPC'er fortsat intentionelt callable af `anon`. De må kun give adgang gennem en gyldig, begrænset elevsession.
 
-- `student_start_session(text)` — the only RPC that accepts the short access code; rate-limited.
-- `student_session_data(text)`
-- `student_session_feedback(text)`
-- `student_session_grammar_assignments(text)`
-- `get_student_training_progress_session(text)`
-- `save_student_draft_session(text,bigint,jsonb)`
-- `save_student_grammar_attempt_session(text,bigint,jsonb,integer,integer)`
-- `save_student_training_attempt_session(text,text,text,text,text,jsonb,integer,integer)`
-- `student_end_session(text)`
+Supabase Security Advisor markerer derfor disse som warnings. Det er en kendt arkitektonisk undtagelse, ikke i sig selv bevis på en læk. Nye anonyme SECURITY DEFINER-funktioner må ikke tilføjes uden særskilt sikkerhedsreview.
 
-The former short-code data/write RPCs still exist temporarily for migration history/rollback compatibility, but EXECUTE has been revoked from both `anon` and `authenticated`. `supabase/security-audit.sql` treats any renewed execute grant on those functions as a regression.
+Trænings-/forsøgstabeller med RLS men ingen direkte policies er tilsvarende default-deny og tilgås via de snævre session-RPC'er. Advisorens `rls_enabled_no_policy`-INFO på disse tabeller er derfor forventet, så længe direkte table grants ikke genåbnes.
 
-No other SECURITY DEFINER RPC should become anonymously executable without an explicit security review and documentation update here.
+## SECURITY DEFINER-regel
 
-## Known accepted warning
+Alle nye/ændrede privilegerede funktioner skal kontrolleres for:
 
-`student_training_progress` has RLS enabled and no direct RLS policy. Direct table access is therefore default-deny. Student progress is accessed only through the session-token SECURITY DEFINER RPCs. This is intentional unless the data model changes.
+1. eksplicit autentificering,
+2. eksplicit skole-/rolle-/relation-check,
+3. fast og helst tomt `search_path` med kvalificerede objekter,
+4. least-privilege EXECUTE-grants,
+5. ingen læk af rå følsomme kolonner, hvis en projektion er tilstrækkelig,
+6. MFA/AAL2 på privilegerede mutationer,
+7. audit-event, hvor handlingen er sikkerheds-/adgangsrelevant.
 
-Supabase's advisor also flags the intentional anonymous student session RPCs because they are SECURITY DEFINER. Their anonymous executability is required by the current student UX; the security boundary is the long random session token plus narrow function logic, not anonymous table access.
+Advisoren markerer mange legitime authenticated SECURITY DEFINER-RPC'er alene på funktionsformen. Hver warning skal derfor klassificeres ud fra faktisk intern autorisation frem for at blive ignoreret eller mekanisk “gjort grøn”.
 
-## Remaining P1 security work
+## Append-only auditspor
 
-### Student code lifecycle
+`private.security_audit_log` er append-only fra appens perspektiv. Admin har kun en snæver læse-RPC.
 
-The largest student-authentication weakness has been removed: the short code is no longer a reusable bearer secret for every RPC. Remaining work is lifecycle hygiene:
+Første version logger:
 
-1. rotate existing six-character codes gradually to the new eight-character format,
-2. consider storing only a hash of the short bootstrap code rather than plaintext once administration/printing/reset workflows are designed,
-3. consider session/device management for admins if pilot feedback shows a need.
+- rolle-/adgangsændringer,
+- aktivering/deaktivering,
+- forælder↔barn kobling/frakobling,
+- elevkode udstedelse/rotation,
+- skemapublicering.
 
-Do not mass-rotate existing codes without an explicit rollout plan, because it would immediately invalidate codes already handed to students.
+Audit-events må ikke indeholde adgangskoder, elevkoder, kode-hashes, beskedindhold eller følsomme noter. UPDATE/DELETE-afvisning og fravær af elevkode/hash i metadata er testet.
 
-### Auth account hardening
+Planlagt før bred pilot: adgang/redigering/download af følsomme arkivdokumenter og relevante beskedhandlinger skal indgå i samme fælles auditmotor. Brugerne skal samtidig informeres om logningen og databehandlingen ved førstegangsbrug/versioneret policy-accept.
 
-Supabase currently reports leaked-password protection as disabled. Enable it before real production use. Consider MFA for privileged administrator/leader accounts as the platform matures.
+## Versionssikkert skema
 
-### SECURITY DEFINER review
+Skemaet bruger skoleår + versionslag:
 
-Many authenticated app RPCs remain SECURITY DEFINER. They are now school/role scoped, but each new/changed function should be reviewed for:
+- draft redigeres,
+- published/archived versioner er operationelle/historiske,
+- publicering validerer konflikter, fagkoblinger, bemanding og forberedelseskontinuitet,
+- publicering er atomisk,
+- næste draft oprettes automatisk,
+- forberedte fremtidige lektioner flyttes til sikker efterfølger eller blokerer publicering.
 
-1. fixed `search_path`,
-2. explicit caller/role/school checks,
-3. least-privilege EXECUTE grants,
-4. no exposure of raw sensitive rows when a safe projection is appropriate.
+Version-aware readers bruges til lærer, klasse, forælder, booking og vikarflow. Direkte write-policies på kladdeskema kræver både korrekt ledelsesrolle og `aal2`.
 
-## Performance/maintainability backlog
+## Backup / restore
 
-Supabase still reports multiple permissive RLS policies on several older tables. This is primarily a performance/maintainability issue rather than a known active security leak. Consolidate these carefully rather than changing access semantics merely to make the advisor green.
+Repoet har scripts og runbook til:
 
-New FK indexes may temporarily appear as unused because the alpha database is small. Do not remove them solely because of the unused-index advisor until realistic workloads exist.
+- database-dump,
+- migrationshistorik,
+- Storage-eksport,
+- SHA-256-manifest,
+- Storage format v2 med mapping af original bucket/object path,
+- database restore-test med hard-stop mod produktion,
+- Storage restore-test med hard-stop mod produktion og checksum-verifikation efter restore.
 
-## Build/release guardrail
+En rigtig end-to-end recovery drill er endnu ikke gennemført, fordi den kræver hemmelige forbindelsesdata og et separat disposable restore-target.
 
-GitHub Actions now runs a production `next build` on pushes to `main` and pull requests. The student-session frontend has passed this build and the corresponding Vercel deployment status is green.
+## Migration discipline
 
-The repository still needs a committed lockfile and exact dependency pinning so CI and Vercel use a reproducible dependency graph.
+Alle schema-, function-, trigger-, grant- og RLS-ændringer skal:
 
-## Migration rule going forward
+1. anvendes som navngiven Supabase migration,
+2. committed under `supabase/migrations/`,
+3. have præcis samme versionsnummer som produktionshistorikken.
 
-All schema, function, trigger, grant and RLS changes must be applied as named Supabase migrations and committed under `supabase/migrations/` with the exact migration version recorded by Supabase.
+Historisk migration drift fra 3. september er ryddet op, og den manglende `track_grammar_attempt_progress`-migration er rekonstrueret fra produktionshistorikken.
 
-Do not make an untracked production schema change and leave it only in the Supabase dashboard.
+Seneste sikkerhedsrelaterede migrationslag omfatter bl.a.:
 
-## Fresh-database replay status
+- `20260906093523_append_only_security_audit_log`
+- `20260906095405_require_mfa_for_privileged_mutations`
+- `20260906095612_require_mfa_for_privileged_table_writes`
 
-Not yet proven.
+## Aktuelle pilotgates
 
-The project existed before the current Supabase migration history was established, and older schema work is spread across legacy SQL files. A clean development-branch replay is the final proof that the repository can recreate the database. Creating a Supabase development branch can incur cost, so this should only be done after explicit cost confirmation.
+Før bred pilot med rigtige følsomme data:
+
+- [ ] roter de 22 legacy elevkoder med sikker udleveringsplan,
+- [ ] få alle privilegerede konti på verificeret TOTP og gennemfør browser-login/challenge-test,
+- [ ] gennemfør rigtig database + Storage backup,
+- [ ] gennemfør database + Storage restore på separat target,
+- [ ] fastlæg retention/slettepolitik pr. datatype,
+- [ ] fastlæg førstegangs-information/vilkårsaccept og versionering,
+- [ ] udvid audit til følsomt dokumentarkiv og senere beskedmodul,
+- [ ] færdiggør DPIA-/databehandler-/fortegnelsesarbejde,
+- [ ] afklar leaked-password protection før bred drift.
+
+## Build/release guardrails
+
+Vercel-build validerer bl.a. app-build, migrationsfilnavne/-duplikater og syntax på backup/restore-scripts. Interne statiske links kontrolleres også for at reducere døde brugerrejser.
+
+Det erstatter ikke en fresh-database replay. En fuld clean replay/restore på et separat miljø er stadig den endelige dokumentation for, at repository + backup faktisk kan rekonstruere løsningen.
