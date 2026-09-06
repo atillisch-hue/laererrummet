@@ -18,6 +18,7 @@ const leadershipItems=[
  {label:"Lærerværelset",href:"/teacher-room",roots:["/teacher-room","/archive","/my-tasks","/substitute"]}
 ];
 const employeeItems=[
+ {label:"Kalender",href:"/calendar",roots:["/calendar"]},
  {label:"Lærerværelset",href:"/teacher-room",roots:["/teacher-room","/archive","/my-tasks","/substitute"]}
 ];
 const protectedRoots=[...teachingItems.flatMap(x=>x.roots),"/admin","/board","/parent"];
@@ -34,10 +35,10 @@ export default function DashboardNav(){
  useEffect(()=>{let active=true;const match=pathname.match(/^\/students\/subjects\/(\d+)(?:\/|$)/);if(!match){setSubjectRoom(null);return()=>{active=false}};const roomId=Number(match[1]);(async()=>{const{data:room,error:roomError}=await supabase.from("class_subjects").select("id,class_id,subject_id").eq("id",roomId).maybeSingle();if(!active)return;if(roomError||!room){setSubjectRoom(null);return}const{data:subject,error:subjectError}=await supabase.from("subjects").select("name,slug").eq("id",room.subject_id).maybeSingle();if(!active)return;if(subjectError||!subject){setSubjectRoom(null);return}setSubjectRoom({roomId:Number(room.id),classId:Number(room.class_id),subjectName:String(subject.name||"Fag"),subjectSlug:String(subject.slug||"").toLowerCase()})})();return()=>{active=false}},[pathname]);
  const logout=async()=>{await supabase.auth.signOut();window.location.replace("/")};
  if(!ready||!isProtected)return null;
- const teachingAccess=teacher||admin;
- const employeeAccess=teachingAccess||staff||leader;
- const visibleItems=teachingAccess?teachingItems:leader?leadershipItems:employeeAccess?employeeItems:[];
- const homeHref=teachingAccess?"/noticeboard":leader?"/admin":employeeAccess?"/teacher-room":parent?"/parent":board?"/board":"/";
+ const teachingAccess=teacher;
+ const employeeAccess=teacher||staff||leader;
+ const visibleItems=teachingAccess?teachingItems:leader?leadershipItems:staff?employeeItems:[];
+ const homeHref=teacher?"/noticeboard":leader?"/admin":staff?"/teacher-room":admin?"/admin":parent?"/parent":board?"/board":"/";
  const roleLabel=starts(pathname,"/admin")?(admin?"Admin":"Ledelse"):starts(pathname,"/parent")?"Forælder":starts(pathname,"/board")?"Bestyrelse":teacher?"Lærer":leader?"Ledelse":staff?"Medarbejder":admin?"Admin":"Bruger";
  const compactMainHeader=mainTabs.has(pathname),isMathRoom=subjectRoom?.subjectSlug==="matematik",isDanishRoom=subjectRoom?.subjectSlug==="dansk";
  return <>
