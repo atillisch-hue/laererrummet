@@ -27,7 +27,7 @@ export default function AdminTasks(){
   const problem=sRes.error||tRes.error||aRes.error;setError(problem?.message||"");
  }
 
- useEffect(()=>{(async()=>{const{data}=await supabase.auth.getSession();const user=data.session?.user;if(!user){location.replace("/");return}if(!hasRole(user,"admin")){location.replace("/noticeboard");return}await load();setReady(true)})()},[]);
+ useEffect(()=>{(async()=>{const{data}=await supabase.auth.getSession();const user=data.session?.user;if(!user){location.replace("/");return}if(!hasRole(user,"admin")&&!hasRole(user,"leader")){location.replace("/teacher-room");return}await load();setReady(true)})()},[]);
 
  const name=(id:string)=>staff.find(x=>x.user_id===id)?.display_name||"Medarbejder";
  const taskAssignees=(id:number)=>assignees.filter(x=>x.task_id===id);
@@ -50,7 +50,7 @@ export default function AdminTasks(){
 
  if(!ready)return <main style={{padding:50}}>Henter personaleopgaver…</main>;
  return <main style={{minHeight:"100vh",background:"#f5f2ea",color:"#26342e"}}>
-  <header style={{background:"#486b59",color:"white",padding:"20px 6vw"}}><div style={{maxWidth:1050,margin:"auto",display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><div><small style={{opacity:.75,fontWeight:900}}>ADMINISTRATION · PERSONALE</small><h1 style={{fontFamily:"Georgia,serif",fontSize:30,margin:"4px 0"}}>Personaleopgaver</h1></div><Link href="/admin" style={{color:"white",fontWeight:800}}>← Administration</Link></div></header>
+  <header style={{background:"#486b59",color:"white",padding:"20px 6vw"}}><div style={{maxWidth:1050,margin:"auto",display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><div><small style={{opacity:.75,fontWeight:900}}>LEDELSE · PERSONALE</small><h1 style={{fontFamily:"Georgia,serif",fontSize:30,margin:"4px 0"}}>Personaleopgaver</h1></div><Link href="/admin" style={{color:"white",fontWeight:800}}>← Ledelsesoverblik</Link></div></header>
   <section style={{maxWidth:1050,margin:"auto",padding:"36px 24px 80px"}}>
    <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"end",flexWrap:"wrap"}}><div><p style={eyebrow}>OPGAVEOVERSIGT</p><h2 style={{fontFamily:"Georgia,serif",fontSize:32,margin:"5px 0"}}>Hvem skal gøre hvad?</h2><p style={{color:"#687068",maxWidth:700,lineHeight:1.55,margin:"6px 0 0"}}>Tildel én opgave til én eller flere medarbejdere. Hver medarbejder markerer sin egen opgave som udført, og du kan følge status her.</p></div><button onClick={()=>setShowCreate(v=>!v)} style={primary}>{showCreate?"Luk":"+ Tildel opgave"}</button></div>
 
