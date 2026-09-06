@@ -5,18 +5,18 @@ Denne procedure er et driftskrav, ikke kun udviklerdokumentation. Klasseværelse
 ## Nuværende situation
 
 - Supabase-projekt: `jxmxiaiagknlvfxkluzu` (`Klasseværelset`).
-- Plan pr. 4. september 2026: **Free**.
-- Supabase dokumenterer automatiske daglige platform-backups for Pro, Team og Enterprise. På Free skal vi derfor ikke basere vores recovery-plan på platformens daglige backups.
+- Plan pr. 6. september 2026: **Free**.
+- Supabase dokumenterer automatiske daglige platform-backups for Pro, Team og Enterprise. På Free skal vi derfor ikke basere recovery-planen på platformens daglige backups.
 - Databaseskemaet er versionsstyret i `supabase/migrations` og valideres ved hver build.
-- Backupscriptet eksporterer database + migrationshistorik og kan desuden hente Supabase Storage-objekter.
+- Backupscriptet eksporterer database + migrationshistorik og kan desuden hente alle Supabase Storage-objekter.
+- Backupformat v2 gemmer en eksplicit mapping fra original `bucket/object-path` til den lokale backupfil, så danske tegn, mellemrum og mapper kan genskabes præcist.
 - Backupmapper og almindelige dumpfilnavne er eksplicit ignoreret i `.gitignore`.
-- Storage-bucket `school-files` havde 0 objekter ved etablering af denne procedure. Det ændrer ikke kravet: filobjekter skal indgå, før rigtige filer tages i brug.
 
 ## Tre lag i recovery
 
 1. **Kode og migrationshistorik** · GitHub er kilden til appkode og reproducerbare skemaændringer.
 2. **Databasebackup** · roller, schema, data og `supabase_migrations` eksporteres med Supabase CLI.
-3. **Storagebackup** · selve filobjekterne eksporteres separat. Databasebackup alene er ikke nok til at genskabe slettede Storage-filer.
+3. **Storagebackup** · selve filobjekterne eksporteres separat med original bucket/path og checksum.
 
 Ingen af disse lag kan erstatte de andre.
 
@@ -52,9 +52,7 @@ Brug et godkendt, adgangsbegrænset og krypteret backupmål. `KLASSEVAERELSET_BA
 
 ## Forudsætninger for databasebackup
 
-Supabases aktuelle anbefalede metode bruger Supabase CLI, som kører `pg_dump` med Supabase-specifik filtrering. Docker skal være tilgængelig for CLI-dumpet.
-
-Brug en **Session Pooler** databaseforbindelse som `SUPABASE_DB_URL`.
+Supabases anbefalede CLI-metode bruger `supabase db dump`. Brug en **Session Pooler** databaseforbindelse som `SUPABASE_DB_URL`.
 
 Hemmelige værdier må ikke skrives i repoet. På Windows PowerShell kan de sættes for den aktuelle terminalsession:
 
@@ -81,13 +79,12 @@ Scriptet:
 4. laver `data.sql`,
 5. eksporterer Supabases migrationshistorik,
 6. henter Storage-objekter, hvis Storage-credentials er sat,
-7. opretter `manifest.json` med filstørrelser og SHA-256 checksums.
+7. gemmer original bucket/path + relevante bucket/object-metadata i manifestet,
+8. opretter `manifest.json` med filstørrelser og SHA-256 checksums.
 
-Hvis Storage-credentials ikke er sat, gennemføres databasebackuppen, men scriptet markerer backupen som **ufuldstændig i forhold til Storage**.
+Hvis Storage-credentials ikke er sat, gennemføres databasebackuppen, men backupen markeres som **ufuldstændig i forhold til Storage**.
 
 ## Verificér backupen
-
-Kør efter hver backup:
 
 ```powershell
 npm run backup:verify -- "D:\Klassevaerelset-backup\<backup-mappe>"
@@ -97,17 +94,17 @@ Verifikationen kontrollerer:
 
 - at de obligatoriske databasefiler findes,
 - at manifestet tilhører Klasseværelset,
-- filstørrelser,
-- SHA-256 checksum for hver fil,
-- om Storage-eksporten blev gennemført.
+- filstørrelser og SHA-256 checksums,
+- om Storage-eksporten blev gennemført,
+- at format v2 har en entydig og sikker mapping fra hver original Storage-path til en backupfil.
 
 En backup er ikke godkendt, hvis verifikationen fejler.
 
-## Restore-test
+## Database restore-test
 
 En backup er først troværdig, når vi har bevist, at den kan restores.
 
-Restore-testen må **aldrig** køres mod produktion. Scriptet indeholder en ekstra hard-stop og nægter at køre, hvis `RESTORE_DB_URL` indeholder produktions-ref `jxmxiaiagknlvfxkluzu`.
+Database-restore må **aldrig** køres mod produktion. Scriptet nægter at køre, hvis `RESTORE_DB_URL` indeholder produktions-ref `jxmxiaiagknlvfxkluzu`.
 
 Restore-test kræver `psql` og en tom/disposable Postgres/Supabase testdatabase:
 
@@ -121,11 +118,33 @@ Scriptet:
 
 1. verificerer backup-manifestet,
 2. nægter produktion som target,
-3. restores roller, schema og data i én fejlstoppende restore,
+3. restores roller, schema og data i en fejlstoppende restore,
 4. restores migrationshistorikken,
 5. smoke-tester centrale Klasseværelset-tabeller.
 
-Storage-objekter uploades ikke af database-restore-scriptet. Storage restore skal testes separat, når `school-files` reelt indeholder filer.
+## Storage restore-test
+
+Database-restore genskaber ikke i sig selv de fysiske Storage-objekter. Kør derfor Storage-restore mod et **disposable Supabase-testprojekt** efter database-restore.
+
+```powershell
+$env:RESTORE_SUPABASE_URL="https://<test-project-ref>.supabase.co"
+$env:RESTORE_SUPABASE_SERVICE_ROLE_KEY="<test-project-service-role-key>"
+$env:KLASSEVAERELSET_RESTORE_STORAGE_TEST="YES"
+npm run restore:storage:test -- "D:\Klassevaerelset-backup\<backup-mappe>"
+```
+
+Storage-restore-scriptet:
+
+1. kræver en verificeret format v2-backup med komplet Storage-status,
+2. nægter Klasseværelsets produktions-ref som target,
+3. opretter eller justerer de forventede buckets på testtarget,
+4. afviser target-buckets med ekstra, uvedkommende objekter,
+5. uploader hvert objekt til **præcis den originale path**,
+6. downloader hvert objekt igen,
+7. sammenligner SHA-256 med backupfilen,
+8. kontrollerer at der hverken mangler eller er kommet ekstra object paths.
+
+Dermed tester vi ikke kun, at filerne findes på backupdisken, men at de faktisk kan genskabes via Supabase Storage.
 
 ## Hvornår vi skal udføre en rigtig restore-test
 
@@ -134,7 +153,7 @@ Storage-objekter uploades ikke af database-restore-scriptet. Storage restore ska
 - efter ændring af backupmetoden,
 - derefter mindst kvartalsvist, når systemet er i reel drift.
 
-Supabase development branches er velegnede til en isoleret restore-/migrationstest, men kan koste penge. Oprettelse af en sådan branch skal derfor ske bevidst og med omkostningen godkendt først.
+Supabase development branches kan være velegnede til isolerede migrationstests, men kan koste penge. Oprettelse af en branch skal derfor ske bevidst og med omkostningen godkendt først.
 
 ## Efter en restore-test
 
@@ -144,23 +163,23 @@ Dokumentér mindst:
 - targetmiljø,
 - om schema/data/migrationshistorik blev restored,
 - row-count/smoke-test resultat,
+- om Storage blev restored og checksum-verificeret,
 - eventuelle fejl og rettelser,
-- om Storage blev testet,
 - hvem der udførte testen.
 
 Slet det disposable target igen, når testen er dokumenteret og ikke længere nødvendig.
 
+## Pilotgate
+
+Før rigtige følsomme skoledata bruges i piloten, skal vi kunne sætte flueben ved:
+
+- [ ] mindst én komplet format v2-backup med `Storage status=complete`,
+- [ ] backup-verifikation uden fejl,
+- [ ] database restore-test på ikke-produktions-target,
+- [ ] Storage restore-test på ikke-produktions-target,
+- [ ] restore-resultatet dokumenteret,
+- [ ] fast aftale om backupfrekvens og krypteret off-site opbevaring.
+
 ## Vigtigt om Supabase Storage
 
-Supabase databasebackups beskytter databaseindhold og Storage-metadata, men ikke nødvendigvis de fysiske filobjekter. Derfor er `school-files` en separat recovery-komponent.
-
-Inden skolen begynder at bruge dokumentarkiv/upload i praksis skal vi have testet:
-
-1. komplet download af `school-files`,
-2. checksum/verifikation,
-3. upload til en tom test-bucket,
-4. at databasefilreferencer igen peger på eksisterende objekter.
-
-## Kilder / metode
-
-Proceduren følger Supabases aktuelle dokumentation for **Database Backups**, `supabase db dump` og **Backup and Restore using the CLI**. Supabase anbefaler Session Pooler til dump/restore og beskriver separat, at Storage-objekter ikke genskabes alene ved database-restore.
+Databasebackup beskytter databaseindhold og Storage-metadata, men de fysiske filobjekter er en separat recovery-komponent. Derfor må en database-only restore aldrig betragtes som en fuld Klasseværelset-recovery, når dokumentarkivet er i brug.
