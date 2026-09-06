@@ -2,20 +2,21 @@
 
 Sidst opdateret: 6. september 2026.
 
-Dette dokument beskriver den tekniske database-/Supabase-sikkerhedsbaseline. Den overordnede produktbaseline ligger i `SECURITY.md`, og den operative recovery-procedure ligger i `docs/backup-and-restore.md`.
+Dette dokument beskriver den tekniske database-/Supabase-sikkerhedsbaseline. Den overordnede produktbaseline ligger i `SECURITY.md`, den operative recovery-procedure ligger i `docs/backup-and-restore.md`, og retentiondesignet ligger i `docs/data-retention-and-deletion.md`.
 
 ## Aktuel posture
 
 Seneste målte status:
 
-- 74 public-tabeller.
-- RLS aktiveret på alle 74 public-tabeller.
-- 239 public RLS-policies.
+- 76 public-tabeller.
+- RLS aktiveret på alle 76 public-tabeller.
+- 243 public RLS-policies.
 - `school_memberships` er autoritativ kilde til skoleafgrænsede adgangsroller.
 - 3 forskellige konti har aktive `admin`/`leader`-rettigheder.
 - 1 verificeret TOTP-faktor findes aktuelt på privilegerede konti.
 - 22 elevkoder står stadig `needs_rotation=true`.
 - 0 elevkoder er endnu roteret til den aktuelle 12+ tegns standard.
+- 0 policy-versioner er publiceret; policy-acknowledgement-fundamentet blokerer derfor ingen brugere.
 
 Roller kommer ikke fra `user_metadata`. `admin` giver ikke implicit læreradgang, og `leader` giver ikke implicit systemadmin.
 
@@ -106,6 +107,38 @@ Audit-events må ikke indeholde adgangskoder, elevkoder, kode-hashes, beskedindh
 
 Planlagt før bred pilot: adgang/redigering/download af følsomme arkivdokumenter og relevante beskedhandlinger skal indgå i samme fælles auditmotor. Brugerne skal samtidig informeres om logningen og databehandlingen ved førstegangsbrug/versioneret policy-accept.
 
+## Retention / opbevaringsbegrænsning
+
+`admin_retention_inventory(bigint)` giver en MFA- og adminbeskyttet, read-only oversigt over datakategorier. Den returnerer kun kategori, antal, ældste/nyeste tidspunkt og teknisk retention-anchor — aldrig navne, noter, dokumenttitler eller andet personindhold.
+
+Verificeret:
+
+- `aal1` bliver afvist,
+- `aal2` + aktiv adminrolle kan læse oversigten,
+- ingen slettefunktion er eksponeret,
+- ingen opbevaringsfrist er hardkodet.
+
+Inventaret skelner mellem kategorier, der allerede har en meningsfuld tidsankring (`absence_date`, `completed_at`, `ends_at`, `work_date`, `expires_at` mv.), og kategorier der først kræver bedre livscyklusdata. Fx mangler elevgrunddata en egentlig udskrivnings-/inaktiveringsdato, og dokumentarkivet mangler en entydig `archived_at`/retention-anchor.
+
+Der må ikke bygges automatisk sletning før skolens konkrete perioder og begrundelser er fastlagt. Se `docs/data-retention-and-deletion.md`.
+
+## Versioneret førstegangs-information
+
+Datamodellen indeholder nu:
+
+- `school_policy_versions`
+- `user_policy_acknowledgements`
+- `my_required_policy_acknowledgements()`
+- `acknowledge_policy(bigint)`
+
+Policy-typerne er adskilt i brugsvilkår, privatlivsinformation og sikkerheds-/logningsinformation. En acknowledgement gemmer bruger, policy-version og tidspunkt; der gemmes ikke IP eller anden unødvendig tracking.
+
+En rollback-test har verificeret, at en publiceret testversion vises som manglende, kan bekræftes og derefter ikke længere er manglende for den samme bruger. Testdata blev rullet helt tilbage.
+
+Der er aktuelt 0 publicerede policy-versioner, og `AccessGuard` håndhæver endnu ikke policy-acknowledgement. `/account/policies` er bygget som fremtidig visnings-/bekræftelsesside, men bliver først koblet på som gate, når de reelle tekster er godkendt. Dette er dokumentation for information/vilkår — ikke automatisk GDPR-samtykke.
+
+Elevflowet skal have en separat børnevenlig informationsmodel, fordi elever bruger session-token-login frem for almindelig Auth.
+
 ## Versionssikkert skema
 
 Skemaet bruger skoleår + versionslag:
@@ -143,11 +176,14 @@ Alle schema-, function-, trigger-, grant- og RLS-ændringer skal:
 
 Historisk migration drift fra 3. september er ryddet op, og den manglende `track_grammar_attempt_progress`-migration er rekonstrueret fra produktionshistorikken.
 
-Seneste sikkerhedsrelaterede migrationslag omfatter bl.a.:
+Seneste sikkerheds-/governance-migrationslag omfatter bl.a.:
 
 - `20260906093523_append_only_security_audit_log`
 - `20260906095405_require_mfa_for_privileged_mutations`
 - `20260906095612_require_mfa_for_privileged_table_writes`
+- `20260906152726_admin_retention_inventory`
+- `20260906153039_retention_inventory_readiness`
+- `20260906153305_policy_acknowledgement_foundation`
 
 ## Aktuelle pilotgates
 
@@ -158,7 +194,8 @@ Før bred pilot med rigtige følsomme data:
 - [ ] gennemfør rigtig database + Storage backup,
 - [ ] gennemfør database + Storage restore på separat target,
 - [ ] fastlæg retention/slettepolitik pr. datatype,
-- [ ] fastlæg førstegangs-information/vilkårsaccept og versionering,
+- [ ] tilføj manglende livscyklusankre til de kategorier, der skal kunne slettes automatisk,
+- [ ] godkend og publicér førstegangs-information/vilkår før den kobles ind som gate,
 - [ ] udvid audit til følsomt dokumentarkiv og senere beskedmodul,
 - [ ] færdiggør DPIA-/databehandler-/fortegnelsesarbejde,
 - [ ] afklar leaked-password protection før bred drift.
