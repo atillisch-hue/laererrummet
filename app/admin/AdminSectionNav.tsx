@@ -14,6 +14,7 @@ const adminSections:Section[]=[
  {label:"Klasser & undervisning",href:"/admin/classes",paths:["/admin/classes","/admin/teacher-classes","/admin/student-grade-levels"]},
  {label:"Skoleår & ressourcer",href:"/admin/planning",paths:["/admin/planning"]},
  {label:"Drift",href:"/admin#drift",paths:["/admin/schedule","/admin/absence","/admin/tasks"]},
+ {label:"Sikkerhed & historik",href:"/admin/security",paths:["/admin/security"]},
  {label:"Skolekalender",href:"/admin/settings",paths:["/admin/settings"]}
 ];
 const leaderSections:Section[]=[
