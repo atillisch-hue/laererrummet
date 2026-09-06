@@ -17,9 +17,9 @@ type ReadingStrategyAssignment={id:number;title:string;strategy:string;target_gr
 type StudentData={ok?:boolean;student?:{id:number;name:string;class_id:number};class?:{id:number;name:string};assignments?:Assignment[]};
 type AuthUser={app_metadata?:Record<string,unknown>};
 
-const hasEmployeeAccess=(user:AuthUser)=>hasRole(user as any,"teacher")||hasRole(user as any,"staff")||hasRole(user as any,"leader")||hasRole(user as any,"admin");
-const hasTeachingAccess=(user:AuthUser)=>hasRole(user as any,"teacher")||hasRole(user as any,"admin");
-const employeeLanding=(user:AuthUser)=>hasTeachingAccess(user)?"/noticeboard":hasRole(user as any,"leader")?"/admin":"/teacher-room";
+const hasEmployeeAccess=(user:AuthUser)=>hasRole(user as any,"teacher")||hasRole(user as any,"staff");
+const hasTeachingAccess=(user:AuthUser)=>hasRole(user as any,"teacher");
+const employeeLanding=(user:AuthUser)=>hasTeachingAccess(user)?"/noticeboard":"/teacher-room";
 
 export default function HomeClient(){
  const[ready,setReady]=useState(false);
@@ -127,7 +127,7 @@ export default function HomeClient(){
   <div className="brand loginBrand"><span>✦</span><div><strong>Klasseværelset</strong><small>Et roligt sted til læring og skrivning</small></div></div>
   <p className="eyebrow">VÆLG INDGANG</p><h1>Velkommen</h1><p>Vælg hvordan du vil åbne Klasseværelset.</p>
   <div className="roleGrid">
-   <button onClick={()=>sessionUser&&hasEmployeeAccess(sessionUser)?window.location.href=employeeLanding(sessionUser):setStaffLogin("employee")}><b>✎</b><strong>Jeg er medarbejder</strong><small>{sessionUser&&hasEmployeeAccess(sessionUser)?(hasTeachingAccess(sessionUser)?"Fortsæt til I dag":hasRole(sessionUser as any,"leader")?"Fortsæt til Ledelse":"Fortsæt til Lærerværelset"):"Lærer, pædagog eller vikar"}</small></button>
+   <button onClick={()=>sessionUser&&hasEmployeeAccess(sessionUser)?window.location.href=employeeLanding(sessionUser):setStaffLogin("employee")}><b>✎</b><strong>Jeg er medarbejder</strong><small>{sessionUser&&hasEmployeeAccess(sessionUser)?(hasTeachingAccess(sessionUser)?"Fortsæt til I dag":"Fortsæt til Lærerværelset"):"Lærer, pædagog, vikar eller andet personale"}</small></button>
    <button onClick={()=>setStudentMode(true)}><b>◎</b><strong>Jeg er elev</strong><small>Log ind med din personlige kode</small></button>
    <button onClick={()=>chooseRole("parent","/parent",user=>hasRole(user as any,"parent"))}><b>⌂</b><strong>Jeg er forælder</strong><small>Følg dit barns skolehverdag</small></button>
    <button onClick={()=>chooseRole("leader","/admin",user=>hasRole(user as any,"leader"))}><b>◇</b><strong>Jeg er leder</strong><small>Skoleår, ressourcer, skema og personaleopgaver</small></button>
