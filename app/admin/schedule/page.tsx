@@ -9,12 +9,14 @@ import {recurrenceLabel,type RecurrencePattern} from "../../../lib/scheduleRecur
 type EntryKind="lesson"|"assembly"|"break"|"duty"|"other";
 type Klass={id:number;name:string};
 type ClassSubject={id:number;class_id:number;title:string};
-type Teacher={id:string;email:string;roles:string[];initials?:string};
+type Teacher={id:string;name:string;role:string;abbreviation:string|null};
 type Entry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;class_subject_id:number|null;entry_kind:EntryKind;recurrence_pattern:RecurrencePattern;schedule_version_id:number};
 type LinkRow={schedule_entry_id:number;teacher_id:string};
 type DayOption={value:number;label:string};
 type SchoolYear={id:number;label:string};
 type ScheduleVersion={id:number;name:string;status:"draft"|"published"|"archived"};
+type DirectoryRow={user_id:string;display_name:string;role:string};
+type StaffProfile={user_id:string;abbreviation:string|null};
 
 const days:DayOption[]=[
  {value:1,label:"Mandag"},{value:2,label:"Tirsdag"},{value:3,label:"Onsdag"},{value:4,label:"Torsdag"},{value:5,label:"Fredag"},{value:6,label:"Lørdag"},{value:0,label:"Søndag"}
@@ -56,7 +58,7 @@ export default function Schedule(){
  const[editRecurrence,setEditRecurrence]=useState<RecurrencePattern>("weekly");
  const[savingEdit,setSavingEdit]=useState(false);
 
- const initials=(t:Teacher)=>t.initials?.trim()||t.email.split("@")[0].slice(0,3).toUpperCase();
+ const shortName=(t:Teacher)=>t.abbreviation?.trim()||t.name.split(/\s+/).filter(Boolean).map(x=>x[0]).join("").slice(0,3).toUpperCase()||"—";
  const optionsForClass=(cid:number|"")=>{
   if(cid==="")return activities;
   const fag=classSubjects.filter(cs=>cs.class_id===Number(cid)).map(cs=>cs.title);
@@ -68,8 +70,8 @@ export default function Schedule(){
   const{data:sessionData}=await supabase.auth.getSession();
   const user=sessionData.session?.user;
   if(!user)return;
-  const{data:membership,error:membershipError}=await supabase.from("school_memberships").select("school_id").eq("user_id",user.id).eq("active",true).eq("role","admin").limit(1).maybeSingle();
-  if(membershipError||!membership?.school_id){setMsg(membershipError?.message||"Aktiv admin-tilknytning mangler.");return}
+  const{data:membership,error:membershipError}=await supabase.from("school_memberships").select("school_id,role").eq("user_id",user.id).eq("active",true).in("role",["admin","leader"]).limit(1).maybeSingle();
+  if(membershipError||!membership?.school_id){setMsg(membershipError?.message||"Aktiv ledelses-/adminadgang mangler.");return}
   const schoolId=Number(membership.school_id);
   const{data:y,error:yErr}=await supabase.from("school_years").select("id,label").eq("school_id",schoolId).eq("status","active").limit(1).maybeSingle();
   if(yErr||!y){setMsg(yErr?.message||"Aktivt skoleår mangler.");return}
@@ -80,8 +82,8 @@ export default function Schedule(){
 
   const[c,u,p]=await Promise.all([
    supabase.from("classes").select("id,name").eq("school_id",schoolId).order("name"),
-   supabase.rpc("admin_user_directory"),
-   supabase.from("user_profiles").select("user_id,initials")
+   supabase.rpc("get_internal_staff_directory"),
+   supabase.from("staff_directory_profiles").select("user_id,abbreviation").eq("school_id",schoolId)
   ]);
   const classRows=(c.data||[]) as Klass[];
   let subjectRows:ClassSubject[]=[];
@@ -97,8 +99,8 @@ export default function Schedule(){
    const l=await supabase.from("schedule_teachers").select("schedule_entry_id,teacher_id").in("schedule_entry_id",entryRows.map(x=>x.id));
    linkRows=(l.data||[]) as LinkRow[];linkError=l.error?.message||null;
   }
-  const profiles=new Map((p.data||[]).map((x:{user_id:string;initials:string|null})=>[x.user_id,x.initials||""]));
-  const us=((u.data||[]) as Teacher[]).map(x=>({...x,roles:Array.isArray(x.roles)?x.roles:[],initials:profiles.get(x.id)||""})).filter(x=>x.roles.some(role=>["teacher","staff","admin","leader"].includes(role)));
+  const abbreviations=new Map(((p.data||[]) as StaffProfile[]).map(x=>[x.user_id,x.abbreviation]));
+  const us=((u.data||[]) as DirectoryRow[]).filter(x=>["teacher","staff","admin","leader"].includes(x.role)).map(x=>({id:x.user_id,name:x.display_name,role:x.role,abbreviation:abbreviations.get(x.user_id)||null}));
   setClasses(classRows);setClassSubjects(subjectRows);setEntries(entryRows);setTeachers(us);setLinks(linkRows);
   const nextClass=classId===""&&classRows[0]?classRows[0].id:classId;
   if(classId===""&&classRows[0])setClassId(classRows[0].id);
@@ -108,13 +110,12 @@ export default function Schedule(){
   }
   const err=c.error||u.error||p.error||e.error;if(err||subjectError||linkError)setMsg(err?.message||subjectError||linkError||"");
  }
- useEffect(()=>{(async()=>{const{data}=await supabase.auth.getSession();if(!data.session?.user||!hasRole(data.session.user,"admin")){location.replace("/");return}await load();setReady(true)})()},[]);
+ useEffect(()=>{(async()=>{const{data}=await supabase.auth.getSession();const user=data.session?.user;if(!user||(!hasRole(user,"admin")&&!hasRole(user,"leader"))){location.replace("/");return}await load();setReady(true)})()},[]);
  const toggle=(id:string)=>setSelected(v=>v.includes(id)?v.filter(x=>x!==id):[...v,id]);
  const toggleEditTeacher=(id:string)=>setEditTeachers(v=>v.includes(id)?v.filter(x=>x!==id):[...v,id]);
  const chooseClass=(raw:string)=>{const next=raw?Number(raw):"";setClassId(next);if(next!==""){const opts=optionsForClass(next);if(!opts.includes(subject))setSubject(opts[0]||"Samling")}};
  const chooseEditClass=(raw:string)=>{const next=raw?Number(raw):"";setEditClassId(next);if(next!==""){const opts=optionsForClass(next);if(!opts.includes(editSubject))setEditSubject(opts[0]||"Samling")}};
 
- async function saveInitials(t:Teacher,value:string){const v=value.trim().toUpperCase();const{error}=await supabase.from("user_profiles").upsert({user_id:t.id,initials:v,updated_at:new Date().toISOString()},{onConflict:"user_id"});if(error)setMsg(error.message);else await load()}
  async function add(e:React.FormEvent){
   e.preventDefault();if(!version||classId===""||!subject){setMsg("Vælg klasse og fag/aktivitet.");return}
   const entry_kind=kindFor(subject);const requiresStaff=entry_kind!=="break";
@@ -145,12 +146,12 @@ export default function Schedule(){
  const editSubjectOptions=[...new Set([...optionsForClass(editClassId),editSubject])];
  const createRequiresStaff=kindFor(subject)!=="break";
  return <main style={{minHeight:"100vh",background:"#f5f2ea",color:"#26342e"}}>
-  <header style={{background:"#486b59",color:"white",padding:"18px 6vw"}}><div style={{maxWidth:1100,margin:"auto",display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><strong style={{fontSize:22}}>Administration · Skemaer</strong><Link href="/admin" style={{color:"white"}}>← Administration</Link></div></header>
+  <header style={{background:"#486b59",color:"white",padding:"18px 6vw"}}><div style={{maxWidth:1100,margin:"auto",display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><strong style={{fontSize:22}}>Ledelse · Skema</strong><Link href="/admin" style={{color:"white"}}>← Ledelsesoverblik</Link></div></header>
   <section style={{maxWidth:1100,margin:"auto",padding:"42px 24px"}}>
-   <p className="eyebrow">SKEMA</p><h1 style={{fontFamily:"Georgia,serif",fontSize:40}}>Klassernes skema</h1><p style={{color:"#687068"}}>Undervisning, samling, pauser, vagter og weekendaktiviteter kan ligge i samme skema. Editorens ændringer rammer kun den aktive kladde.</p>
+   <p className="eyebrow">SKEMA</p><h1 style={{fontFamily:"Georgia,serif",fontSize:40}}>Klassernes skema</h1><p style={{color:"#687068"}}>Undervisning, samling, pauser, vagter og weekendaktiviteter kan ligge i samme skema. Ændringer rammer kun den aktive arbejdskladde.</p>
    {version&&<div style={{padding:13,background:"#eef2ec",border:"1px solid #d7ddd7",borderRadius:10,margin:"16px 0",display:"flex",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}><div><strong>{version.name}</strong><small style={{display:"block",color:"#667168"}}>Skoleår {schoolYear?.label||"—"} · redigerbar kladde</small></div><Link href="/admin/planning" style={{color:"#365044",fontWeight:850}}>Se konsekvenser →</Link></div>}
    {msg&&<div style={{padding:12,background:"#e7eee9",borderRadius:9,margin:"18px 0"}}>{msg}</div>}
-   <section style={{background:"white",padding:20,border:"1px solid #ddd9d0",borderRadius:14,marginBottom:18}}><strong>Lærerinitialer</strong><div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:10}}>{teachers.map(t=><label key={t.id} style={{display:"flex",alignItems:"center",gap:6}}><span>{t.email}</span><input defaultValue={initials(t)} maxLength={5} onBlur={e=>saveInitials(t,e.target.value)} style={{width:58,padding:7,textTransform:"uppercase"}}/></label>)}</div></section>
+   <section style={{background:"white",padding:16,border:"1px solid #ddd9d0",borderRadius:14,marginBottom:18}}><strong>Medarbejdere i skemaet</strong><p style={{margin:"5px 0 0",fontSize:13,color:"#687068"}}>Navn og forkortelse hentes fra Personaleprofiler. Ret dem dér, så samme identitet bruges overalt i Klasseværelset.</p></section>
    <form onSubmit={add} style={{background:"white",padding:22,border:"1px solid #ddd9d0",borderRadius:14,display:"grid",gap:14}}>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:10}}>
      <select value={classId} onChange={e=>chooseClass(e.target.value)} style={field}><option value="">Vælg klasse</option>{classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
@@ -160,7 +161,7 @@ export default function Schedule(){
      <input type="time" value={start} onChange={e=>setStart(e.target.value)} style={field}/><input type="time" value={end} onChange={e=>setEnd(e.target.value)} style={field}/><input value={room} onChange={e=>setRoom(e.target.value)} placeholder="Lokale (valgfrit)" style={field}/>
     </div>
     <small style={{color:"#747b75"}}>Undervisningsfag hentes fra klassens aktive fagopsætning. Samling, pause og gårdvagt er aktiviteter og behøver ikke et klassefag.</small>
-    <div><strong>Vælg medarbejder(e){!createRequiresStaff&&<span style={{fontWeight:500,color:"#778078"}}> · valgfrit for pause</span>}</strong><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>{teachers.map(t=><label key={t.id} style={{padding:"9px 12px",border:"1px solid #d8d5cd",borderRadius:9,background:selected.includes(t.id)?"#e2ebe5":"#faf9f6",cursor:"pointer"}}><input type="checkbox" checked={selected.includes(t.id)} onChange={()=>toggle(t.id)} style={{marginRight:7}}/>{initials(t)}</label>)}</div></div>
+    <div><strong>Vælg medarbejder(e){!createRequiresStaff&&<span style={{fontWeight:500,color:"#778078"}}> · valgfrit for pause</span>}</strong><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>{teachers.map(t=><label key={t.id} title={t.name} style={{padding:"9px 12px",border:"1px solid #d8d5cd",borderRadius:9,background:selected.includes(t.id)?"#e2ebe5":"#faf9f6",cursor:"pointer"}}><input type="checkbox" checked={selected.includes(t.id)} onChange={()=>toggle(t.id)} style={{marginRight:7}}/><strong>{shortName(t)}</strong> · {t.name}</label>)}</div></div>
     <button type="submit" disabled={!version||!classes.length||(createRequiresStaff&&!selected.length)}>+ Tilføj til kladden</button>
    </form>
    <div style={{marginTop:28,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(205px,1fr))",gap:14}}>{days.map(d=><section key={d.value} style={{background:"white",border:"1px solid #ddd9d0",borderRadius:12,padding:16}}><h2 style={{fontFamily:"Georgia,serif",fontSize:20}}>{d.label}</h2>{shown.filter(x=>x.weekday===d.value).map(x=>{const tids=links.filter(l=>l.schedule_entry_id===x.id).map(l=>teachers.find(t=>t.id===l.teacher_id)).filter((t):t is Teacher=>Boolean(t));const editing=editingId===x.id;return <div key={x.id} style={{background:tone(x.subject),borderRadius:8,padding:10,marginTop:8}}>{editing?<div style={{display:"grid",gap:8}}>
@@ -171,9 +172,9 @@ export default function Schedule(){
     <select value={editRecurrence} onChange={e=>setEditRecurrence(e.target.value as RecurrencePattern)} style={field}>{recurrenceOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}><input type="time" value={editStart} onChange={e=>setEditStart(e.target.value)} style={field}/><input type="time" value={editEnd} onChange={e=>setEditEnd(e.target.value)} style={field}/></div>
     <input value={editRoom} onChange={e=>setEditRoom(e.target.value)} placeholder="Lokale" style={field}/>
-    <div><small style={{fontWeight:900}}>Medarbejdere</small><div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:5}}>{teachers.map(t=><label key={t.id} style={{padding:"6px 8px",border:"1px solid #d8d5cd",borderRadius:7,background:editTeachers.includes(t.id)?"#e2ebe5":"white",cursor:"pointer",fontSize:11,fontWeight:800}}><input type="checkbox" checked={editTeachers.includes(t.id)} onChange={()=>toggleEditTeacher(t.id)} style={{marginRight:5}}/>{initials(t)}</label>)}</div></div>
+    <div><small style={{fontWeight:900}}>Medarbejdere</small><div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:5}}>{teachers.map(t=><label key={t.id} title={t.name} style={{padding:"6px 8px",border:"1px solid #d8d5cd",borderRadius:7,background:editTeachers.includes(t.id)?"#e2ebe5":"white",cursor:"pointer",fontSize:11,fontWeight:800}}><input type="checkbox" checked={editTeachers.includes(t.id)} onChange={()=>toggleEditTeacher(t.id)} style={{marginRight:5}}/>{shortName(t)}</label>)}</div></div>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><button type="button" onClick={saveEntryEdit} disabled={savingEdit||(kindFor(editSubject)!=="break"&&!editTeachers.length)} style={{...smallButton,background:"#365044",color:"white",borderColor:"#365044"}}>{savingEdit?"Gemmer…":"Gem"}</button><button type="button" onClick={()=>setEditingId(null)} style={smallButton}>Annullér</button><button type="button" onClick={()=>remove(x.id)} style={{...smallButton,color:"#8a3c34"}}>Slet</button></div>
-   </div>:<><div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"space-between",flexWrap:"wrap"}}><small style={{fontWeight:900,color:"#667168"}}>{kindLabel(x.entry_kind).toUpperCase()}{x.entry_kind==="lesson"&&x.class_subject_id?" · FAGKOBLET":""}</small><small style={{fontWeight:900,color:"#5e6d64",background:"rgba(255,255,255,.55)",borderRadius:999,padding:"3px 6px"}}>{recurrenceLabel(x.recurrence_pattern).toUpperCase()}</small></div><strong style={{display:"block",marginTop:4}}>{x.start_time.slice(0,5)}–{x.end_time.slice(0,5)} · {x.subject}</strong><small style={{display:"block",color:"#555"}}>{tids.map(initials).join(" + ")||"Ingen medarbejder"}{x.room?` · ${x.room}`:""}</small><div style={{display:"flex",gap:6,marginTop:7}}><button type="button" onClick={()=>startEditEntry(x)} style={smallButton}>Redigér</button><button type="button" onClick={()=>remove(x.id)} style={{...smallButton,color:"#8a3c34"}}>Slet</button></div></>}</div>})}{!shown.some(x=>x.weekday===d.value)&&<small style={{color:"#888"}}>Ingen timer eller aktiviteter</small>}</section>)}</div>
+   </div>:<><div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"space-between",flexWrap:"wrap"}}><small style={{fontWeight:900,color:"#667168"}}>{kindLabel(x.entry_kind).toUpperCase()}{x.entry_kind==="lesson"&&x.class_subject_id?" · FAGKOBLET":""}</small><small style={{fontWeight:900,color:"#5e6d64",background:"rgba(255,255,255,.55)",borderRadius:999,padding:"3px 6px"}}>{recurrenceLabel(x.recurrence_pattern).toUpperCase()}</small></div><strong style={{display:"block",marginTop:4}}>{x.start_time.slice(0,5)}–{x.end_time.slice(0,5)} · {x.subject}</strong><small style={{display:"block",color:"#555"}}>{tids.map(shortName).join(" + ")||"Ingen medarbejder"}{x.room?` · ${x.room}`:""}</small><div style={{display:"flex",gap:6,marginTop:7}}><button type="button" onClick={()=>startEditEntry(x)} style={smallButton}>Redigér</button><button type="button" onClick={()=>remove(x.id)} style={{...smallButton,color:"#8a3c34"}}>Slet</button></div></>}</div>})}{!shown.some(x=>x.weekday===d.value)&&<small style={{color:"#888"}}>Ingen timer eller aktiviteter</small>}</section>)}</div>
   </section>
  </main>;
 }
