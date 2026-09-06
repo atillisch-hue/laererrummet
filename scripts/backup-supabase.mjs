@@ -33,13 +33,11 @@ function runDump(file,extra=[]){
 }
 
 function safePart(value){return value.replace(/[^a-zA-Z0-9._-]/g,"_")}
-function safeObjectPath(value){
- const parts=value.split("/").filter(Boolean).map(safePart);
- if(!parts.length)throw new Error("Invalid storage object path.");
- return path.join(...parts);
+function objectFileName(bucket,pathName){
+ return crypto.createHash("sha256").update(`${bucket}\n${pathName}`).digest("hex");
 }
 
-async function listStorageFiles(client,bucket,prefix=""){
+async function listStorageObjects(client,bucket,prefix=""){
  const rows=[];
  for(let offset=0;;offset+=1000){
   const{data,error}=await client.storage.from(bucket).list(prefix,{limit:1000,offset,sortBy:{column:"name",order:"asc"}});
@@ -47,8 +45,8 @@ async function listStorageFiles(client,bucket,prefix=""){
   const batch=data||[];
   for(const item of batch){
    const full=prefix?`${prefix}/${item.name}`:item.name;
-   if(item.id||item.metadata)rows.push(full);
-   else rows.push(...await listStorageFiles(client,bucket,full));
+   if(item.id||item.metadata)rows.push({path:full,metadata:item.metadata||null});
+   else rows.push(...await listStorageObjects(client,bucket,full));
   }
   if(batch.length<1000)break;
  }
@@ -65,17 +63,31 @@ async function backupStorage(){
  if(error)throw new Error(`Could not list storage buckets: ${error.message}`);
  const result=[];
  for(const bucket of buckets||[]){
-  const names=await listStorageFiles(client,bucket.id);
+  const objects=await listStorageObjects(client,bucket.id);
   const bucketRoot=path.join(dir,"storage",safePart(bucket.id));
   fs.mkdirSync(bucketRoot,{recursive:true});
-  for(const name of names){
-   const{data,error:downloadError}=await client.storage.from(bucket.id).download(name);
-   if(downloadError)throw new Error(`Could not download ${bucket.id}/${name}: ${downloadError.message}`);
-   const target=path.join(bucketRoot,safeObjectPath(name));
-   fs.mkdirSync(path.dirname(target),{recursive:true});
+  const objectRecords=[];
+  for(const object of objects){
+   const{data,error:downloadError}=await client.storage.from(bucket.id).download(object.path);
+   if(downloadError)throw new Error(`Could not download ${bucket.id}/${object.path}: ${downloadError.message}`);
+   const localName=objectFileName(bucket.id,object.path);
+   const target=path.join(bucketRoot,localName);
    fs.writeFileSync(target,Buffer.from(await data.arrayBuffer()));
+   const metadata=object.metadata||{};
+   objectRecords.push({
+    path:object.path,
+    file:path.relative(dir,target).replaceAll("\\","/"),
+    content_type:metadata.mimetype||metadata.contentType||null,
+    cache_control:metadata.cacheControl||null
+   });
   }
-  result.push({id:bucket.id,public:bucket.public,objects:names.length});
+  result.push({
+   id:bucket.id,
+   public:!!bucket.public,
+   file_size_limit:bucket.file_size_limit??null,
+   allowed_mime_types:Array.isArray(bucket.allowed_mime_types)?bucket.allowed_mime_types:null,
+   objects:objectRecords
+  });
  }
  return{status:"complete",buckets:result};
 }
@@ -107,7 +119,7 @@ try{
   sha256:sha256(file)
  }));
  const manifest={
-  format_version:1,
+  format_version:2,
   project_ref:PROJECT_REF,
   created_at:new Date().toISOString(),
   storage,
