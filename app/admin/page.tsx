@@ -14,7 +14,8 @@ const adminGroups:AdminGroup[]=[
  {id:"personer",eyebrow:"PERSONER & ADGANG",title:"Hvem er en del af skolen?",text:"Personer findes én gang. Herfra styrer du login, roller, relationer og de administrative profiler omkring dem.",cards:[
   {title:"Personer & adgang",text:"Administrér login, roller, deaktivering og relationen mellem forældre/værger og børn.",href:"/admin/people",tag:"ADGANG"},
   {title:"Personaleprofiler",text:"Navne, initialer, personalegruppe, funktioner og status for skolens medarbejdere.",href:"/admin/staff",tag:"PERSONALE"},
-  {title:"Bestyrelsesadgang",text:"Fokuseret overblik over de personer, der har adgang til bestyrelsens arbejdsrum.",href:"/admin/board-users",tag:"BESTYRELSE"}
+  {title:"Bestyrelsesadgang",text:"Fokuseret overblik over de personer, der har adgang til bestyrelsens arbejdsrum.",href:"/admin/board-users",tag:"BESTYRELSE"},
+  {title:"Sikkerhed & historik",text:"Se hvem der har ændret roller og adgang, fornyet elevkoder, ændret forældrekoblinger eller publiceret skema.",href:"/admin/security",tag:"AUDIT"}
  ]},
  {id:"skolen",eyebrow:"KLASSER & UNDERVISNING",title:"Hvordan er skolen bygget op?",text:"Klasser, elever, klassetrin og de undervisere, der er knyttet til dem.",cards:[
   {title:"Klasser & elever",text:"Opret og redigér klasser og elever samt administrér elevernes sikre adgangskoder.",href:"/admin/classes",tag:"GRUNDSTRUKTUR"},
