@@ -26,6 +26,7 @@ const unitStatus:Record<SubjectUnit["status"],string>={planned:"Kommende",active
 const materialLabel:Record<UnitMaterial["item_type"],string>={post:"Opslag",section:"Sektion",link:"Link",material:"Materiale"};
 const formatDate=(value:string)=>new Date(`${value}T12:00:00`).toLocaleDateString("da-DK",{day:"numeric",month:"short"});
 const unitPeriod=(unit:SubjectUnit)=>unit.start_date||unit.end_date?`${unit.start_date?formatDate(unit.start_date):"?"} → ${unit.end_date?formatDate(unit.end_date):"?"}`:"Ingen fast periode";
+const childHref=(path:string,id:number|null|undefined)=>id?`${path}?child=${id}`:path;
 
 export default function ParentPage(){
  const[ready,setReady]=useState(false);
@@ -69,7 +70,7 @@ export default function ParentPage(){
    {!children.length?<section style={{...card,marginTop:22}}>Skolen mangler at knytte et barn til din aktive forældrekonto.</section>:<>
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:24}}>{children.map(child=><button key={child.id} onClick={()=>{setActiveId(child.id);setOpenAssignmentId(null);setOpenUnitId(null)}} style={{padding:"10px 14px",borderRadius:9,border:active?.id===child.id?"1px solid #365044":"1px solid #d8d5cd",background:active?.id===child.id?"#365044":"white",color:active?.id===child.id?"white":"#27352d",fontWeight:850,cursor:"pointer"}}>{child.name}{child.class_name?` · ${child.class_name}`:""}</button>)}</div>
 
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:14,flexWrap:"wrap",marginTop:28}}><div><p style={eyebrow}>DU SER NU</p><h2 style={{fontFamily:"Georgia,serif",fontSize:31,margin:"5px 0 0"}}>{active?.name}{active?.class_name?` · ${active.class_name}`:""}</h2></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><Link href="/parent/schedule" style={secondary}>Hele skemaet →</Link><Link href="/parent/absence" style={secondary}>Meld syg / fravær →</Link><Link href="/parent/meetings" style={secondary}>Møder →</Link></div></div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:14,flexWrap:"wrap",marginTop:28}}><div><p style={eyebrow}>DU SER NU</p><h2 style={{fontFamily:"Georgia,serif",fontSize:31,margin:"5px 0 0"}}>{active?.name}{active?.class_name?` · ${active.class_name}`:""}</h2></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><Link href={childHref("/parent/schedule",active?.id)} style={secondary}>Hele skemaet →</Link><Link href={childHref("/parent/absence",active?.id)} style={secondary}>Meld syg / fravær →</Link><Link href={childHref("/parent/meetings",active?.id)} style={secondary}>Møder →</Link></div></div>
 
     {visibleUnits.length>0&&<section style={{...card,marginTop:18,background:"#eef2ed"}}>
      <div style={{display:"flex",justifyContent:"space-between",alignItems:"start",gap:12,flexWrap:"wrap"}}><div><p style={eyebrow}>FORLØB & ÅRSPLAN</p><h3 style={{fontFamily:"Georgia,serif",fontSize:25,margin:"7px 0 4px"}}>Det arbejder klassen med</h3><p style={{color:"#667068",lineHeight:1.5,margin:0,maxWidth:720}}>Her ser du kun de forløb, læreren aktivt har valgt at dele med forældre.</p></div><span style={countChip}>{visibleUnits.length}</span></div>
@@ -79,7 +80,7 @@ export default function ParentPage(){
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(285px,1fr))",gap:16,marginTop:18,alignItems:"start"}}>
      <section id="today" style={{...card,background:"#eef2ed"}}>
       <p style={eyebrow}>I DAG · {new Date(`${today}T12:00:00`).toLocaleDateString("da-DK",{weekday:"long",day:"numeric",month:"long"}).toUpperCase()}</p>
-      <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><h3 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"7px 0 13px"}}>Skema</h3><Link href="/parent/schedule" style={{...secondary,padding:"6px 8px"}}>Se uge →</Link></div>
+      <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><h3 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"7px 0 13px"}}>Skema</h3><Link href={childHref("/parent/schedule",active?.id)} style={{...secondary,padding:"6px 8px"}}>Se uge →</Link></div>
       {activeClosure?<div style={{padding:"11px 12px",background:"#f6edd7",border:"1px solid #dfca96",borderRadius:9,color:"#655538"}}><strong>{activeClosure.label||"Skolen er lukket"}</strong><small style={{display:"block",marginTop:3}}>Det almindelige skema vises derfor ikke i dag.</small></div>:todaySchedule.length===0?<p style={{color:"#687068",margin:0}}>Der er ingen almindelige skemabrikker for klassen i dag.</p>:<div style={{display:"grid",gap:8}}>{todaySchedule.map(entry=><article key={entry.id} style={{padding:"10px 11px",background:"white",border:"1px solid #d9e0da",borderRadius:9}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"start"}}><strong>{entry.start_time.slice(0,5)}–{entry.end_time.slice(0,5)} · {entry.subject}</strong><small style={{fontSize:9,fontWeight:900,color:"#627168"}}>{kindLabel(entry.entry_kind).toUpperCase()}</small></div><small style={{display:"block",marginTop:3,color:"#6d756f"}}>{entry.room||"Intet lokale angivet"}{entry.recurrence_pattern!=="weekly"?` · ${recurrenceLabel(entry.recurrence_pattern)}`:""}</small></article>)}</div>}
      </section>
 
@@ -91,11 +92,11 @@ export default function ParentPage(){
      <section id="absence" style={card}>
       <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}><div><p style={eyebrow}>FRAVÆR</p><h3 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"7px 0 0"}}>Seneste registreringer</h3></div><span style={countChip}>{active?.absence.length||0}</span></div>
       {recentAbsence.length===0?<p style={{color:"#687068",marginBottom:13}}>Der er ingen registreret fraværshistorik.</p>:<div style={{display:"grid",gap:8,marginTop:13}}>{recentAbsence.map(a=><article key={a.id} style={{padding:"9px 10px",border:"1px solid #e3dfd7",borderRadius:9,background:"#faf9f6"}}><strong>{new Date(`${a.absence_date}T12:00:00`).toLocaleDateString("da-DK",{day:"numeric",month:"short",year:"numeric"})}</strong><small style={{display:"block",marginTop:2,color:"#727772"}}>{absenceLabel(a.status)} · {a.source==="parent"?"meldt hjemmefra":"registreret af skolen"}</small></article>)}</div>}
-      <Link href="/parent/absence" style={{...secondary,display:"inline-block",marginTop:13}}>Se fravær og meld syg →</Link>
+      <Link href={childHref("/parent/absence",active?.id)} style={{...secondary,display:"inline-block",marginTop:13}}>Se fravær og meld syg →</Link>
      </section>
 
      <section style={{...card,background:"#f8f3e7"}}>
-      <p style={eyebrow}>MØDER</p><h3 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"7px 0 7px"}}>Møder og officielle referater</h3><p style={{color:"#706956",lineHeight:1.5,margin:"0 0 13px"}}>Se de møder, du er inviteret til, og det indhold der er gjort tilgængeligt for dig som forælder.</p><Link href="/parent/meetings" style={secondary}>Åbn møder →</Link>
+      <p style={eyebrow}>MØDER</p><h3 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"7px 0 7px"}}>Møder og officielle referater</h3><p style={{color:"#706956",lineHeight:1.5,margin:"0 0 13px"}}>Se de møder, du er inviteret til, og det indhold der er gjort tilgængeligt for dig som forælder.</p><Link href={childHref("/parent/meetings",active?.id)} style={secondary}>Åbn møder →</Link>
      </section>
     </div>
 
