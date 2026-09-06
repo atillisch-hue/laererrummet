@@ -102,8 +102,6 @@ export default function ParentPage(){
       <p style={eyebrow}>MØDER</p><h3 style={{fontFamily:"Georgia,serif",fontSize:23,margin:"7px 0 7px"}}>Møder og officielle referater</h3><p style={{color:"#706956",lineHeight:1.5,margin:"0 0 13px"}}>Se de møder, du er inviteret til, og det indhold der er gjort tilgængeligt for dig som forælder.</p><Link href={childHref("/parent/meetings",active?.id)} style={secondary}>Åbn møder →</Link>
      </section>
     </div>
-
-    <section style={{...card,marginTop:16,borderStyle:"dashed"}}><p style={eyebrow}>KOMMUNIKATION</p><h3 style={{fontFamily:"Georgia,serif",fontSize:21,margin:"7px 0 5px"}}>Beskeder kommer i kommunikationsmodulet</h3><p style={{color:"#687068",lineHeight:1.5,margin:0}}>Vi viser ikke en tom beskedindbakke endnu. Når kommunikationsdelen bygges, kobles den på samme barn- og skolerettigheder som resten af portalen.</p></section>
    </>}
   </section>
  </main>;
