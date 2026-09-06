@@ -4,18 +4,13 @@ import Link from "next/link";
 import {useEffect,useMemo,useState} from "react";
 import {supabase} from "../../lib/supabase";
 import {hasRole} from "../../lib/roles";
-import {scheduleOccursOn,type RecurrencePattern} from "../../lib/scheduleRecurrence";
 import MeetingActionInbox from "../MeetingActionInbox";
 import NoticeboardDayOverview from "../NoticeboardDayOverview";
 
 type Audience="teacher"|"parent"|"board"|"admin"|"student";
 type Note={id:string;text:string;author_email:string;author_id:string;created_at:string;audiences:Audience[]};
-type EntryKind="lesson"|"assembly"|"break"|"duty"|"other";
-type Entry={id:number;class_id:number;weekday:number;start_time:string;end_time:string;subject:string;room:string|null;entry_kind:EntryKind;recurrence_pattern:RecurrencePattern};
-type ScheduleTeacher={schedule_entry_id:number;teacher_id:string};
-type Klass={id:number;name:string};
-type Profile={user_id:string;initials:string|null};
-type Assignment={id:number;schedule_entry_id:number;assignment_date:string;absent_teacher_id:string;substitute_teacher_id:string;substitute_plan:string|null};
+type ScheduleOccurrence={occurrence_date:string;schedule_entry_id:number};
+type Assignment={schedule_entry_id:number;assignment_date:string;substitute_teacher_id:string};
 type CalendarMeeting={id:number;title:string;starts_at:string;ends_at:string|null};
 type AbsentStaff={user_id:string;display_name:string;initials:string|null};
 type FileRow={id:string;noticeboard_post_id:string;display_name:string;object_path:string;mime_type:string|null;size_bytes:number|null};
@@ -32,6 +27,7 @@ const mimeByExtension:Record<string,string>={pdf:"application/pdf",doc:"applicat
 function extension(name:string){return name.split(".").pop()?.toLowerCase()||""}
 function safeFileName(name:string){return name.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g,"-").replace(/-+/g,"-").replace(/^-|-$/g,"").slice(-170)||"fil"}
 function mondayFor(date:string){const d=new Date(date+"T12:00:00"),day=d.getDay()||7;d.setDate(d.getDate()-(day-1));return d}
+function nextDate(date:string){const d=new Date(date+"T12:00:00");d.setDate(d.getDate()+1);return iso(d)}
 function fileSize(size:number|null){if(size===null)return"";if(size<1024*1024)return`${Math.max(1,Math.round(size/1024))} KB`;return`${(size/(1024*1024)).toFixed(1)} MB`}
 function eventTypeLabel(kind:"closed"|EventKind){return({pedagogical:"Pædagogisk dag",special_week:"Specialuge",project:"Projekt-/faguge",trip:"Lejrskole/tur",event:"Arrangement",other:"Andet",closed:"Lukket"} as Record<string,string>)[kind]||"Skolekalender"}
 function shortDay(date:string){return new Date(date+"T12:00:00").toLocaleDateString("da-DK",{weekday:"short"}).replace(".","")}
@@ -40,8 +36,8 @@ export default function Noticeboard(){
  const[ready,setReady]=useState(false),[email,setEmail]=useState(""),[userId,setUserId]=useState(""),[isAdmin,setIsAdmin]=useState(false);
  const[text,setText]=useState(""),[notes,setNotes]=useState<Note[]>([]),[attachments,setAttachments]=useState<Record<string,FileRow[]>>({}),[selectedFiles,setSelectedFiles]=useState<File[]>([]);
  const[dbReady,setDbReady]=useState(true),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
- const[allEntries,setAllEntries]=useState<Entry[]>([]),[scheduleTeachers,setScheduleTeachers]=useState<ScheduleTeacher[]>([]),[assignments,setAssignments]=useState<Assignment[]>([]),[meetings,setMeetings]=useState<CalendarMeeting[]>([]);
- const[classes,setClasses]=useState<Klass[]>([]),[profiles,setProfiles]=useState<Profile[]>([]),[staffAbsent,setStaffAbsent]=useState<AbsentStaff[]>([]);
+ const[weekSchedule,setWeekSchedule]=useState<ScheduleOccurrence[]>([]),[assignments,setAssignments]=useState<Assignment[]>([]),[meetings,setMeetings]=useState<CalendarMeeting[]>([]);
+ const[staffAbsent,setStaffAbsent]=useState<AbsentStaff[]>([]);
  const[calendarEvents,setCalendarEvents]=useState<CalendarEvent[]>([]),[closedDays,setClosedDays]=useState<ClosedDay[]>([]);
  const[selectedDate,setSelectedDate]=useState(()=>iso(new Date())),[showComposer,setShowComposer]=useState(false),[audiences,setAudiences]=useState<Audience[]>(["teacher"]);
  const[editingId,setEditingId]=useState<string|null>(null),[editText,setEditText]=useState(""),[editAudiences,setEditAudiences]=useState<Audience[]>([]);
@@ -58,19 +54,21 @@ export default function Noticeboard(){
  useEffect(()=>{(async()=>{
   const{data}=await supabase.auth.getSession();if(!data.session){location.href="/?teacher=1";return}
   const user=data.session.user;setEmail(user.email||"");setUserId(user.id);setIsAdmin(hasRole(user,"admin"));
-  const[eRes,stRes,cRes,pRes,aRes,mRes,smRes]=await Promise.all([
-   supabase.from("schedule_entries").select("id,class_id,weekday,start_time,end_time,subject,room,entry_kind,recurrence_pattern"),
-   supabase.from("schedule_teachers").select("schedule_entry_id,teacher_id").eq("teacher_id",user.id),
-   supabase.from("classes").select("id,name"),
-   supabase.from("user_profiles").select("user_id,initials"),
-   supabase.from("substitute_assignments").select("id,schedule_entry_id,assignment_date,absent_teacher_id,substitute_teacher_id,substitute_plan"),
-   supabase.from("calendar_meetings").select("id,title,starts_at,ends_at"),
-   supabase.from("school_memberships").select("school_id").eq("user_id",user.id).eq("active",true).in("role",["teacher","admin"]).limit(1).maybeSingle()
-  ]);
-  setAllEntries((eRes.data||[]) as Entry[]);setScheduleTeachers((stRes.data||[]) as ScheduleTeacher[]);setClasses((cRes.data||[]) as Klass[]);setProfiles((pRes.data||[]) as Profile[]);setAssignments((aRes.data||[]) as Assignment[]);setMeetings((mRes.data||[]) as CalendarMeeting[]);
-  if(smRes.data?.school_id){const{data:settings}=await supabase.from("school_settings").select("calendar_events,closed_days").eq("school_id",smRes.data.school_id).maybeSingle();setCalendarEvents(Array.isArray(settings?.calendar_events)?settings.calendar_events as CalendarEvent[]:[]);setClosedDays(Array.isArray(settings?.closed_days)?settings.closed_days as ClosedDay[]:[])}
+  const{data:membership}=await supabase.from("school_memberships").select("school_id").eq("user_id",user.id).eq("active",true).eq("role","teacher").limit(1).maybeSingle();
+  if(membership?.school_id){const{data:settings}=await supabase.from("school_settings").select("calendar_events,closed_days").eq("school_id",membership.school_id).maybeSingle();setCalendarEvents(Array.isArray(settings?.calendar_events)?settings.calendar_events as CalendarEvent[]:[]);setClosedDays(Array.isArray(settings?.closed_days)?settings.closed_days as ClosedDay[]:[])}
   await loadNotes();setReady(true);
  })()},[]);
+
+ useEffect(()=>{if(!ready||!userId)return;let active=true;(async()=>{
+  const monday=mondayFor(selectedDate),sunday=new Date(monday);sunday.setDate(sunday.getDate()+6);const start=iso(monday),end=iso(sunday);
+  const[scheduleRes,subRes,meetingRes]=await Promise.all([
+   supabase.rpc("staff_schedule_occurrences",{p_user_ids:[userId],p_start_date:start,p_end_date:end}),
+   supabase.from("substitute_assignments").select("schedule_entry_id,assignment_date,substitute_teacher_id").eq("substitute_teacher_id",userId).gte("assignment_date",start).lte("assignment_date",end),
+   supabase.from("calendar_meetings").select("id,title,starts_at,ends_at").gte("starts_at",`${start}T00:00:00`).lt("starts_at",`${nextDate(end)}T00:00:00`)
+  ]);
+  if(!active)return;
+  setWeekSchedule((scheduleRes.data||[]) as ScheduleOccurrence[]);setAssignments((subRes.data||[]) as Assignment[]);setMeetings((meetingRes.data||[]) as CalendarMeeting[]);
+ })();return()=>{active=false}},[ready,userId,selectedDate]);
 
  useEffect(()=>{if(!ready)return;(async()=>{const{data,error}=await supabase.rpc("staff_absence_summary",{p_date:selectedDate});setStaffAbsent(error?[]:(data||[]) as AbsentStaff[])})()},[selectedDate,ready]);
 
@@ -93,16 +91,15 @@ export default function Noticeboard(){
  const remove=async(id:string)=>{if(!window.confirm("Slet opslaget og dets vedhæftede dokumenter permanent?"))return;setMessage("");const paths=(attachments[id]||[]).map(x=>x.object_path);if(paths.length){const{error}=await supabase.storage.from("school-files").remove(paths);if(error){setMessage("Dokumenterne kunne ikke slettes sikkert. Opslaget er derfor bevaret.");return}}await supabase.from("noticeboard_posts").delete().eq("id",id);if(editingId===id)cancelEdit();await loadNotes()};
 
  const selected=new Date(selectedDate+"T12:00:00"),isToday=selectedDate===iso(new Date());
- const regularIds=useMemo(()=>new Set(scheduleTeachers.map(x=>x.schedule_entry_id)),[scheduleTeachers]);
  const weekDays=useMemo(()=>{const monday=mondayFor(selectedDate);return Array.from({length:7},(_,i)=>{const d=new Date(monday);d.setDate(d.getDate()+i);return d})},[selectedDate]);
  const schoolMark=(date:string):({date:string;label:string;kind:"closed"|EventKind}|null)=>{const closed=closedDays.find(x=>x.date===date);if(closed)return{date,label:closed.label||"Lukket",kind:"closed"};return calendarEvents.find(x=>x.date===date)||null};
  const weekMarks=useMemo(()=>{const grouped=new Map<string,WeekMark>();for(const d of weekDays){const date=iso(d),mark=schoolMark(date);if(!mark)continue;const key=`${mark.kind}:${mark.label}`,current=grouped.get(key)||{key,kind:mark.kind,label:mark.label,dates:[]};current.dates.push(date);grouped.set(key,current)}return [...grouped.values()]},[weekDays,calendarEvents,closedDays]);
- const dayLoad=(date:Date)=>{const s=iso(date),weekday=date.getDay();const regular=allEntries.filter(e=>regularIds.has(e.id)&&e.weekday===weekday&&scheduleOccursOn(e.recurrence_pattern,s)).length;const sub=assignments.filter(a=>a.assignment_date===s&&a.substitute_teacher_id===userId&&!regularIds.has(a.schedule_entry_id)).length;const meetingCount=meetings.filter(m=>m.starts_at.slice(0,10)===s).length;return regular+sub+meetingCount};
+ const dayLoad=(date:Date)=>{const s=iso(date),regularRows=weekSchedule.filter(row=>row.occurrence_date===s),regularIds=new Set(regularRows.map(row=>row.schedule_entry_id));const sub=assignments.filter(a=>a.assignment_date===s&&!regularIds.has(a.schedule_entry_id)).length;const meetingCount=meetings.filter(m=>m.starts_at.slice(0,10)===s).length;return regularRows.length+sub+meetingCount};
  const moveDay=(n:number)=>{const d=new Date(selectedDate+"T12:00:00");d.setDate(d.getDate()+n);setSelectedDate(iso(d))};
 
- if(!ready)return <main style={{padding:50}}>Åbner Opslagstavlen…</main>;
+ if(!ready)return <main style={{padding:50}}>Åbner I dag…</main>;
  return <main style={{minHeight:"100vh",background:"#f5f3ee",color:"#26342e"}}>
-  <header style={{background:"#243d33",color:"white",padding:"24px 32px"}}><div style={{maxWidth:1100,margin:"auto",display:"flex",alignItems:"center",gap:14}}><span style={{display:"grid",placeItems:"center",width:46,height:46,borderRadius:12,background:"#dfa94f",color:"#243d33",fontSize:22}}>✦</span><div><strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:28}}>Opslagstavlen</strong><small style={{opacity:.75}}>Det første du ser, når du møder ind</small></div></div></header>
+  <header style={{background:"#243d33",color:"white",padding:"24px 32px"}}><div style={{maxWidth:1100,margin:"auto",display:"flex",alignItems:"center",gap:14}}><span style={{display:"grid",placeItems:"center",width:46,height:46,borderRadius:12,background:"#dfa94f",color:"#243d33",fontSize:22}}>✦</span><div><strong style={{display:"block",fontFamily:"Georgia,serif",fontSize:28}}>I dag</strong><small style={{opacity:.75}}>Din arbejdsdag, fælles beskeder og det næste du skal gøre</small></div></div></header>
   <section style={{maxWidth:1120,margin:"auto",padding:"28px 26px 60px"}}>
    <section style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:12,marginBottom:18}}>
     <NoticeboardDayOverview selectedDate={selectedDate} onMoveDay={moveDay} onToday={()=>setSelectedDate(iso(new Date()))}/>
@@ -112,7 +109,7 @@ export default function Noticeboard(){
    <MeetingActionInbox/>
    {message&&<div style={{marginBottom:14,padding:12,background:"#fff3cd",borderRadius:9,color:"#715827",fontWeight:800}}>{message}</div>}
    {!dbReady&&<div style={{marginBottom:14,padding:12,background:"#fff3cd",borderRadius:9}}>Opslagstavlen kunne ikke hente databasen.</div>}
-   <section style={{marginTop:24}}><div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:12,marginBottom:12}}><button onClick={()=>setShowComposer(v=>!v)} style={newPostButton}>{showComposer?"Luk":"+ Nyt opslag"}</button></div>
+   <section style={{marginTop:24}}><div style={{display:"flex",alignItems:"end",justifyContent:"space-between",gap:12,marginBottom:12,flexWrap:"wrap"}}><div><p style={eyebrow}>OPSLAGSTAVLE</p><h2 style={{fontFamily:"Georgia,serif",fontSize:25,margin:"4px 0 0"}}>Fælles opslag</h2></div><button onClick={()=>setShowComposer(v=>!v)} style={newPostButton}>{showComposer?"Luk":"+ Nyt opslag"}</button></div>
     {showComposer&&<div style={composer}><textarea autoFocus value={text} onChange={e=>setText(e.target.value)} placeholder="Skriv dit opslag – eller vedhæft et dokument…" maxLength={2000} style={{width:"100%",minHeight:90,padding:12,border:"1px solid #d8d5cd",borderRadius:8,boxSizing:"border-box",fontSize:15}}/><div style={{display:"grid",gridTemplateColumns:"minmax(220px,1fr) minmax(240px,1fr)",gap:16,marginTop:12}}><div><strong style={{fontSize:13}}>Hvem skal se opslaget?</strong><div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:8}}>{audienceOptions.map(a=><label key={a.id} style={{display:"flex",gap:6,alignItems:"center",padding:"7px 9px",border:"1px solid #d8d5cd",borderRadius:8,background:audiences.includes(a.id)?"#e7eee9":"#fff",cursor:"pointer",fontSize:12}}><input type="checkbox" checked={audiences.includes(a.id)} onChange={()=>toggleAudience(a.id)}/>{a.label}</label>)}</div></div><div><strong style={{fontSize:13}}>Vedhæft dokumenter <span style={{fontWeight:500}}>(valgfrit)</span></strong><label style={{display:"block",marginTop:8,padding:"10px 11px",border:"1px dashed #aeb7af",borderRadius:8,background:"#faf9f6",cursor:"pointer",fontSize:12}}><input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.webp" onChange={e=>chooseFiles(e.target.files)} style={{display:"none"}}/>📎 Vælg Word, PDF, Office eller billeder · maks. 5 filer</label>{selectedFiles.length>0&&<div style={{display:"grid",gap:4,marginTop:7}}>{selectedFiles.map(f=><span key={`${f.name}-${f.size}`} style={{fontSize:11,color:"#59655e"}}>• {f.name} · {fileSize(f.size)}</span>)}</div>}</div></div><div style={{display:"flex",justifyContent:"flex-end"}}><button onClick={add} disabled={(!text.trim()&&!selectedFiles.length)||busy||!dbReady||audiences.length===0} style={{...postButton,opacity:((!text.trim()&&!selectedFiles.length)||busy||audiences.length===0)?0.5:1}}>{busy?"Gemmer sikkert…":"Sæt på opslagstavlen"}</button></div></div>}
     <div style={corkboard}>{notes.length===0?<div style={{padding:16,background:"#fff2a8",width:190,minHeight:150}}>Der er ingen opslag endnu.</div>:<div style={{display:"flex",flexWrap:"wrap",gap:22,alignItems:"flex-start"}}>{notes.map((n,i)=>{const manage=n.author_id===userId||isAdmin,editing=editingId===n.id,files=attachments[n.id]||[];return <article key={n.id} style={{background:noteColors[i%noteColors.length],padding:"18px 16px 14px",width:225,minHeight:190,boxSizing:"border-box",position:"relative",boxShadow:"2px 5px 10px rgba(50,35,20,.24)",transform:editing?"none":`rotate(${[-1.4,.8,-.5,1.2][i%4]}deg)`,display:"flex",flexDirection:"column"}}>{editing?<><textarea value={editText} onChange={e=>setEditText(e.target.value)} maxLength={2000} style={{width:"100%",minHeight:85,boxSizing:"border-box",padding:8,resize:"vertical"}}/><small style={{fontWeight:900,marginTop:8}}>Målgruppe</small><div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:5}}>{audienceOptions.map(a=><label key={a.id} style={{fontSize:10,display:"flex",gap:3,alignItems:"center"}}><input type="checkbox" checked={editAudiences.includes(a.id)} onChange={()=>toggleEditAudience(a.id)}/>{a.label}</label>)}</div><div style={{display:"flex",gap:6,marginTop:10}}><button onClick={saveEdit} disabled={busy||(!editText.trim()&&!files.length)||editAudiences.length===0} style={smallAction}>Gem</button><button onClick={cancelEdit} style={smallAction}>Annuller</button></div></>:<><p style={{margin:"0 0 10px",fontSize:15,lineHeight:1.4,whiteSpace:"pre-wrap",flex:files.length?"0 0 auto":1}}>{n.text}</p>{files.length>0&&<div style={{display:"grid",gap:5,margin:"2px 0 12px"}}>{files.map(file=><button key={file.id} onClick={()=>openFile(file)} style={{border:"1px solid rgba(55,70,60,.2)",background:"rgba(255,255,255,.5)",borderRadius:7,padding:"7px 8px",textAlign:"left",cursor:"pointer",color:"#31473d"}}><strong style={{display:"block",fontSize:11,overflow:"hidden",textOverflow:"ellipsis"}}>📎 {file.display_name}</strong>{file.size_bytes!==null&&<small>{fileSize(file.size_bytes)}</small>}</button>)}</div>}<small style={{borderTop:"1px solid rgba(50,50,40,.16)",paddingTop:7,color:"#62645d",fontSize:11,marginTop:"auto"}}>{n.author_email.split("@")[0]} · {new Date(n.created_at).toLocaleString("da-DK")}</small>{manage&&<div style={{display:"flex",gap:6,marginTop:8}}><button onClick={()=>beginEdit(n)} style={smallAction}>Redigér</button><button onClick={()=>remove(n.id)} style={{...smallAction,color:"#7b342d"}}>Slet</button></div>}</>}</article>})}</div>}</div>
    </section>
