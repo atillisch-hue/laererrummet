@@ -58,6 +58,9 @@ function landingFor(user:NonNullable<Awaited<ReturnType<typeof supabase.auth.get
  return "/";
 }
 
+function mfaSetupUrl(pathname:string){return `/account/security?required=1&next=${encodeURIComponent(pathname)}`}
+function mfaChallengeUrl(pathname:string){return `/mfa?next=${encodeURIComponent(pathname)}`}
+
 export default function AccessGuard({children}:{children:React.ReactNode}){
  const pathname=usePathname();
  const area=protectedArea(pathname);
@@ -67,7 +70,8 @@ export default function AccessGuard({children}:{children:React.ReactNode}){
   let active=true;
   if(!area){setAllowed(true);return()=>{active=false}};
   setAllowed(false);
-  supabase.auth.getSession().then(({data})=>{
+  (async()=>{
+   const{data}=await supabase.auth.getSession();
    if(!active)return;
    const user=data.session?.user;
    if(!user){window.location.replace("/");return}
@@ -79,8 +83,18 @@ export default function AccessGuard({children}:{children:React.ReactNode}){
     area==="parent"?parent:
     area==="board"?board:false;
    if(!ok){window.location.replace(landingFor(user));return}
+
+   if(area==="leadership"||area==="admin"){
+    const{data:aal,error}=await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if(!active)return;
+    if(error){window.location.replace(mfaSetupUrl(pathname));return}
+    if(aal.currentLevel!=="aal2"){
+     window.location.replace(aal.nextLevel==="aal2"?mfaChallengeUrl(pathname):mfaSetupUrl(pathname));
+     return;
+    }
+   }
    setAllowed(true);
-  });
+  })();
   return()=>{active=false};
  },[area,pathname]);
 
