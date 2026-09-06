@@ -14,6 +14,8 @@ type ParentPayload={children?:Child[]};
 const dateOnly=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const mondayOf=(value:Date)=>{const d=new Date(value);d.setHours(12,0,0,0);const day=d.getDay()||7;d.setDate(d.getDate()-(day-1));return d};
 const kindLabel=(kind:ScheduleOccurrence["entry_kind"])=>kind==="assembly"?"Samling":kind==="break"?"Pause":"Undervisning";
+const childFromUrl=()=>{const raw=new URLSearchParams(window.location.search).get("child");const id=raw?Number(raw):NaN;return Number.isInteger(id)&&id>0?id:null};
+const setChildInUrl=(id:number)=>{const url=new URL(window.location.href);url.searchParams.set("child",String(id));window.history.replaceState({},"",url.toString())};
 
 export default function ParentSchedulePage(){
  const[ready,setReady]=useState(false);
@@ -33,7 +35,9 @@ export default function ParentSchedulePage(){
   if(portalError){setError("Skemaet kunne ikke hentes.");setReady(true);return}
   const raw=Array.isArray((portal as ParentPayload|null)?.children)?((portal as ParentPayload).children||[]):[];
   const list=raw.map(child=>({id:child.id,name:child.name,class_name:child.class_name,closed_days:Array.isArray(child.closed_days)?child.closed_days:[]}));
-  setChildren(list);setActiveId(list[0]?.id||null);setReady(true);
+  const requested=childFromUrl();
+  const initialId=requested&&list.some(child=>child.id===requested)?requested:(list[0]?.id||null);
+  setChildren(list);setActiveId(initialId);if(initialId)setChildInUrl(initialId);setReady(true);
  })()},[]);
 
  useEffect(()=>{let live=true;(async()=>{
@@ -50,16 +54,17 @@ export default function ParentSchedulePage(){
  const days=useMemo(()=>Array.from({length:5},(_,i)=>{const d=new Date(weekStart);d.setDate(weekStart.getDate()+i);return d}),[weekStart]);
  const moveWeek=(delta:number)=>setWeekStart(v=>{const d=new Date(v);d.setDate(v.getDate()+delta*7);return d});
  const weekEnd=days[4];
+ const selectChild=(id:number)=>{setActiveId(id);setChildInUrl(id)};
 
  if(!ready)return <main style={shell}>Henter skema…</main>;
  return <main style={{minHeight:"100vh",background:"#f5f3ee",color:"#26342e"}}><section style={shell}>
-  <Link href="/parent" style={back}>← Forældreportalen</Link>
+  <Link href={active?`/parent?child=${active.id}`:"/parent"} style={back}>← Forældreportalen</Link>
   <p style={{...eyebrow,marginTop:28}}>SKEMA</p>
   <h1 style={{fontFamily:"Georgia,serif",fontSize:38,margin:"7px 0 8px"}}>Ugens skema</h1>
   <p style={{maxWidth:720,color:"#687068",fontSize:17,lineHeight:1.55}}>Her ser du den skemaversion, der gælder for netop denne uge. 14-dages-rytme, undervisningsperiode og skolens lukkedage er regnet med.</p>
   {error&&<div style={warning}>{error}</div>}
 
-  {children.length>1&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:20}}>{children.map(child=><button key={child.id} onClick={()=>setActiveId(child.id)} style={{...childButton,background:active?.id===child.id?"#365044":"white",color:active?.id===child.id?"white":"#26342e"}}>{child.name}{child.class_name?` · ${child.class_name}`:""}</button>)}</div>}
+  {children.length>1&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:20}}>{children.map(child=><button key={child.id} onClick={()=>selectChild(child.id)} style={{...childButton,background:active?.id===child.id?"#365044":"white",color:active?.id===child.id?"white":"#26342e"}}>{child.name}{child.class_name?` · ${child.class_name}`:""}</button>)}</div>}
 
   {active&&<>
    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap",margin:"26px 0 14px"}}><div><p style={eyebrow}>UGE {isoWeek(weekStart)}</p><h2 style={{fontFamily:"Georgia,serif",fontSize:27,margin:"5px 0 0"}}>{active.name}{active.class_name?` · ${active.class_name}`:""}</h2><small style={{display:"block",color:"#707670",marginTop:4}}>{weekStart.toLocaleDateString("da-DK",{day:"numeric",month:"long"})} – {weekEnd.toLocaleDateString("da-DK",{day:"numeric",month:"long",year:"numeric"})}</small></div><div style={{display:"flex",gap:7}}><button onClick={()=>moveWeek(-1)} style={navButton}>← Forrige uge</button><button onClick={()=>setWeekStart(mondayOf(new Date()))} style={navButton}>Denne uge</button><button onClick={()=>moveWeek(1)} style={navButton}>Næste uge →</button></div></div>
