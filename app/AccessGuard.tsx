@@ -1,32 +1,61 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
-import { supabase } from "../lib/supabase";
-import { hasRole } from "../lib/roles";
+import {useEffect,useState} from "react";
+import {usePathname} from "next/navigation";
+import {supabase} from "../lib/supabase";
+import {hasRole} from "../lib/roles";
 
-const teacherRoots=[
+type Area="teaching"|"staff"|"leadership"|"admin"|"board"|"parent"|null;
+
+const teachingRoots=[
  "/noticeboard",
  "/students",
  "/student-profile",
  "/teacher-dashboard",
  "/teacher-overview",
- "/teacher-room",
  "/create-assignment",
  "/grammar",
  "/preparation",
+ "/math",
+ "/danish",
+ "/formelsamling"
+];
+
+const staffRoots=[
+ "/teacher-room",
  "/calendar",
  "/archive",
- "/my-tasks"
+ "/my-tasks",
+ "/substitute"
+];
+
+const leadershipRoots=[
+ "/admin/planning",
+ "/admin/schedule",
+ "/admin/settings",
+ "/admin/tasks"
 ];
 
 function starts(path:string,root:string){return path===root||path.startsWith(root+"/")}
-function protectedArea(path:string){
+function protectedArea(path:string):Area{
+ if(path==="/admin")return "leadership";
+ if(leadershipRoots.some(root=>starts(path,root)))return "leadership";
  if(starts(path,"/admin"))return "admin";
  if(starts(path,"/board"))return "board";
  if(starts(path,"/parent"))return "parent";
- if(teacherRoots.some(root=>starts(path,root)))return "teacher";
+ if(teachingRoots.some(root=>starts(path,root)))return "teaching";
+ if(staffRoots.some(root=>starts(path,root)))return "staff";
  return null;
+}
+
+function landingFor(user:NonNullable<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>["user"]){
+ if(hasRole(user,"teacher"))return "/noticeboard";
+ if(hasRole(user,"leader"))return "/admin";
+ if(hasRole(user,"staff"))return "/teacher-room";
+ if(hasRole(user,"admin"))return "/admin";
+ if(hasRole(user,"parent"))return "/parent";
+ if(hasRole(user,"board"))return "/board";
+ return "/";
 }
 
 export default function AccessGuard({children}:{children:React.ReactNode}){
@@ -42,17 +71,14 @@ export default function AccessGuard({children}:{children:React.ReactNode}){
    if(!active)return;
    const user=data.session?.user;
    if(!user){window.location.replace("/");return}
-   const ok=area==="admin"?hasRole(user,"admin"):
-    area==="board"?(hasRole(user,"board")||hasRole(user,"admin")):
-    area==="parent"?hasRole(user,"parent"):
-    (hasRole(user,"teacher")||hasRole(user,"admin"));
-   if(!ok){
-    if(hasRole(user,"teacher")||hasRole(user,"admin"))window.location.replace("/noticeboard");
-    else if(hasRole(user,"parent"))window.location.replace("/parent");
-    else if(hasRole(user,"board"))window.location.replace("/board");
-    else window.location.replace("/");
-    return;
-   }
+   const teacher=hasRole(user,"teacher"),staff=hasRole(user,"staff"),leader=hasRole(user,"leader"),admin=hasRole(user,"admin"),parent=hasRole(user,"parent"),board=hasRole(user,"board");
+   const ok=area==="teaching"?teacher:
+    area==="staff"?(teacher||staff||leader||admin):
+    area==="leadership"?(leader||admin):
+    area==="admin"?admin:
+    area==="parent"?parent:
+    area==="board"?board:false;
+   if(!ok){window.location.replace(landingFor(user));return}
    setAllowed(true);
   });
   return()=>{active=false};
