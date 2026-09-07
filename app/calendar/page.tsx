@@ -2,6 +2,7 @@
 
 import {useEffect,useMemo,useState} from "react";
 import {supabase} from "../../lib/supabase";
+import {hasRole} from "../../lib/roles";
 import WeekScheduleView from "./WeekScheduleView";
 import WorkTimePanel from "./WorkTimePanel";
 import StaffAbsencePanel from "./StaffAbsencePanel";
@@ -25,8 +26,10 @@ const hhmm=(value:number)=>`${String(Math.floor(value/60)).padStart(2,"0")}:${St
 
 export default function CalendarPage(){
  const[ready,setReady]=useState(false),[currentUserId,setCurrentUserId]=useState(""),[viewedUserId,setViewedUserId]=useState(""),[date,setDate]=useState(()=>iso(new Date())),[mode,setMode]=useState<CalendarMode>("calendar");
+ const[canManageStaffAbsence,setCanManageStaffAbsence]=useState(false);
  const[meetings,setMeetings]=useState<Meeting[]>([]),[directory,setDirectory]=useState<DirectoryUser[]>([]),[rooms,setRooms]=useState<Room[]>([]),[roomId,setRoomId]=useState<number|"">("");
- const[students,setStudents]=useState<Student[]>([]),[studentId,setStudentId]=useState<number|"">(""),[guardians,setGuardians]=useState<Guardian[]>([]),[selectedGuardians,setSelectedGuardians]=useState<string[]>([]),[selected,setSelected]=useState<string[]>([]);
+ const[students,setStudents]=useState<Student[]>([]),[studentId,setStudentId]=useState<number|"">("");
+ const[guardians,setGuardians]=useState<Guardian[]>([]),[selectedGuardians,setSelectedGuardians]=useState<string[]>([]),[selected,setSelected]=useState<string[]>([]);
  const[meetingLeader,setMeetingLeader]=useState(""),[minuteTaker,setMinuteTaker]=useState(""),[externalName,setExternalName]=useState(""),[externalRole,setExternalRole]=useState(""),[agendaDraft,setAgendaDraft]=useState(""),[internalNotesDraft,setInternalNotesDraft]=useState("");
  const[open,setOpen]=useState(false),[title,setTitle]=useState(""),[type,setType]=useState("Netværksmøde"),[time,setTime]=useState("13:00"),[endTime,setEndTime]=useState("14:00"),[saving,setSaving]=useState(false),[formError,setFormError]=useState("");
  const[freeSlots,setFreeSlots]=useState<FreeSlot[]>([]),[availabilityLoading,setAvailabilityLoading]=useState(false),[workRefresh,setWorkRefresh]=useState(0);
@@ -45,10 +48,22 @@ export default function CalendarPage(){
 
  useEffect(()=>{(async()=>{
   const{data}=await supabase.auth.getSession();if(!data.session){window.location.href="/?teacher=1";return}
-  const uid=data.session.user.id;setCurrentUserId(uid);setViewedUserId(uid);
+  const session=data.session,uid=session.user.id;setCurrentUserId(uid);setViewedUserId(uid);
+  const canManageAbsence=hasRole(session.user,"admin");setCanManageStaffAbsence(canManageAbsence);
   const params=new URLSearchParams(window.location.search),requested=params.get("view"),requestedDate=params.get("date");
+  const resolvedDate=requestedDate&&/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)?requestedDate:iso(new Date());
   if(requestedDate&&/^\d{4}-\d{2}-\d{2}$/.test(requestedDate))setDate(requestedDate);
-  if(requested==="absence"||requested==="work")setMode(requested);
+  if(requested==="absence"){
+   if(!canManageAbsence){params.delete("view");window.history.replaceState(null,"",`${window.location.pathname}?${params.toString()}`)}
+   else{
+    const aal=await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if(aal.error||aal.data.currentLevel!=="aal2"){
+     const next=`/calendar?view=absence&date=${resolvedDate}`;
+     window.location.replace(`/mfa?next=${encodeURIComponent(next)}`);return;
+    }
+    setMode("absence");
+   }
+  }else if(requested==="work")setMode("work");
   await load();setReady(true)
  })()},[]);
  useEffect(()=>{(async()=>{setSelectedGuardians([]);if(!studentId){setGuardians([]);return}const{data}=await supabase.rpc("get_student_guardians",{p_student_id:studentId});setGuardians((data||[]) as Guardian[])})()},[studentId]);
@@ -62,8 +77,18 @@ export default function CalendarPage(){
  const isAdmin=currentRole==="admin"||currentRole==="leader";
  const staffDirectory=directory.filter(u=>["teacher","admin","leader"].includes(u.role));
 
- useEffect(()=>{if(ready&&!isAdmin&&mode==="absence")setMode("calendar")},[ready,isAdmin,mode]);
- function changeMode(next:CalendarMode){setMode(next);setOpen(false);const params=new URLSearchParams(window.location.search);if(next==="calendar")params.delete("view");else params.set("view",next);params.set("date",date);window.history.replaceState(null,"",`${window.location.pathname}?${params.toString()}`)}
+ useEffect(()=>{if(ready&&!canManageStaffAbsence&&mode==="absence")setMode("calendar")},[ready,canManageStaffAbsence,mode]);
+ async function changeMode(next:CalendarMode){
+  if(next==="absence"){
+   if(!canManageStaffAbsence)return;
+   const aal=await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+   if(aal.error||aal.data.currentLevel!=="aal2"){
+    const target=`/calendar?view=absence&date=${date}`;
+    window.location.assign(`/mfa?next=${encodeURIComponent(target)}`);return;
+   }
+  }
+  setMode(next);setOpen(false);const params=new URLSearchParams(window.location.search);if(next==="calendar")params.delete("view");else params.set("view",next);params.set("date",date);window.history.replaceState(null,"",`${window.location.pathname}?${params.toString()}`)
+ }
  function changeDate(next:string){setDate(next);const params=new URLSearchParams(window.location.search);params.set("date",next);if(mode!=="calendar")params.set("view",mode);window.history.replaceState(null,"",`${window.location.pathname}?${params.toString()}`)}
  function toggleUser(id:string){setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);if(selected.includes(id)){if(meetingLeader===id)setMeetingLeader("");if(minuteTaker===id)setMinuteTaker("")}}
  function toggleGuardian(id:string){setSelectedGuardians(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id])}
@@ -100,11 +125,11 @@ export default function CalendarPage(){
   <section style={{maxWidth:1200,margin:"auto",padding:"24px 24px 70px"}}>
    <div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:14,flexWrap:"wrap",marginBottom:12}}><div><p style={eyebrow}>VALGT DAG</p><h2 style={{fontFamily:"Georgia,serif",fontSize:24,margin:"4px 0 0",textTransform:"capitalize"}}>{selectedDateLabel}</h2></div><div style={{display:"flex",alignItems:"end",gap:8,flexWrap:"wrap"}}><label style={{...label,marginTop:0,minWidth:230}}>Personale<select value={viewedUserId} onChange={e=>setViewedUserId(e.target.value)} style={{...input,marginTop:4}}><option value={currentUserId}>Mig · {currentName}</option>{staffDirectory.filter(u=>u.user_id!==currentUserId).map(u=><option key={u.user_id} value={u.user_id}>{u.display_name} · {roleName(u.role)}</option>)}</select></label><input aria-label="Valgt dato" type="date" value={date} onChange={e=>changeDate(e.target.value)} style={{...input,width:"auto",minWidth:150,marginTop:0}}/>{mode==="calendar"&&<button onClick={()=>setOpen(v=>!v)} style={primary}>{open?"Luk mødeformular":"+ Opret møde"}</button>}</div></div>
 
-   <nav style={{display:"flex",gap:7,flexWrap:"wrap",padding:"8px",background:"#ece9e1",borderRadius:11,marginBottom:15}}><button type="button" onClick={()=>changeMode("calendar")} style={modeButton(mode==="calendar")}>Uge & skema</button>{isAdmin&&<button type="button" onClick={()=>changeMode("absence")} style={modeButton(mode==="absence")}>Fravær & vikardækning</button>}<button type="button" onClick={()=>changeMode("work")} style={modeButton(mode==="work")}>Arbejdstid</button></nav>
+   <nav style={{display:"flex",gap:7,flexWrap:"wrap",padding:"8px",background:"#ece9e1",borderRadius:11,marginBottom:15}}><button type="button" onClick={()=>void changeMode("calendar")} style={modeButton(mode==="calendar")}>Uge & skema</button>{canManageStaffAbsence&&<button type="button" onClick={()=>void changeMode("absence")} style={modeButton(mode==="absence")}>Fravær & vikardækning</button>}<button type="button" onClick={()=>void changeMode("work")} style={modeButton(mode==="work")}>Arbejdstid</button></nav>
 
    {formError&&<div style={warning}>{formError}</div>}
    {mode==="calendar"&&<><WeekScheduleView selectedDate={date} onSelectDate={changeDate} viewedUserId={viewedUserId} currentUserId={currentUserId} viewedName={viewedName} meetings={meetings} refreshKey={workRefresh}/>{open&&<MeetingForm/>}</>}
-   {mode==="absence"&&isAdmin&&<StaffAbsencePanel selectedDate={date} viewedUserId={viewedUserId} viewedName={viewedName} directory={staffDirectory} onChanged={()=>{setWorkRefresh(v=>v+1);void load()}}/>}
+   {mode==="absence"&&canManageStaffAbsence&&<StaffAbsencePanel selectedDate={date} viewedUserId={viewedUserId} viewedName={viewedName} directory={staffDirectory} onChanged={()=>{setWorkRefresh(v=>v+1);void load()}}/>}
    {mode==="work"&&<WorkTimePanel selectedDate={date} viewedUserId={viewedUserId} currentUserId={currentUserId} viewedName={viewedName} isAdmin={isAdmin} onChanged={()=>setWorkRefresh(v=>v+1)}/>} 
   </section>
  </main>;
