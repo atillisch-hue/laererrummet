@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Tysk Mission – begyndertysk</title>
+<style>
+:root{--bg:#0b1020;--panel:#121a2d;--card:#fff;--ink:#152033;--muted:#667085;--yellow:#ffd34d;--red:#ff4d5f;--green:#19a974;--blue:#4676ff;--purple:#8b5cf6;--line:#e7eaf0}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:radial-gradient(circle at 10% 10%,#243b67 0,transparent 35%),linear-gradient(135deg,#0b1020,#111c35);color:#fff;padding:20px}.app{width:min(1000px,100%);margin:auto}.top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}.brand{font-size:clamp(1.4rem,4vw,2.4rem);font-weight:1000;margin-right:auto}.pill{background:#ffffff18;border:1px solid #ffffff1f;border-radius:999px;padding:10px 14px;font-weight:900}.bar{height:12px;background:#ffffff1c;border-radius:999px;overflow:hidden;margin-bottom:14px}.bar>div{height:100%;width:0;background:linear-gradient(90deg,#ffd34d,#ff9f43);transition:.25s}.card{background:var(--card);color:var(--ink);border-radius:28px;padding:clamp(20px,4vw,38px);box-shadow:0 24px 70px #0007}.hidden{display:none!important}.center{text-align:center}.hero{font-size:4.5rem}.subtitle{color:var(--muted);line-height:1.55;max-width:700px;margin:0 auto 18px}.grid{display:grid;gap:12px}.grid3{grid-template-columns:repeat(3,1fr)}.grid2{grid-template-columns:repeat(2,1fr)}.tile{border:2px solid var(--line);background:#f8fafc;border-radius:18px;padding:16px;font-weight:900;cursor:pointer}.tile:hover{border-color:#b7c0cf;transform:translateY(-1px)}.tile.active{border-color:var(--blue);background:#eef3ff}.btn{border:0;border-radius:17px;padding:15px 20px;font:inherit;font-weight:950;cursor:pointer}.primary{background:var(--blue);color:#fff}.secondary{background:#eef2f7;color:#24324a}.wide{width:100%}.row{display:flex;gap:10px;flex-wrap:wrap}.name{width:100%;padding:14px 16px;border-radius:15px;border:2px solid var(--line);font:inherit;font-weight:800}.level{display:inline-flex;align-items:center;gap:8px;background:#efeaff;color:#5a35c5;padding:8px 12px;border-radius:999px;font-weight:900}.mission-title{font-size:clamp(1.5rem,4vw,2.3rem);font-weight:1000;margin:12px 0 6px}.instruction{color:var(--muted);margin-bottom:16px}.prompt{font-size:clamp(1.5rem,4vw,2.5rem);font-weight:1000;margin:16px 0}.emoji{font-size:5rem}.answers{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.answer{min-height:68px;border:2px solid var(--line);background:#f8fafc;border-radius:18px;padding:14px;font:inherit;font-size:1.05rem;font-weight:900;cursor:pointer}.answer:hover{border-color:#9ba7ba}.answer.correct{background:#def8ed;border-color:#38c793;color:#0b704d}.answer.wrong{background:#ffe4e7;border-color:#ff7482;color:#a01928}.feedback{margin-top:14px;padding:14px 16px;border-radius:16px;font-weight:900}.feedback.good{background:#def8ed;color:#0b704d}.feedback.bad{background:#ffe4e7;color:#a01928}.speaker{background:#fff6d6;border:2px solid #ffe08a;color:#684d00}.map{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:18px 0}.map div{aspect-ratio:1;border-radius:16px;background:#eef2f7;display:grid;place-items:center;font-size:1.35rem;font-weight:1000}.map .done{background:#def8ed}.map .here{background:#fff2b8;outline:3px solid #ffd34d}.map .boss{background:#f0e8ff}.boss-banner{background:linear-gradient(135deg,#29185f,#5f2db5);color:#fff;border-radius:18px;padding:16px;margin:0 0 15px;font-weight:950}.scorebig{font-size:4rem;font-weight:1000;color:var(--blue)}.stars{font-size:3rem}.high{background:#f8fafc;border-radius:18px;padding:16px;text-align:left;margin-top:18px}.high strong{display:block;margin-bottom:8px}.mini{font-size:.9rem;color:var(--muted)}.footer{text-align:center;color:#ffffff9a;font-size:.85rem;margin-top:12px}.kbd{font-size:.85rem;color:#6b7280;margin-top:8px}
+@media(max-width:680px){body{padding:10px}.grid3,.grid2,.answers{grid-template-columns:1fr}.map{grid-template-columns:repeat(5,1fr)}.brand{width:100%}.pill{padding:8px 11px}}
+</style>
+</head>
+<body>
+<main class="app">
+<div id="hud" class="hidden">
+  <div class="top"><div class="brand">🇩🇪 Tysk Mission</div><div class="pill">❤️ <span id="lives">3</span></div><div class="pill">🔥 <span id="streak">0</span></div><div class="pill">⭐ <span id="score">0</span></div></div>
+  <div class="bar"><div id="progress"></div></div>
+</div>
+
+<section class="card center" id="start">
+ <div class="hero">🧭🇩🇪</div><h1>Tysk Mission</h1>
+ <p class="subtitle">Et lille eventyr i begyndertysk. Vælg en figur, skriv dit fornavn eller et kaldenavn, og kæmp dig gennem baner med ord, tal, farver, familie, skole og små samtaler.</p>
+ <input class="name" id="playerName" maxlength="18" placeholder="Dit navn eller kaldenavn" aria-label="Spillernavn" />
+ <h3>Vælg figur</h3><div class="grid grid3" id="avatarGrid"></div>
+ <h3>Vælg mission</h3><div class="grid grid3" id="modeGrid"></div>
+ <div class="row" style="margin-top:18px"><button class="btn primary wide" id="startBtn">Start missionen →</button></div>
+ <p class="mini" style="margin-top:14px">Ingen login. Highscore gemmes kun på denne enhed.</p>
+</section>
+
+<section class="card hidden" id="game">
+  <div id="bossBanner" class="boss-banner hidden">👑 BOSS-BANE · Dobbelt point!</div>
+  <div class="level" id="levelTag"></div>
+  <div class="map" id="map"></div>
+  <div class="instruction" id="instruction"></div>
+  <div class="emoji" id="emoji"></div>
+  <div class="prompt" id="prompt"></div>
+  <div class="row"><button class="btn speaker hidden" id="speakBtn">🔊 Hør tysk</button></div>
+  <div class="answers" id="answers"></div>
+  <div id="feedback" class="feedback hidden"></div>
+  <button class="btn primary wide hidden" id="nextBtn" style="margin-top:14px">Næste →</button>
+  <div class="kbd">Tip: Du kan også bruge tasterne 1–4.</div>
+</section>
+
+<section class="card center hidden" id="end">
+ <div class="hero" id="endAvatar">🏆</div><h1 id="endTitle">Mission fuldført!</h1>
+ <div class="scorebig" id="finalScore">0</div><div class="stars" id="stars">⭐⭐⭐</div>
+ <p id="endText" class="subtitle"></p>
+ <div class="high"><strong>🏅 Highscore på denne enhed</strong><div id="highScores"></div></div>
+ <div class="grid grid2" style="margin-top:16px"><button class="btn primary" id="againBtn">Spil igen</button><button class="btn secondary" id="menuBtn">Til menu</button></div>
+</section>
+<div class="footer">Tysk Mission · begynderniveau · version 2</div>
+</main>
+<script>
+const avatars=['🦊','🐼','🐯','🦁','🐸','🤖'];
+const modes=[
+ {id:'mix',icon:'🧭',name:'Den store mission',desc:'30 blandede opgaver'},
+ {id:'ord',icon:'🧠',name:'Ordjagt',desc:'Ord, dyr, familie, skole'},
+ {id:'dialog',icon:'💬',name:'Tal tysk',desc:'Hilsner og mini-dialoger'}
+];
+const bank=[
+{cat:'hilsner',i:'Vælg den rigtige betydning',q:'Hallo!',a:['Hej!','Farvel!','Tak!','Godnat!'],c:0,s:'Hallo!'},
+{cat:'hilsner',i:'Vælg det tyske ord',q:'Farvel!',a:['Bitte!','Tschüss!','Hallo!','Danke!'],c:1,s:'Tschüss!'},
+{cat:'dialog',i:'Hvad betyder spørgsmålet?',q:'Wie heißt du?',a:['Hvor bor du?','Hvor gammel er du?','Hvad hedder du?','Hvordan har du det?'],c:2,s:'Wie heißt du?'},
+{cat:'dialog',i:'Vælg det bedste svar',q:'Wie heißt du?',a:['Ich heiße Emma.','Ich bin zwölf.','Danke.','Guten Morgen.'],c:0,s:'Ich heiße Emma.'},
+{cat:'dialog',i:'Vælg det bedste svar',q:'Wie geht es dir?',a:['Gut, danke!','Ich heiße Ben.','Rot.','Dreizehn.'],c:0,s:'Gut, danke!'},
+{cat:'dialog',i:'Vælg det bedste svar',q:'Guten Morgen!',a:['Guten Morgen!','Gute Nacht!','Zwölf!','Mein Hund!'],c:0,s:'Guten Morgen!'},
+{cat:'dialog',i:'Hvad passer bedst?',q:'Ich heiße Lea. Und du?',a:['Ich heiße Noah.','Ich bin blau.','Danke, zwölf.','Der Hund.'],c:0,s:'Ich heiße Noah.'},
+{cat:'dialog',i:'Hvad svarer man typisk?',q:'Danke!',a:['Bitte!','Hallo!','Elf!','Grün!'],c:0,s:'Bitte!'},
+{cat:'tal',i:'Vælg det rigtige tal',q:'acht',a:['6','7','8','9'],c:2,s:'acht'},
+{cat:'tal',i:'Vælg det tyske tal',q:'13',a:['dreizehn','dreißig','zwölf','vierzehn'],c:0,s:'dreizehn'},
+{cat:'tal',i:'Hvad betyder sætningen?',q:'Ich bin zwölf Jahre alt.',a:['Jeg er 12 år.','Jeg har 12 år.','Jeg er 20 år.','Jeg hedder Zwölf.'],c:0,s:'Ich bin zwölf Jahre alt.'},
+{cat:'tal',i:'Hvad er 16 på tysk?',q:'16',a:['sechzig','sechzehn','siebzehn','sechs'],c:1,s:'sechzehn'},
+{cat:'tal',i:'Hvad er 20 på tysk?',q:'20',a:['zwölf','zwei','zwanzig','zwanzehn'],c:2,s:'zwanzig'},
+{cat:'farver',i:'Hvilken farve er dette?',e:'🔴',q:'',a:['blau','rot','grün','gelb'],c:1,s:'rot'},
+{cat:'farver',i:'Hvilken farve er dette?',e:'🔵',q:'',a:['schwarz','weiß','blau','rot'],c:2,s:'blau'},
+{cat:'farver',i:'Vælg betydningen',q:'grün',a:['grøn','gul','blå','sort'],c:0,s:'grün'},
+{cat:'farver',i:'Vælg det tyske ord',q:'gul',a:['rot','gelb','grün','braun'],c:1,s:'gelb'},
+{cat:'dyr',i:'Hvad hedder dyret på tysk?',e:'🐶',q:'',a:['die Katze','der Hund','das Pferd','der Fisch'],c:1,s:'der Hund'},
+{cat:'dyr',i:'Hvad hedder dyret på tysk?',e:'🐱',q:'',a:['die Katze','der Hund','die Maus','der Vogel'],c:0,s:'die Katze'},
+{cat:'dyr',i:'Hvad hedder dyret på tysk?',e:'🐴',q:'',a:['das Pferd','der Vogel','der Fisch','die Kuh'],c:0,s:'das Pferd'},
+{cat:'familie',i:'Vælg betydningen',q:'die Mutter',a:['faren','søsteren','moren','broren'],c:2,s:'die Mutter'},
+{cat:'familie',i:'Vælg det tyske udtryk',q:'min bror',a:['meine Schwester','mein Bruder','meine Mutter','mein Vater'],c:1,s:'mein Bruder'},
+{cat:'familie',i:'Vælg betydningen',q:'mein Vater',a:['min far','min mor','min ven','min søster'],c:0,s:'mein Vater'},
+{cat:'skole',i:'Hvad betyder ordet?',q:'die Schule',a:['skolen','stolen','tasken','bogen'],c:0,s:'die Schule'},
+{cat:'skole',i:'Hvad er “bogen” på tysk?',q:'bogen',a:['der Tisch','das Buch','der Stuhl','die Tasche'],c:1,s:'das Buch'},
+{cat:'skole',i:'Hvad er “bordet” på tysk?',q:'bordet',a:['der Tisch','das Heft','der Lehrer','die Klasse'],c:0,s:'der Tisch'},
+{cat:'skole',i:'Vælg betydningen',q:'der Lehrer',a:['eleven','læreren','vennen','faren'],c:1,s:'der Lehrer'},
+{cat:'hverdag',i:'Hvad betyder sætningen?',q:'Ich habe einen Hund.',a:['Jeg har en hund.','Jeg er en hund.','Jeg ser en hund.','Jeg hedder Hund.'],c:0,s:'Ich habe einen Hund.'},
+{cat:'hverdag',i:'Hvad betyder sætningen?',q:'Ich wohne in Odense.',a:['Jeg arbejder i Odense.','Jeg bor i Odense.','Jeg går i skole i Odense.','Jeg hedder Odense.'],c:1,s:'Ich wohne in Odense.'},
+{cat:'hverdag',i:'Vælg det bedste svar',q:'Wo wohnst du?',a:['Ich wohne in Kolding.','Ich bin dreizehn.','Ich heiße Ida.','Gut, danke.'],c:0,s:'Ich wohne in Kolding.'},
+{cat:'hverdag',i:'Vælg det bedste svar',q:'Wie alt bist du?',a:['Ich bin dreizehn Jahre alt.','Ich heiße Maja.','Ich wohne in Berlin.','Tschüss!'],c:0,s:'Ich bin dreizehn Jahre alt.'},
+{cat:'hverdag',i:'Hvad betyder “ja”?',q:'ja',a:['nej','måske','ja','tak'],c:2,s:'ja'},
+{cat:'hverdag',i:'Hvad betyder “nein”?',q:'nein',a:['nej','ja','hej','farvel'],c:0,s:'nein'},
+{cat:'dialog',i:'Vælg det bedste svar',q:'Bis morgen!',a:['Vi ses i morgen!','Godmorgen!','Godnat!','Tak!'],c:0,s:'Bis morgen!'},
+{cat:'dialog',i:'Hvad betyder det?',q:'Gute Nacht!',a:['Godnat!','Godmorgen!','Goddag!','Farvel!'],c:0,s:'Gute Nacht!'}
+];
+let avatar='🦊',mode='mix',questions=[],idx=0,lives=3,score=0,streak=0,answered=false,player='Spiller';
+const $=id=>document.getElementById(id);
+function renderOptions(){
+ $('avatarGrid').innerHTML=avatars.map((x,i)=>`<button class="tile ${i===0?'active':''}" data-avatar="${x}" style="font-size:2rem">${x}</button>`).join('');
+ $('modeGrid').innerHTML=modes.map((m,i)=>`<button class="tile ${i===0?'active':''}" data-mode="${m.id}"><div style="font-size:2rem">${m.icon}</div>${m.name}<div class="mini">${m.desc}</div></button>`).join('');
+ document.querySelectorAll('[data-avatar]').forEach(b=>b.onclick=()=>{avatar=b.dataset.avatar;document.querySelectorAll('[data-avatar]').forEach(x=>x.classList.remove('active'));b.classList.add('active')});
+ document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{mode=b.dataset.mode;document.querySelectorAll('[data-mode]').forEach(x=>x.classList.remove('active'));b.classList.add('active')});
+}
+function shuffle(a){return [...a].sort(()=>Math.random()-.5)}
+function buildQuestions(){let pool=bank;if(mode==='ord') pool=bank.filter(q=>['dyr','familie','skole','farver','tal'].includes(q.cat));if(mode==='dialog') pool=bank.filter(q=>['dialog','hilsner','hverdag'].includes(q.cat));const n=mode==='mix'?30:20;questions=shuffle(pool).slice(0,Math.min(n,pool.length));while(questions.length<n)questions.push(...shuffle(pool).slice(0,Math.min(n-questions.length,pool.length)));}
+function startGame(){player=$('playerName').value.trim()||'Spiller';buildQuestions();idx=0;lives=3;score=0;streak=0;answered=false;$('start').classList.add('hidden');$('end').classList.add('hidden');$('game').classList.remove('hidden');$('hud').classList.remove('hidden');renderQ();updateHud()}
+function renderMap(){let html='';for(let i=0;i<questions.length;i++){let cls=i<idx?'done':i===idx?'here':'';if((i+1)%5===0)cls+=' boss';html+=`<div class="${cls}">${i<idx?'✓':(i+1)%5===0?'👑':i+1}</div>`}$('map').innerHTML=html}
+function renderQ(){answered=false;const q=questions[idx],boss=(idx+1)%5===0;$('bossBanner').classList.toggle('hidden',!boss);$('levelTag').textContent=`${avatar} ${player} · Opgave ${idx+1}/${questions.length}`;$('instruction').textContent=q.i;$('emoji').textContent=q.e||'';$('prompt').textContent=q.q;$('speakBtn').classList.toggle('hidden',!q.s);$('speakBtn').onclick=()=>speak(q.s);$('answers').innerHTML='';q.a.forEach((t,i)=>{let b=document.createElement('button');b.className='answer';b.textContent=`${i+1}. ${t}`;b.onclick=()=>choose(i,b);$('answers').appendChild(b)});$('feedback').className='feedback hidden';$('nextBtn').classList.add('hidden');$('progress').style.width=`${(idx/questions.length)*100}%`;renderMap()}
+function speak(text){if(!('speechSynthesis'in window))return;window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='de-DE';u.rate=.82;window.speechSynthesis.speak(u)}
+function choose(choice,button){if(answered)return;answered=true;const q=questions[idx],boss=(idx+1)%5===0,buttons=[...document.querySelectorAll('.answer')];buttons[q.c].classList.add('correct');if(choice===q.c){streak++;let gain=(100+Math.min(streak-1,5)*20)*(boss?2:1);score+=gain;$('feedback').textContent=`Richtig! +${gain} point ${boss?'👑✨':'🎉'}`;$('feedback').className='feedback good'}else{button.classList.add('wrong');lives--;streak=0;$('feedback').textContent=`Ikke helt. Rigtigt svar: ${q.a[q.c]}`;$('feedback').className='feedback bad'}updateHud();$('nextBtn').textContent=(lives<=0||idx===questions.length-1)?'Se resultat':'Næste →';$('nextBtn').classList.remove('hidden')}
+function next(){if(lives<=0||idx===questions.length-1){endGame();return}idx++;renderQ()}
+function updateHud(){$('lives').textContent=lives;$('streak').textContent=streak;$('score').textContent=score}
+function endGame(){$('progress').style.width='100%';$('game').classList.add('hidden');$('hud').classList.add('hidden');$('end').classList.remove('hidden');$('endAvatar').textContent=avatar;$('finalScore').textContent=`${score} point`;const max=questions.length*150,pct=score/Math.max(max,1);let stars='⭐',title='Godt kæmpet!',text='Prøv en mission mere og se, om du kan slå din score.';if(pct>.72){stars='⭐⭐⭐';title='Deutsch-Meister!';text=`Stærkt, ${player}! Du har virkelig styr på meget begyndertysk.`}else if(pct>.42){stars='⭐⭐';title='Stærk mission!';text=`Flot, ${player}. Du er godt på vej.`}$('stars').textContent=stars;$('endTitle').textContent=title;$('endText').textContent=text;saveScore();showHigh()}
+function saveScore(){const key='tyskMissionScores';let xs=[];try{xs=JSON.parse(localStorage.getItem(key)||'[]')}catch{}xs.push({name:player.slice(0,18),avatar,score,date:new Date().toLocaleDateString('da-DK')});xs=xs.sort((a,b)=>b.score-a.score).slice(0,5);localStorage.setItem(key,JSON.stringify(xs))}
+function showHigh(){let xs=[];try{xs=JSON.parse(localStorage.getItem('tyskMissionScores')||'[]')}catch{}$('highScores').innerHTML=xs.length?xs.map((x,i)=>`<div>${i+1}. ${x.avatar} ${escapeHtml(x.name)} — <b>${x.score}</b> point <span class="mini">${x.date}</span></div>`).join(''):'Ingen scores endnu.'}
+function escapeHtml(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+$('startBtn').onclick=startGame;$('nextBtn').onclick=next;$('againBtn').onclick=startGame;$('menuBtn').onclick=()=>{$('end').classList.add('hidden');$('start').classList.remove('hidden')};document.addEventListener('keydown',e=>{if(!$('game').classList.contains('hidden')){let n=Number(e.key);if(n>=1&&n<=4){const b=document.querySelectorAll('.answer')[n-1];if(b&&!answered)b.click()}else if(e.key==='Enter'&&!$('nextBtn').classList.contains('hidden'))$('nextBtn').click()}});renderOptions();
+</script>
+</body>
+</html>
