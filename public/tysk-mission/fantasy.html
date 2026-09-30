@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Deutsch Quest – Fantasybrætspil</title>
+<style>
+:root{--ink:#201a17;--paper:#f7edcf;--paper2:#fff8e6;--gold:#d8a934;--red:#a43d3d;--green:#4d7d55;--blue:#435f88;--purple:#6f4b86;--shadow:#0007}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:Georgia,serif;background:radial-gradient(circle at top,#31422f,#111811 60%,#080b08);color:#f8edcf;padding:16px}.wrap{max-width:1100px;margin:auto}.head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}.logo{font-size:clamp(1.6rem,4vw,2.7rem);font-weight:900;margin-right:auto;text-shadow:0 2px 0 #000}.stat{background:#0007;border:1px solid #ffffff22;border-radius:999px;padding:9px 13px;font-weight:800}.panel{background:linear-gradient(#fff9e9,#f1e2b9);color:var(--ink);border:4px solid #5f4428;border-radius:22px;box-shadow:0 14px 45px var(--shadow),inset 0 0 0 2px #cfae6a;padding:22px}.hide{display:none!important}.center{text-align:center}.hero{font-size:4.5rem}.sub{color:#6e6253;line-height:1.5}.choices{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.choice,.btn,.answer{font:inherit;font-weight:800;border-radius:14px;cursor:pointer}.choice{padding:15px;border:2px solid #cbb88a;background:#fffaf0}.choice.on{outline:4px solid #d7aa3b;background:#fff3c8}.btn{border:0;padding:14px 18px;background:#5b3a20;color:#fff}.btn.gold{background:#b98118}.btn.green{background:#4d7d55}.wide{width:100%}.name{width:100%;padding:13px;border:2px solid #cbb88a;border-radius:12px;background:#fffdf8;font:inherit}.story{font-size:1.05rem;line-height:1.55;background:#fff9e8;border-left:5px solid #c79531;padding:12px 14px;margin:12px 0}.gamegrid{display:grid;grid-template-columns:1.3fr .7fr;gap:16px}.board{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;padding:12px;background:#d2bf8a;border-radius:18px;border:3px solid #765633}.cell{position:relative;aspect-ratio:1;border-radius:13px;background:#f8efd2;border:2px solid #b69b62;display:grid;place-items:center;text-align:center;font-size:.78rem;font-weight:800;padding:3px}.cell:nth-child(even){background:#f0dfb5}.cell.current{outline:5px solid #ffd65a;z-index:2}.cell.done{filter:saturate(.7);opacity:.8}.cell .n{position:absolute;left:5px;top:3px;font-size:.65rem;color:#75664b}.token{font-size:2rem;filter:drop-shadow(0 2px 1px #0006)}.side{background:#fff9e8;border:2px solid #c6aa6d;border-radius:16px;padding:14px}.dice{font-size:5rem;text-align:center;margin:8px}.event{font-weight:900;font-size:1.3rem;margin:8px 0}.quest{background:#fff;border:2px solid #d5c49b;border-radius:16px;padding:16px;margin-top:12px}.qicon{font-size:4rem;text-align:center}.qtext{font-size:1.45rem;font-weight:900;text-align:center;margin:10px 0 14px}.answers{display:grid;grid-template-columns:1fr 1fr;gap:9px}.answer{border:2px solid #cbb88a;background:#fffaf0;padding:12px}.answer:hover{background:#fff2c9}.answer.ok{background:#dff3df;border-color:#68a16e}.answer.no{background:#f8dede;border-color:#b65b5b}.feedback{margin-top:10px;padding:10px;border-radius:12px;font-weight:900}.good{background:#dff3df;color:#27572f}.bad{background:#f8dede;color:#7d2a2a}.loot{display:flex;gap:8px;flex-wrap:wrap}.loot span{background:#eee3c6;border-radius:999px;padding:7px 10px}.level2{background:#eee3f5;border-color:#aa8cc1}.dragon{background:#f1d4c9!important;border-color:#9c4e3a!important}.finish{background:#d8ebcf!important;border-color:#648e55!important}.back{color:#f6e5bb;text-decoration:none;display:inline-block;margin-top:12px}
+@media(max-width:820px){.gamegrid{grid-template-columns:1fr}.choices{grid-template-columns:1fr}.board{grid-template-columns:repeat(5,1fr)}.answers{grid-template-columns:1fr}.cell{font-size:.68rem}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="head"><div class="logo">🐉 Deutsch Quest</div><div class="stat">❤️ <span id="hp">3</span></div><div class="stat">🪙 <span id="gold">0</span></div><div class="stat">⭐ <span id="score">0</span></div></div>
+
+<section id="start" class="panel center">
+<div class="hero">🏰⚔️🐉</div><h1>Deutsch Quest</h1>
+<p class="sub">Et fantasy-brætspil i begyndertysk. Kast terningen, rejs gennem skoven, løs tyske quests, saml guld og besejr dragen ved den sorte borg.</p>
+<input id="player" class="name" maxlength="18" placeholder="Heltenavn eller fornavn" />
+<h3>Vælg helt</h3><div id="heroes" class="choices"></div>
+<h3>Vælg niveau</h3><div id="levels" class="choices"></div>
+<div class="story"><b>Historien:</b> Den gamle drage Nachtzahn har stjålet landsbyens magiske ordbog. Kun en helt, der kan forstå tysk, kan følge kortet, tale med væsnerne og nå frem til borgen.</div>
+<button id="begin" class="btn gold wide">Begynd eventyret →</button>
+</section>
+
+<section id="game" class="panel hide">
+<div class="gamegrid"><div><div id="board" class="board"></div></div><aside class="side">
+<div id="turnTitle" class="event">Din tur</div><div id="dice" class="dice">🎲</div>
+<button id="roll" class="btn green wide">Kast terningen</button>
+<p id="eventText" class="sub">Kast terningen for at begynde.</p>
+<div class="loot"><span>🧪 Eliksir: <b id="potions">0</b></span><span>🗝️ Nøgler: <b id="keys">0</b></span></div>
+<div id="quest" class="quest hide"><div id="qicon" class="qicon"></div><div id="qinstr" class="sub center"></div><div id="qtext" class="qtext"></div><div id="answers" class="answers"></div><div id="feedback" class="feedback hide"></div><button id="continue" class="btn wide hide" style="margin-top:10px">Fortsæt rejsen</button></div>
+</aside></div>
+</section>
+
+<section id="end" class="panel center hide"><div class="hero">🏆🐉</div><h1 id="endTitle">Dragen er besejret!</h1><p id="endText" class="sub"></p><div style="font-size:3.5rem;font-weight:900;color:#8d6315" id="finalScore"></div><button id="again" class="btn gold">Spil igen</button></section>
+<a class="back" href="./index.html">← Tilbage til Tysk Mission</a>
+</div>
+<script>
+const heroes=[['🧙','Troldmand'],['🧝','Elver'],['🛡️','Ridder'],['🥷','Rogue'],['🧚','Fe'],['🧌','Skovkriger']];
+const levelDefs=[['1','🌱 Niveau 1','Ord, billeder og meget korte sætninger'],['2','🔥 Niveau 2','Sætninger, små dialoger og lidt grammatik']];
+const events=['🌲 Skov','🐺 Væsen','🪙 Skat','🕸️ Fælde','🧙 Vismand','🐾 Dyr','⚔️ Monster','🍄 Hvile','📜 Quest','🗝️ Nøgle'];
+const animalQs=[
+['🐶','Hvilket tysk ord passer til billedet?',['der Hund','die Katze','das Pferd','der Vogel'],0,'der Hund'],
+['🐱','Hvilket tysk ord passer til billedet?',['die Maus','die Katze','der Fisch','die Kuh'],1,'die Katze'],
+['🐴','Hvilket tysk ord passer til billedet?',['das Pferd','der Hund','das Schwein','der Vogel'],0,'das Pferd'],
+['🐭','Hvilket tysk ord passer til billedet?',['die Kuh','die Maus','die Katze','der Bär'],1,'die Maus'],
+['🐦','Hvilket tysk ord passer til billedet?',['der Vogel','der Fisch','der Hund','das Pferd'],0,'der Vogel'],
+['🐟','Hvilket tysk ord passer til billedet?',['der Bär','die Maus','der Fisch','die Kuh'],2,'der Fisch'],
+['🐮','Hvilket tysk ord passer til billedet?',['die Kuh','das Schwein','der Vogel','die Katze'],0,'die Kuh'],
+['🐷','Hvilket tysk ord passer til billedet?',['das Pferd','das Schwein','der Fisch','der Hund'],1,'das Schwein'],
+['🐻','Hvilket tysk ord passer til billedet?',['der Bär','die Kuh','die Maus','der Vogel'],0,'der Bär'],
+['🐰','Hvilket tysk ord passer til billedet?',['der Hase','der Hund','die Katze','der Fisch'],0,'der Hase']
+];
+const q1=[
+['🍎','Hvad hedder det på tysk?',['der Apfel','das Brot','die Milch','der Käse'],0,'der Apfel'],
+['🌧️','Hvad betyder “Es regnet”?',['Det regner','Det sner','Det er varmt','Det blæser'],0,'Es regnet'],
+['🏠','Vælg det tyske ord for “huset”',['die Schule','das Haus','das Zimmer','der Garten'],1,'das Haus'],
+['🔴','Hvad er rød på tysk?',['blau','grün','rot','gelb'],2,'rot'],
+['7️⃣','Hvad er 7 på tysk?',['sechs','sieben','acht','neun'],1,'sieben'],
+['👋','Hvad betyder “Guten Morgen”?',['Godmorgen','Godnat','Farvel','Tak'],0,'Guten Morgen'],
+['📚','Hvad betyder “das Buch”?',['bordet','bogen','tasken','stolen'],1,'das Buch'],
+['🥛','Hvad er mælk på tysk?',['das Wasser','die Milch','der Saft','das Brot'],1,'die Milch'],
+['👨‍👩‍👧','Hvad betyder “die Mutter”?',['moren','faren','søsteren','broren'],0,'die Mutter'],
+['⚽','Hvad betyder “spielen”?',['at bo','at spise','at spille','at læse'],2,'spielen']
+];
+const q2=[
+['💬','Vælg det bedste svar: “Wie heißt du?”',['Ich heiße Lina.','Ich bin zwölf.','Ich wohne in Odense.','Gut, danke.'],0,'Ich heiße Lina.'],
+['🏡','Hvad betyder “Ich wohne in Berlin”?',['Jeg arbejder i Berlin','Jeg bor i Berlin','Jeg rejser til Berlin','Jeg hedder Berlin'],1,'Ich wohne in Berlin'],
+['🍎','Vælg korrekt sætning',['Ich esse einen Apfel.','Ich trinke einen Apfel.','Ich bin einen Apfel.','Ich wohne einen Apfel.'],0,'Ich esse einen Apfel.'],
+['📖','Vælg korrekt: “Jeg læser en bog”',['Ich spiele ein Buch.','Ich lese ein Buch.','Ich habe lesen Buch.','Ich bin Buch.'],1,'Ich lese ein Buch.'],
+['🕒','Hvad betyder “Es ist drei Uhr”?',['Det er torsdag','Klokken er tre','Jeg er tre år','Det er tre grader'],1,'Es ist drei Uhr'],
+['🌦️','Vælg det bedste svar: “Wie ist das Wetter?”',['Ich heiße Max.','Es ist kalt.','Ich bin zwölf.','Das ist meine Mutter.'],1,'Es ist kalt.'],
+['👨‍👩‍👧','Vælg korrekt: “Det er min søster”',['Das ist mein Bruder.','Das ist meine Schwester.','Ich habe Schwester.','Sie Schwester ist.'],1,'Das ist meine Schwester.'],
+['🐶','Hvad betyder “Ich habe einen Hund”?',['Jeg ser en hund','Jeg har en hund','Jeg er en hund','Jeg vil have en hund'],1,'Ich habe einen Hund.'],
+['🎒','Vælg korrekt ordstilling',['Ich gehe in die Schule.','Ich in die Schule gehe.','Gehe ich Schule die.','Die Schule ich gehe.'],0,'Ich gehe in die Schule.'],
+['💬','Vælg det bedste svar: “Wie geht es dir?”',['Gut, danke!','Ich heiße Noah.','Dreizehn.','In Odense.'],0,'Gut, danke!']
+];
+let hero='🧙',level='1',pos=0,hp=3,gold=0,score=0,potions=0,keys=0,locked=false,currentQ=null,player='Held';
+const $=id=>document.getElementById(id);
+function setup(){
+ $('heroes').innerHTML=heroes.map((h,i)=>`<button class="choice ${i===0?'on':''}" data-h="${h[0]}"><div style="font-size:2.4rem">${h[0]}</div>${h[1]}</button>`).join('');
+ $('levels').innerHTML=levelDefs.map((l,i)=>`<button class="choice ${i===0?'on':''}" data-l="${l[0]}"><b>${l[1]}</b><div class="sub">${l[2]}</div></button>`).join('');
+ document.querySelectorAll('[data-h]').forEach(b=>b.onclick=()=>{hero=b.dataset.h;document.querySelectorAll('[data-h]').forEach(x=>x.classList.remove('on'));b.classList.add('on')});
+ document.querySelectorAll('[data-l]').forEach(b=>b.onclick=()=>{level=b.dataset.l;document.querySelectorAll('[data-l]').forEach(x=>x.classList.remove('on'));b.classList.add('on')});
+}
+function makeBoard(){let html='';for(let i=0;i<30;i++){let label=i===0?'🏡 Start':i===29?'🐉 Drage':events[(i*7+3)%events.length];let cls='cell '+(i<pos?'done ':'')+(i===pos?'current ':'')+(i===29?'dragon ':'')+(i===0?'finish ':'');html+=`<div class="${cls}"><span class="n">${i+1}</span>${i===pos?`<span class="token">${hero}</span>`:label}</div>`}$('board').innerHTML=html}
+function update(){makeBoard();$('hp').textContent=hp;$('gold').textContent=gold;$('score').textContent=score;$('potions').textContent=potions;$('keys').textContent=keys}
+function begin(){player=$('player').value.trim()||'Held';pos=0;hp=3;gold=0;score=0;potions=0;keys=0;locked=false;$('start').classList.add('hide');$('end').classList.add('hide');$('game').classList.remove('hide');$('quest').classList.add('hide');$('eventText').textContent=`${player}, din rejse begynder ved landsbyen. Kast terningen.`;$('roll').disabled=false;update()}
+function roll(){if(locked)return;let n=Math.floor(Math.random()*6)+1;$('dice').textContent=['⚀','⚁','⚂','⚃','⚄','⚅'][n-1];let target=Math.min(29,pos+n);pos=target;locked=true;update();setTimeout(resolveSpace,350)}
+function resolveSpace(){if(pos===29){dragonQuest();return}let kind=events[(pos*7+3)%events.length];$('turnTitle').textContent=kind;if(kind.includes('Skat')){gold+=2;score+=50;$('eventText').textContent='Du finder en gammel kiste: +2 guld og +50 point.';unlock()}else if(kind.includes('Fælde')){hp--; $('eventText').textContent='En skjult fælde! Du mister 1 hjerte.';if(hp<=0){if(potions>0){potions--;hp=1;$('eventText').textContent+=' Din eliksir redder dig!'}else{return lose()}}unlock()}else if(kind.includes('Hvile')){hp=Math.min(3,hp+1);$('eventText').textContent='Du finder et sikkert lejrbål og får 1 hjerte tilbage.';unlock()}else if(kind.includes('Nøgle')){keys++;score+=30;$('eventText').textContent='Du finder en gammel runenøgle. Den kan hjælpe ved dragen.';unlock()}else if(kind.includes('Dyr')){ask(random(animalQs),'🐾 Dyreven')}else if(kind.includes('Væsen')){ask(random(animalQs),'🐺 Skovens væsen')}else if(kind.includes('Monster')){ask(random(level==='1'?q1:q2),'⚔️ Monsterkamp')}else if(kind.includes('Vismand')){ask(random(level==='1'?q1:q2),'🧙 Vismandens gåde')}else if(kind.includes('Quest')){ask(random(level==='1'?q1:q2),'📜 Sprogrune')}else{$('eventText').textContent='Stien er fri. Du går videre gennem skoven.';unlock()}}
+function random(a){return a[Math.floor(Math.random()*a.length)]}
+function ask(q,title){currentQ=q;$('eventText').textContent=title+': Løs opgaven for at beholde din plads.';$('quest').classList.remove('hide');$('qicon').textContent=q[0];$('qinstr').textContent=q[1];$('qtext').textContent=q[5]&&q[5].length<22?q[5]:'';$('answers').innerHTML='';q[2].forEach((a,i)=>{let b=document.createElement('button');b.className='answer';b.textContent=a;b.onclick=()=>answer(i,b);$('answers').appendChild(b)});$('feedback').className='feedback hide';$('continue').classList.add('hide')}
+function answer(i,b){let q=currentQ,all=[...document.querySelectorAll('.answer')];all.forEach(x=>x.disabled=true);all[q[3]].classList.add('ok');if(i===q[3]){score+=100;gold++;$('feedback').textContent='Richtig! ✨ +100 point og +1 guld.';$('feedback').className='feedback good'}else{b.classList.add('no');hp--;$('feedback').textContent=`Nicht ganz. Det rigtige svar er: ${q[2][q[3]]}. Du mister 1 hjerte.`;$('feedback').className='feedback bad';if(hp<=0){if(potions>0){potions--;hp=1;$('feedback').textContent+=' Din eliksir redder dig!'}else{setTimeout(lose,700);update();return}}}if(Math.random()<.18){potions++;$('feedback').textContent+=' 🧪 Du finder også en eliksir!'}update();$('continue').classList.remove('hide')}
+function unlock(){$('quest').classList.add('hide');locked=false;$('roll').disabled=false;update()}
+function dragonQuest(){let q=random(level==='1'?q1.concat(animalQs):q2);$('turnTitle').textContent='🐉 NACHTZAHN';$('eventText').textContent=keys>0?'Din runenøgle svækker dragen. Løs den sidste tyske gåde!':'Dragen spærrer vejen. Løs den sidste tyske gåde!';currentQ=q;$('quest').classList.remove('hide');$('qicon').textContent='🐉';$('qinstr').textContent='SLUTBOSS: '+q[1];$('qtext').textContent=q[5]&&q[5].length<25?q[5]:'';$('answers').innerHTML='';q[2].forEach((a,i)=>{let b=document.createElement('button');b.className='answer';b.textContent=a;b.onclick=()=>dragonAnswer(i,b);$('answers').appendChild(b)});$('feedback').className='feedback hide';$('continue').classList.add('hide')}
+function dragonAnswer(i,b){let q=currentQ,all=[...document.querySelectorAll('.answer')];all.forEach(x=>x.disabled=true);all[q[3]].classList.add('ok');if(i===q[3]){score+=keys?500:350;gold+=5;finish()}else{b.classList.add('no');hp-=keys?0:1;if(hp<=0)lose();else{$('feedback').textContent='Dragen brøler! Du overlever og får ét forsøg mere på rejsen.';$('feedback').className='feedback bad';pos=Math.max(24,pos-3);locked=false;$('quest').classList.add('hide');update()}}}
+function finish(){$('game').classList.add('hide');$('end').classList.remove('hide');$('endTitle').textContent='Dragen er besejret!';$('endText').textContent=`${player}, du fandt den magiske ordbog og reddede landsbyen. Du samlede ${gold} guld og gennemførte Niveau ${level}.`;$('finalScore').textContent=score+' point'}
+function lose(){$('game').classList.add('hide');$('end').classList.remove('hide');$('endTitle').textContent='Eventyret er ikke slut endnu…';$('endText').textContent=`${player}, mørkeskoven vandt denne gang. Du nåede felt ${pos+1}. Prøv igen – næste quest kan være den, du kender!`;$('finalScore').textContent=score+' point'}
+$('begin').onclick=begin;$('roll').onclick=roll;$('continue').onclick=unlock;$('again').onclick=()=>{$('end').classList.add('hide');$('start').classList.remove('hide')};setup();makeBoard();
+</script>
+</body>
+</html>
