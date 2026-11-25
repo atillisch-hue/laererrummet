@@ -7,10 +7,8 @@ import {supabase} from "../lib/supabase";
 import {hasRole} from "../lib/roles";
 
 const teachingItems=[
- {label:"I dag",href:"/noticeboard",roots:["/noticeboard"]},
- {label:"Klasser",href:"/teacher-dashboard",roots:["/teacher-dashboard","/students","/student-profile","/teacher-overview","/create-assignment","/grammar","/math","/danish","/formelsamling"]},
+ {label:"I dag",href:"/pilot/teacher-day/today",roots:["/pilot/teacher-day/today"]},
  {label:"Kalender",href:"/calendar",roots:["/calendar"]},
- {label:"Lærerværelset",href:"/teacher-room",roots:["/teacher-room","/archive","/my-tasks","/substitute"]},
  {label:"Forberedelse",href:"/preparation",roots:["/preparation"]}
 ];
 const leadershipItems=[
@@ -22,7 +20,7 @@ const employeeItems=[
  {label:"Lærerværelset",href:"/teacher-room",roots:["/teacher-room","/archive","/my-tasks","/substitute"]}
 ];
 const protectedRoots=[...teachingItems.flatMap(x=>x.roots),"/admin","/board","/parent","/account"];
-const mainTabs=new Set(["/noticeboard","/teacher-dashboard","/calendar","/teacher-room","/preparation"]);
+const mainTabs=new Set(["/pilot/teacher-day","/pilot/teacher-day/today","/calendar","/preparation"]);
 function starts(path:string,root:string){return path===root||path.startsWith(root+"/")}
 type SubjectRoomContext={roomId:number;classId:number;subjectName:string;subjectSlug:string};
 
@@ -38,7 +36,7 @@ export default function DashboardNav(){
  const teachingAccess=teacher;
  const employeeAccess=teacher||staff||leader;
  const visibleItems=teachingAccess?teachingItems:leader?leadershipItems:staff?employeeItems:[];
- const homeHref=teacher?"/noticeboard":leader?"/admin":staff?"/teacher-room":admin?"/admin":parent?"/parent":board?"/board":"/";
+ const homeHref=teacher?"/pilot/teacher-day":leader?"/admin":staff?"/teacher-room":admin?"/admin":parent?"/parent":board?"/board":"/";
  const roleLabel=starts(pathname,"/account")?"Konto":starts(pathname,"/admin")?(admin?"Admin":"Ledelse"):starts(pathname,"/parent")?"Forælder":starts(pathname,"/board")?"Bestyrelse":teacher?"Lærer":leader?"Ledelse":staff?"Medarbejder":admin?"Admin":"Bruger";
  const compactMainHeader=mainTabs.has(pathname),isMathRoom=subjectRoom?.subjectSlug==="matematik",isDanishRoom=subjectRoom?.subjectSlug==="dansk";
  return <>
