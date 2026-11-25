@@ -61,3 +61,6 @@ Pilotfeedback kategoriseres kun som:
 3. **SENERE** – forbedring eller ny funktion, som ikke blokerer Release 0.1.
 
 Nye featureønsker må ikke udvide scope, før blocker-listen for Release 0.1 er lukket.
+
+
+Senest retriggeret: 25. november 2026.
