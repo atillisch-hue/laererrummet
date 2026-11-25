@@ -8,6 +8,7 @@ import {hasRole} from "../lib/roles";
 type Area="teaching"|"staff"|"leadership"|"admin"|"board"|"parent"|null;
 
 const teachingRoots=[
+ "/pilot/teacher-day",
  "/noticeboard",
  "/students",
  "/student-profile",
@@ -49,7 +50,7 @@ function protectedArea(path:string):Area{
 }
 
 function landingFor(user:NonNullable<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>["user"]){
- if(hasRole(user,"teacher"))return "/noticeboard";
+ if(hasRole(user,"teacher"))return "/pilot/teacher-day";
  if(hasRole(user,"leader"))return "/admin";
  if(hasRole(user,"staff"))return "/teacher-room";
  if(hasRole(user,"admin"))return "/admin";
