@@ -7,8 +7,7 @@ import {supabase} from "../lib/supabase";
 import {hasRole} from "../lib/roles";
 
 const teachingItems=[
- {label:"Pilot 0.1",href:"/pilot/teacher-day",roots:["/pilot/teacher-day"]},
- {label:"I dag",href:"/noticeboard",roots:["/noticeboard"]},
+ {label:"I dag",href:"/pilot/teacher-day/today",roots:["/pilot/teacher-day/today"]},
  {label:"Kalender",href:"/calendar",roots:["/calendar"]},
  {label:"Forberedelse",href:"/preparation",roots:["/preparation"]}
 ];
@@ -21,7 +20,7 @@ const employeeItems=[
  {label:"Lærerværelset",href:"/teacher-room",roots:["/teacher-room","/archive","/my-tasks","/substitute"]}
 ];
 const protectedRoots=[...teachingItems.flatMap(x=>x.roots),"/admin","/board","/parent","/account"];
-const mainTabs=new Set(["/pilot/teacher-day","/noticeboard","/calendar","/preparation"]);
+const mainTabs=new Set(["/pilot/teacher-day","/pilot/teacher-day/today","/calendar","/preparation"]);
 function starts(path:string,root:string){return path===root||path.startsWith(root+"/")}
 type SubjectRoomContext={roomId:number;classId:number;subjectName:string;subjectSlug:string};
 
