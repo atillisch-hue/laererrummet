@@ -19,7 +19,7 @@ type AuthUser={app_metadata?:Record<string,unknown>};
 
 const hasEmployeeAccess=(user:AuthUser)=>hasRole(user as any,"teacher")||hasRole(user as any,"staff");
 const hasTeachingAccess=(user:AuthUser)=>hasRole(user as any,"teacher");
-const employeeLanding=(user:AuthUser)=>hasTeachingAccess(user)?"/noticeboard":"/teacher-room";
+const employeeLanding=(user:AuthUser)=>hasTeachingAccess(user)?"/pilot/teacher-day":"/teacher-room";
 
 export default function HomeClient(){
  const[ready,setReady]=useState(false);
