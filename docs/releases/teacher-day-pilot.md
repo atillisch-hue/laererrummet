@@ -36,7 +36,7 @@ Før Release 0.1 bruges med rigtige medarbejdere skal følgende være opfyldt:
 
 - [x] Egen release-branch oprettet: `release/teacher-day-pilot`.
 - [x] Afgrænset pilotindgang oprettet: `/pilot/teacher-day`.
-- [ ] Produktionsbuild på release-branchen er grøn.
+- [x] GitHub Actions-produktionsbuild er grøn på release-branchen; Vercel-preview verificeres separat.
 - [ ] Navigation i pilotflow er gennemgået uden døde links.
 - [ ] Supabase-projektet er aktivt i et aftalt testvindue.
 - [ ] Lærerlogin er testet i browser.
@@ -66,3 +66,35 @@ Nye featureønsker må ikke udvide scope, før blocker-listen for Release 0.1 er
 Senest retriggeret: 25. november 2026.
 
 Preview retrigger: 25. november 2026, anden kontrol.
+
+
+## Auditstatus 25. november 2026
+
+### STOPPER PILOT
+- Supabase-projektet er aktuelt pauset/inaktivt, så login og databaseflow kan ikke live-verificeres endnu.
+- Vercel preview-deployment er endnu ikke endeligt verificeret som READY. Selve Next.js/TypeScript-buildet er grønt i GitHub Actions.
+
+### RETTET I RELEASE-BRANCHEN
+- Lærerlogin lander på Release 0.1 frem for den gamle brede lærerflade.
+- Pilotområdet er registreret i den centrale AccessGuard.
+- Klasseværelset-logoet fører læreren tilbage til pilotens start.
+- Lærernavigation er begrænset til I dag, Kalender og Forberedelse.
+- Der er oprettet en fokuseret I dag-side uden opslagstavle, filupload og målgruppefunktioner.
+- Lektionen sender ikke længere læreren videre til elevoversigt, fraværsmodul, fagrum eller opgaveoversigt.
+- Forberedelsesflowet holder brugeren inden for pilotens godkendte modulgrænse.
+
+### BØR RETTES / VERIFICERES FØR INTERN PILOT
+- Live lærerlogin mod aktiv Supabase.
+- Min dag → lektion → gem → genåbn.
+- Kalender → lektion.
+- Lektion → Forberedelse → gem → tilbage til lektion.
+- RLS/adgangstest med mindst to læreridentiteter.
+- Runtime-fejl i previewmiljøet.
+
+### KAN VENTE
+- Elevopgaver og besvarelser.
+- Fraværsadministration.
+- Fagrum som selvstændigt modul.
+- Forældre.
+- Bestyrelse.
+- Handleplaner og øvrige følsomme elevdata.
