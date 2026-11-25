@@ -6,7 +6,7 @@ import {supabase} from "../../../lib/supabase";
 import {hasRole} from "../../../lib/roles";
 
 const modules=[
- {step:"1",title:"Min dag",text:"Se dagens lektioner og møder og åbn den konkrete time, du skal arbejde med.",href:"/noticeboard",status:"Klar til pilot"},
+ {step:"1",title:"Min dag",text:"Se dagens lektioner og møder og åbn den konkrete time, du skal arbejde med.",href:"/pilot/teacher-day/today",status:"Klar til pilot"},
  {step:"2",title:"Kalender",text:"Se uge og skema og åbn en lektion direkte fra kalenderen.",href:"/calendar",status:"Klar til pilot"},
  {step:"3",title:"Forberedelse",text:"Planlæg lektioner, kobl materiale og fortsæt undervisningsarbejde.",href:"/preparation",status:"Klar til pilot"}
 ];
