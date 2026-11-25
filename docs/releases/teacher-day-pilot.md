@@ -64,3 +64,5 @@ Nye featureønsker må ikke udvide scope, før blocker-listen for Release 0.1 er
 
 
 Senest retriggeret: 25. november 2026.
+
+Preview retrigger: 25. november 2026, anden kontrol.
