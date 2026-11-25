@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {useEffect,useMemo,useState} from "react";
 import {useSearchParams} from "next/navigation";
 import {supabase} from "../../lib/supabase";
@@ -117,7 +116,6 @@ export default function LinkToLesson(){
   {lessons.length===0?<div style={{padding:"12px 14px",background:"white",borderRadius:9,color:"#687068"}}>Jeg kan ikke finde kommende faglektioner på din bruger endnu.</div>:<div style={{display:"grid",gap:13}}>
    <label style={{fontWeight:800}}>Kommende lektion<select value={selectedKey} onChange={e=>setSelectedKey(e.target.value)} style={{...input,marginTop:6}}><option value="">Vælg lektion</option>{lessons.map(l=><option key={`${l.scheduleId}:${l.date}`} value={`${l.scheduleId}:${l.date}`}>{lessonLabel(l)}</option>)}</select></label>
    {selected&&<>
-    <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}><Link href={`/students/subjects/${selected.classSubjectId}`} style={{color:"#486b59",fontWeight:900,textDecoration:"none"}}>Åbn {selected.subject}-faglokalet →</Link></div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(250px,1fr))",gap:11}}>
      <label style={{fontWeight:800}}>Læringsmål<textarea value={goals} onChange={e=>setGoals(e.target.value)} rows={4} style={{...input,marginTop:6,resize:"vertical"}} placeholder="Hvad skal eleverne have med sig?"/></label>
      <label style={{fontWeight:800}}>Plan for lektionen<textarea value={plan} onChange={e=>setPlan(e.target.value)} rows={4} style={{...input,marginTop:6,resize:"vertical"}} placeholder={'Fx:\n08.00 intro\n08.10 fælles læsning\n08.30 makkeropgave'}/></label>
@@ -125,7 +123,7 @@ export default function LinkToLesson(){
     <div><button disabled={saving} onClick={savePlan} style={{border:"1px solid #486b59",borderRadius:9,padding:"10px 14px",background:"white",color:"#486b59",fontWeight:900,cursor:"pointer",opacity:saving?0.55:1}}>{saving?"Gemmer…":"Gem plan på lektionen"}</button></div>
     <label style={{fontWeight:800}}>Materiale eller opgave<select value={resource} onChange={e=>setResource(e.target.value)} disabled={loadingResources} style={{...input,marginTop:6}}><option value="">{loadingResources?"Henter…":"Vælg fra faglokalet"}</option>{options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></label>
     {options.length===0&&!loadingResources&&<small style={{color:"#687068"}}>Der er endnu ingen materialer eller opgaver i dette faglokale, som kan kobles.</small>}
-    <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}><button disabled={!resource||saving} onClick={link} style={{border:0,borderRadius:9,padding:"11px 15px",background:"#486b59",color:"white",fontWeight:900,cursor:"pointer",opacity:!resource||saving?0.55:1}}>{saving?"Kobler…":"Kobl materiale/opgave →"}</button><Link href={`/calendar/lesson/${selected.scheduleId}?date=${selected.date}`} style={{color:"#486b59",fontWeight:900,textDecoration:"none"}}>Åbn lektionen →</Link></div>
+    <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}><button disabled={!resource||saving} onClick={link} style={{border:0,borderRadius:9,padding:"11px 15px",background:"#486b59",color:"white",fontWeight:900,cursor:"pointer",opacity:!resource||saving?0.55:1}}>{saving?"Kobler…":"Kobl materiale/opgave →"}</button><a href={`/calendar/lesson/${selected.scheduleId}?date=${selected.date}`} style={{color:"#486b59",fontWeight:900,textDecoration:"none"}}>Åbn lektionen →</a></div>
    </>}
   </div>}
   {message&&<div style={{marginTop:12,padding:"10px 12px",borderRadius:8,background:message.includes("✓")?"#e2ece5":"#fff3cd",fontWeight:700}}>{message}</div>}
