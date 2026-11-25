@@ -37,7 +37,7 @@ export default function DashboardNav(){
  const teachingAccess=teacher;
  const employeeAccess=teacher||staff||leader;
  const visibleItems=teachingAccess?teachingItems:leader?leadershipItems:staff?employeeItems:[];
- const homeHref=teacher?"/noticeboard":leader?"/admin":staff?"/teacher-room":admin?"/admin":parent?"/parent":board?"/board":"/";
+ const homeHref=teacher?"/pilot/teacher-day":leader?"/admin":staff?"/teacher-room":admin?"/admin":parent?"/parent":board?"/board":"/";
  const roleLabel=starts(pathname,"/account")?"Konto":starts(pathname,"/admin")?(admin?"Admin":"Ledelse"):starts(pathname,"/parent")?"Forælder":starts(pathname,"/board")?"Bestyrelse":teacher?"Lærer":leader?"Ledelse":staff?"Medarbejder":admin?"Admin":"Bruger";
  const compactMainHeader=mainTabs.has(pathname),isMathRoom=subjectRoom?.subjectSlug==="matematik",isDanishRoom=subjectRoom?.subjectSlug==="dansk";
  return <>
