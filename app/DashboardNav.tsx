@@ -7,10 +7,9 @@ import {supabase} from "../lib/supabase";
 import {hasRole} from "../lib/roles";
 
 const teachingItems=[
+ {label:"Pilot 0.1",href:"/pilot/teacher-day",roots:["/pilot/teacher-day"]},
  {label:"I dag",href:"/noticeboard",roots:["/noticeboard"]},
- {label:"Klasser",href:"/teacher-dashboard",roots:["/teacher-dashboard","/students","/student-profile","/teacher-overview","/create-assignment","/grammar","/math","/danish","/formelsamling"]},
  {label:"Kalender",href:"/calendar",roots:["/calendar"]},
- {label:"Lærerværelset",href:"/teacher-room",roots:["/teacher-room","/archive","/my-tasks","/substitute"]},
  {label:"Forberedelse",href:"/preparation",roots:["/preparation"]}
 ];
 const leadershipItems=[
@@ -22,7 +21,7 @@ const employeeItems=[
  {label:"Lærerværelset",href:"/teacher-room",roots:["/teacher-room","/archive","/my-tasks","/substitute"]}
 ];
 const protectedRoots=[...teachingItems.flatMap(x=>x.roots),"/admin","/board","/parent","/account"];
-const mainTabs=new Set(["/noticeboard","/teacher-dashboard","/calendar","/teacher-room","/preparation"]);
+const mainTabs=new Set(["/pilot/teacher-day","/noticeboard","/calendar","/preparation"]);
 function starts(path:string,root:string){return path===root||path.startsWith(root+"/")}
 type SubjectRoomContext={roomId:number;classId:number;subjectName:string;subjectSlug:string};
 
